@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Scrollbar dark */
+.custom-scrollbar-dark {
+  scrollbar-width: thin;
+  scrollbar-color: #4b5563 #111827;
+}
+
+.custom-scrollbar-dark::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar-dark::-webkit-scrollbar-track {
+  background: #0b1120;
+}
+
+.custom-scrollbar-dark::-webkit-scrollbar-thumb {
+  background-color: #4b5563;
+  border-radius: 999px;
+}
+
+/* Para garantir as animações usadas no JSX (fallback caso esqueça no tailwind) */
+@keyframes fadeIn {
+  0% { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  0% { opacity: 0; transform: translateY(-4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.animate-slide-down {
+  animation: slideDown 0.2s ease-out;
+}
