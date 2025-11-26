@@ -6,7 +6,8 @@ import {
   Filter, CheckSquare, Tag, Search, Layers, CheckCircle, Info, RefreshCw,
   List, X, Barcode, Link as LinkIcon, Edit, RotateCcw, FlaskConical, FileText,
   Database, Scale, Download, Upload, HardDrive, PieChart, Menu, LogOut, User,
-  Home, Moon, FileInput, ChevronLeft, Printer, Eye, Truck, Archive, PenSquare
+  Home, Moon, FileInput, ChevronLeft, Printer, Eye, Truck, Archive, PenSquare,
+  FileJson // Novo ícone para JSON
 } from 'lucide-react';
 
 // --- CONFIGURAÇÕES ---
@@ -397,6 +398,7 @@ export default function App() {
   const importMotherStockRef = useRef(null);
   const importChildStockRef = useRef(null);
   const importLogsRef = useRef(null);
+  const importFullBackupRef = useRef(null);
   const fileInputMotherCatalogRef = useRef(null);
 
   useEffect(() => {
@@ -620,6 +622,27 @@ export default function App() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleFullRestore = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target.result);
+        if (data.motherCoils) setMotherCoils(data.motherCoils);
+        if (data.childCoils) setChildCoils(data.childCoils);
+        if (data.productionLogs) setProductionLogs(data.productionLogs);
+        if (data.shippingLogs) setShippingLogs(data.shippingLogs);
+        if (data.productCatalog) setProductCatalog(data.productCatalog);
+        if (data.motherCatalog) setMotherCatalog(data.motherCatalog);
+        alert("Backup completo restaurado com sucesso!");
+      } catch (err) {
+        alert("Erro ao ler arquivo de backup: " + err.message);
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleEditLog = (log) => {
@@ -1136,20 +1159,8 @@ export default function App() {
       return acc;
     }, {});
 
-    const finishedStockByCode = productionLogs.reduce((acc, log) => {
-      if (!acc[log.productCode]) {
-        acc[log.productCode] = {
-          code: log.productCode,
-          name: log.productName,
-          count: 0 // Quantidade de peças
-        };
-      }
-      acc[log.productCode].count += log.pieces;
-      return acc;
-    }, {});
-
-    // Correctly define finishedStockList BEFORE using it
-    const finishedStockList = Object.values(finishedStockByCode).filter(item => item.count > 0);
+    const stockBalances = getFinishedStock();
+    const finishedStockList = Object.values(stockBalances).filter(item => item.count > 0);
 
     const paginatedMotherStock = Object.values(motherStockByCode).slice((motherPage - 1) * ITEMS_PER_PAGE, motherPage * ITEMS_PER_PAGE);
     const paginatedChildStock = Object.values(childStockByCode).slice((childPage - 1) * ITEMS_PER_PAGE, childPage * ITEMS_PER_PAGE);
@@ -1295,6 +1306,19 @@ export default function App() {
             <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-amber-500/50 transition-colors">
               <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Importar Backup</h4>
               <div className="flex flex-col gap-4">
+                
+                {/* Botão de Restaurar Backup Completo (JSON) */}
+                <div className="flex items-center gap-2">
+                    <Button variant="info" className="w-9 h-9 p-0 rounded-lg shrink-0 opacity-50 cursor-not-allowed" title="Modelo JSON indisponível (automático)"><FileJson size={16}/></Button>
+                    <div className="relative flex-1">
+                      <input type="file" accept=".json" className="hidden" ref={importFullBackupRef} onChange={handleFullRestore} />
+                      <Button variant="primary" onClick={() => importFullBackupRef.current.click()} className="text-xs w-full justify-start h-9 bg-blue-600 hover:bg-blue-500 text-white font-bold"><Upload size={14} className="mr-2"/> Restaurar Backup Completo (.json)</Button>
+                    </div>
+                </div>
+                
+                <div className="border-t border-gray-700 my-2"></div>
+                <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Importar partes (CSV)</p>
+
                 <div className="flex items-center gap-2">
                     <Button variant="info" onClick={() => handleDownloadTemplate('mother')} className="w-9 h-9 p-0 rounded-lg shrink-0" title="Baixar Modelo"><FileInput size={16}/></Button>
                     <div className="relative flex-1">
@@ -1324,6 +1348,7 @@ export default function App() {
     );
   };
 
+  // --- RETURN FINAL ---
   return (
     <div className="flex h-screen bg-[#0f172a] font-sans text-gray-100">
       {/* Sidebar */}
