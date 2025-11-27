@@ -13,152 +13,13 @@ import {
 // --- CONFIGURAÇÕES ---
 const ITEMS_PER_PAGE = 50;
 
-// --- CATÁLOGO COMPLETO DE MATÉRIA PRIMA (MP BOBINAS) ---
-const INITIAL_MOTHER_CATALOG = [
-  { code: '10644', description: 'BOBINA BEG 0,40 SAE 1006 Z50', thickness: '0,40', type: 'BEG' },
-  { code: '10916', description: 'BOBINA BEG 0,43 USI GALVE', thickness: '0,43', type: 'BEG' },
-  { code: '10918', description: 'BOBINA BEG 0,50 SAE 1006 Z80', thickness: '0,50', type: 'BEG' },
-  { code: '10934', description: 'BOBINA BEG 0,60 NBR 5915 EM Z80', thickness: '0,60', type: 'BEG' },
-  { code: '10931', description: 'BOBINA BEG 0,60 NBR 5915 EP', thickness: '0,60', type: 'BEG' },
-  { code: '10960', description: 'BOBINA BEG 0,60 SAE 1006 Z80', thickness: '0,60', type: 'BEG' },
-  { code: '10943', description: 'BOBINA BEG 0,65 NBR 5915 EM Z80', thickness: '0,65', type: 'BEG' },
-  { code: '10255', description: 'BOBINA BEG 0,70 NBR 5915 EM Z80', thickness: '0,70', type: 'BEG' },
-  { code: '10579', description: 'BOBINA BEG 0,90 SAE 1006 Z80', thickness: '0,90', type: 'BEG' },
-  { code: '10591', description: 'BOBINA BEG 1,10 SAE 1006 Z80', thickness: '1,10', type: 'BEG' },
-  { code: '10160', description: 'BOBINA BEG 1,20 SAE 1006 Z80', thickness: '1,20', type: 'BEG' },
-  { code: '10582', description: 'BOBINA BEG 1,40 SAE 1006 Z80', thickness: '1,40', type: 'BEG' },
-  { code: '10581', description: 'BOBINA BEG 1,50 SAE 1006 Z80', thickness: '1,50', type: 'BEG' },
-  { code: '10679', description: 'BOBINA BEG 1,90 SAE 1006 Z80', thickness: '1,90', type: 'BEG' },
-  { code: '10019', description: 'BOBINA BEG 2,00 NTU UG', thickness: '2,00', type: 'BEG' },
-  { code: '11314', description: 'BOBINA BF 0,35 SAE 1006/OEM 60', thickness: '0,35', type: 'BF' },
-  { code: '10666', description: 'BOBINA BF 0,38 SAE 1006 / OEM 60', thickness: '0,38', type: 'BF' },
-  { code: '10886', description: 'BOBINA BF 0,40 SAE 1006 / OEM 60', thickness: '0,40', type: 'BF' },
-  { code: '11024', description: 'BOBINA BF 0,45 SAE 1006 / OEM 60', thickness: '0,45', type: 'BF' },
-  { code: '10958', description: 'BOBINA BF 0,50 SAE 1006/OEM 60', thickness: '0,50', type: 'BF' },
-  { code: '10046', description: 'BOBINA BF 0,60 NBR 5915 EM', thickness: '0,60', type: 'BF' },
-  { code: '10045', description: 'BOBINA BF 0,60 SAE 1006/OEM 60', thickness: '0,60', type: 'BF' },
-  { code: '10042', description: 'BOBINA BF 0,75 NBR 5915 EM', thickness: '0,75', type: 'BF' },
-  { code: '10482', description: 'BOBINA BF 0,75 SAE 1006 / OEM 60', thickness: '0,75', type: 'BF' },
-  { code: '10933', description: 'BOBINA BF 0,80 SAE 1006 / OEM 60', thickness: '0,80', type: 'BF' },
-  { code: '10037', description: 'BOBINA BF 0,90 SAE 1006 / OEM 60', thickness: '0,90', type: 'BF' },
-  { code: '10039', description: 'BOBINA BF 1,10 SAE 1006/OEM 60', thickness: '1,10', type: 'BF' },
-  { code: '10030', description: 'BOBINA BF 1,20 SAE 1006 / OEM 60', thickness: '1,20', type: 'BF' },
-  { code: '10152', description: 'BOBINA BF 1,40 SAE 1006/OEM 60', thickness: '1,40', type: 'BF' },
-  { code: '10976', description: 'BOBINA BF 1,50 NBR 5915 EEP GR2', thickness: '1,50', type: 'BF' },
-  { code: '10026', description: 'BOBINA BF 1,50 SAE 1006 / OEM 60', thickness: '1,50', type: 'BF' },
-  { code: '10948', description: 'BOBINA BF 1,90 NBR 5915 EEP GR2', thickness: '1,90', type: 'BF' },
-  { code: '10949', description: 'BOBINA BF 2,65 NBR 5915 EEP GR2', thickness: '2,65', type: 'BF' },
-  { code: '10024', description: 'BOBINA BFQ 2,00 SAE 1012', thickness: '2,00', type: 'BFQ' },
-  { code: '10967', description: 'BOBINA BQ 1,50 ASTM A1011SS40', thickness: '1,50', type: 'BQ' },
-  { code: '10975', description: 'BOBINA BQ 1,50 SAE 1008', thickness: '1,50', type: 'BQ' },
-  { code: '10647', description: 'BOBINA BQ 1,70 SAE 1008', thickness: '1,70', type: 'BQ' },
-  { code: '10262', description: 'BOBINA BQ 1,80 SAE 1008', thickness: '1,80', type: 'BQ' },
-  { code: '10646', description: 'BOBINA BQ 1,90 SAE 1008', thickness: '1,90', type: 'BQ' },
-  { code: '10297', description: 'BOBINA BQ 2,00 SAC300/COR400', thickness: '2,00', type: 'BQ' },
-  { code: '10863', description: 'BOBINA BQ 2,00 SAE 1008', thickness: '2,00', type: 'BQ' },
-  { code: '10023', description: 'BOBINA BQ 2,25 SAC300/COR400', thickness: '2,25', type: 'BQ' },
-  { code: '10022', description: 'BOBINA BQ 2,25 SAE 1008', thickness: '2,25', type: 'BQ' },
-  { code: '10020', description: 'BOBINA BQ 2,65 SAE 1008', thickness: '2,65', type: 'BQ' },
-  { code: '10329', description: 'BOBINA BQ 3,00 PISO', thickness: '3,00', type: 'BQ' },
-  { code: '10941', description: 'BOBINA BQ 3,00 SAC300/COR400', thickness: '3,00', type: 'BQ' },
-  { code: '10018', description: 'BOBINA BQ 3,00 SAE 1008', thickness: '3,00', type: 'BQ' },
-  { code: '10288', description: 'BOBINA BQ 4,75 SAE 1008', thickness: '4,75', type: 'BQ' },
-  { code: '10973', description: 'BOBINA GALV 0,43 NBR 7008 ZC Z275', thickness: '0,43', type: 'GALV' },
-  { code: '10047', description: 'BOBINA GALV 0,43 NBR 7008 ZC Z85', thickness: '0,43', type: 'GALV' },
-  { code: '10977', description: 'BOBINA GALV 0,43 NBR 7008 ZE Z85', thickness: '0,43', type: 'GALV' },
-  { code: '11323', description: 'BOBINA GALV 0,48 NBR 7008 ZAR230 Z120', thickness: '0,48', type: 'GALV' },
-  { code: '10327', description: 'BOBINA GALV 0,50 NBR 7008 ZAR 230 Z275', thickness: '0,50', type: 'GALV' },
-  { code: '10049', description: 'BOBINA GALV 0,50 NBR 7008 ZC Z85', thickness: '0,50', type: 'GALV' },
-  { code: '10927', description: 'BOBINA GALV 0,60 NBR 7008 ZC Z85', thickness: '0,60', type: 'GALV' },
-  { code: '10844', description: 'BOBINA GALV 0,60 NBR 7008 ZE Z85', thickness: '0,60', type: 'GALV' },
-  { code: '10642', description: 'BOBINA GALV 0,65 NBR 7008 ZC Z85', thickness: '0,65', type: 'GALV' },
-  { code: '10294', description: 'BOBINA GALV 0,65 NBR 7008 ZE Z85', thickness: '0,65', type: 'GALV' },
-  { code: '10926', description: 'BOBINA GALV 0,70 NBR 7008 ZE Z85', thickness: '0,70', type: 'GALV' },
-  { code: '10962', description: 'BOBINA GALV 0,70 ZE - LARG 136MM', thickness: '0,70', type: 'GALV' },
-  { code: '10161', description: 'BOBINA GALV 0,75 NBR 7008 ZC Z85', thickness: '0,75', type: 'GALV' },
-  { code: '10942', description: 'BOBINA GALV 0,80 NBR 7008 ZAR 230 Z350', thickness: '0,80', type: 'GALV' },
-  { code: '11319', description: 'BOBINA GALV 0,80 NBR 7008 ZAR230 Z275', thickness: '0,80', type: 'GALV' },
-  { code: '11315', description: 'BOBINA GALV 0,80 NBR 7008 ZAR400 Z350', thickness: '0,80', type: 'GALV' },
-  { code: '10290', description: 'BOBINA GALV 0,80 NBR 7008 ZC Z85', thickness: '0,80', type: 'GALV' },
-  { code: '10618', description: 'BOBINA GALV 0,90 NBR 7008 ZC Z85', thickness: '0,90', type: 'GALV' },
-  { code: '11318', description: 'BOBINA GALV 0,95 NBR 7008 ZAR 230 Z350', thickness: '0,95', type: 'GALV' },
-  { code: '10996', description: 'BOBINA GALV 0,95 NBR 7008 ZAR230 Z275', thickness: '0,95', type: 'GALV' },
-  { code: '10649', description: 'BOBINA GALV 1,10 NBR 7008 ZC Z85', thickness: '1,10', type: 'GALV' },
-  { code: '10401', description: 'BOBINA GALV 1,20 NBR 7008 ZC Z85', thickness: '1,20', type: 'GALV' },
-  { code: '11316', description: 'BOBINA GALV 1,25 NBR 7008 ZAR400 Z350', thickness: '1,25', type: 'GALV' },
-  { code: '10837', description: 'BOBINA GALV 1,40 NBR 7008 ZC Z85', thickness: '1,40', type: 'GALV' },
-  { code: '10624', description: 'BOBINA GALV 1,50 NBR 7008 ZC Z85', thickness: '1,50', type: 'GALV' },
-  { code: '10419', description: 'BOBINA GALV 1,90 NBR 7008 ZC Z85', thickness: '1,90', type: 'GALV' },
-  { code: '11320', description: 'BOBINA GALV 2,25 NBR 7008 ZC Z85', thickness: '2,25', type: 'GALV' },
-  { code: '11326', description: 'BOBINA GALV 2,65 NBR 7008 ZC Z85', thickness: '2,65', type: 'GALV' },
-  { code: '10997', description: 'BOBINA GALVALUME 0,32 AZM150', thickness: '0,32', type: 'GALV' },
-  { code: '10974', description: 'BOBINA GALVALUME 0,35 ASTM-A792', thickness: '0,35', type: 'GALV' },
-  { code: '10956', description: 'BOBINA GALVALUME 0,43 ASTM A792 BRNC', thickness: '0,43', type: 'GALV' },
-  { code: '10956I', description: 'BOBINA GALVALUME 0,43 ASTM A792 BRNC IMP', thickness: '0,43', type: 'GALV' },
-  { code: '10236', description: 'BOBINA GALVALUME 0,43 NBR 15578 AZC', thickness: '0,43', type: 'GALV' },
-  { code: '10930', description: 'BOBINA GALVALUME 0,43 NBR 15578 AZC IMP', thickness: '0,43', type: 'GALV' },
-  { code: '11313', description: 'BOBINA GALVALUME 0,50 ASTM A792 BRANCA', thickness: '0,50', type: 'GALV' },
-  { code: '10957', description: 'BOBINA GALVALUME 0,50 NBR 15578 AZC', thickness: '0,50', type: 'GALV' },
-  { code: '10956', description: 'BOBINA GL 0,43 ASTM A792 AZM150 BRANCA', thickness: '0,43', type: 'GL' },
-  { code: '11313', description: 'BOBINA GL 0,50 ASTM A792 AZM150 BRANCA', thickness: '0,50', type: 'GL' },
-];
+// --- CATÁLOGO COMPLETO DE MATÉRIA PRIMA e PRODUTOS (MP BOBINAS) ---
+import { INITIAL_MOTHER_CATALOG } from './data/motherCatalog';
+import { INITIAL_PRODUCT_CATALOG } from './data/productCatalog';
 
-// --- CATÁLOGO DE PRODUTOS (PERFIS) ---
-const INITIAL_PRODUCT_CATALOG = [
-  { code: '00682B', name: 'PERFIL U PORTA 25X32X2,00', b2Code: '85532B', b2Name: 'BOB 2 PERFIL U PORTA 25X32X2,00', width: 80, thickness: '2,00', type: 'BQ' },
-  { code: '00671A', name: 'PERFIL UE 100X40X17X1,80', b2Code: '85521A', b2Name: 'BOB 2 PERFIL UE 100X40X17X1,80', width: 170, thickness: '1,80', type: 'BQ' },
-  { code: '00671K', name: 'PERFIL UE 100X40X17X1,95 GALV', b2Code: '85521K', b2Name: 'BOB 2 PERFIL UE 100X40X17X1,95 GALV', width: 170, thickness: '1,95 GALV', type: 'BZ' },
-  { code: '00671B', name: 'PERFIL UE 100X40X17X2,00', b2Code: '85521B', b2Name: 'BOB 2 PERFIL UE 100X40X17X2,00', width: 170, thickness: '2,00', type: 'BQ' },
-  { code: '00671C', name: 'PERFIL UE 100X40X17X2,25', b2Code: '85521C', b2Name: 'BOB 2 PERFIL UE 100X40X17X2,25', width: 168, thickness: '2,25', type: 'BQ' },
-  { code: '00671D', name: 'PERFIL UE 100X40X17X2,65', b2Code: '85521D', b2Name: 'BOB 2 PERFIL UE 100X40X17X2,65', width: 167, thickness: '2,65', type: 'BQ' },
-  { code: '00672A', name: 'PERFIL UE 100X50X17X1,80', b2Code: '85522A', b2Name: 'BOB 2 PERFIL UE 100X50X17X1,80', width: 211, thickness: '1,80', type: 'BQ' },
-  { code: '00672K', name: 'PERFIL UE 100X50X17X1,95 GALV', b2Code: '85522K', b2Name: 'BOB 2 PERFIL UE 100X50X17X1,95 GALV', width: 210, thickness: '1,95 GALV', type: 'BZ' },
-  { code: '00672B', name: 'PERFIL UE 100X50X17X2,00', b2Code: '85522B', b2Name: 'BOB 2 PERFIL UE 100X50X17X2,00', width: 210, thickness: '2,00', type: 'BQ' },
-  { code: '00672C', name: 'PERFIL UE 100X50X17X2,25', b2Code: '85522C', b2Name: 'BOB 2 PERFIL UE 100X50X17X2,25', width: 210, thickness: '2,25', type: 'BQ' },
-  { code: '00672L', name: 'PERFIL UE 100X50X17X2,30 GALV', b2Code: '85522L', b2Name: 'BOB 2 PERFIL UE 100X50X17X2,30 GALV', width: 210, thickness: '2,30 GALV', type: 'BZ' },
-  { code: '00672D', name: 'PERFIL UE 100X50X17X2,65', b2Code: '85522D', b2Name: 'BOB 2 PERFIL UE 100X50X17X2,65', width: 207, thickness: '2,65', type: 'BQ' },
-  { code: '00672E', name: 'PERFIL UE 100X50X17X3,00', b2Code: '85522E', b2Name: 'BOB 2 PERFIL UE 100X50X17X3,00', width: 207, thickness: '3,00', type: 'BQ' },
-  { code: '00674K', name: 'PERFIL UE 127X50X17X1,95 GALV', b2Code: '85524K', b2Name: 'BOB 2 PERFIL UE 127X50X17X1,95 GALV', width: 234, thickness: '1,95 GALV', type: 'BZ' },
-  { code: '00674B', name: 'PERFIL UE 127X50X17X2,00', b2Code: '85524B', b2Name: 'BOB 2 PERFIL UE 127X50X17X2,00', width: 234, thickness: '2,00', type: 'BQ' },
-  { code: '00674C', name: 'PERFIL UE 127X50X17X2,25', b2Code: '85524C', b2Name: 'BOB 2 PERFIL UE 127X50X17X2,25', width: 234, thickness: '2,25', type: 'BQ' },
-  { code: '00674D', name: 'PERFIL UE 127X50X17X2,65', b2Code: '85524D', b2Name: 'BOB 2 PERFIL UE 127X50X17X2,65', width: 234, thickness: '2,65', type: 'BQ' },
-  { code: '00674E', name: 'PERFIL UE 127X50X17X3,00', b2Code: '85524E', b2Name: 'BOB 2 PERFIL UE 127X50X17X3,00', width: 232, thickness: '3,00', type: 'BQ' },
-  { code: '00676A', name: 'PERFIL UE 150X60X20X1,80', b2Code: '85526A', b2Name: 'BOB 2 PERFIL UE 150X60X20X1,80', width: 290, thickness: '1,80', type: 'BQ' },
-  { code: '00676K', name: 'PERFIL UE 150X60X20X1,95 GALV', b2Code: '85526K', b2Name: 'BOB 2 PERFIL UE 150X60X20X1,95 GALV', width: 290, thickness: '1,95 GALV', type: 'BZ' },
-  { code: '00676B', name: 'PERFIL UE 150X60X20X2,00', b2Code: '85526B', b2Name: 'BOB 2 PERFIL UE 150X60X20X2,00', width: 289, thickness: '2,00', type: 'BQ' },
-  { code: '00676C', name: 'PERFIL UE 150X60X20X2,25', b2Code: '85526C', b2Name: 'BOB 2 PERFIL UE 150X60X20X2,25', width: 287, thickness: '2,25', type: 'BQ' },
-  { code: '00676D', name: 'PERFIL UE 150X60X20X2,65', b2Code: '85526D', b2Name: 'BOB 2 PERFIL UE 150X60X20X2,65', width: 287, thickness: '2,65', type: 'BQ' },
-  { code: '00676E', name: 'PERFIL UE 150X60X20X3,00', b2Code: '85526E', b2Name: 'BOB 2 PERFIL UE 150X60X20X3,00', width: 287, thickness: '3,00', type: 'BQ' },
-  { code: '00678K', name: 'PERFIL UE 200X75X25X1,95 GALV', b2Code: '85528K', b2Name: 'BOB 2 PERFIL UE 200X75X25X1,95 GALV', width: 369, thickness: '1,95 GALV', type: 'BZ' },
-  { code: '00678B', name: 'PERFIL UE 200X75X25X2,00', b2Code: '85528B', b2Name: 'BOB 2 PERFIL UE 200X75X25X2,00', width: 369, thickness: '2,00', type: 'BQ' },
-  { code: '00678D', name: 'PERFIL UE 200X75X25X2,65', b2Code: '85528D', b2Name: 'BOB 2 PERFIL UE 200X75X25X2,65', width: 367, thickness: '2,65', type: 'BQ' },
-  { code: '00678E', name: 'PERFIL UE 200X75X25X3,00', b2Code: '85528E', b2Name: 'BOB 2 PERFIL UE 200X75X25X3,00', width: 367, thickness: '3,00', type: 'BQ' },
-  { code: '00668J', name: 'PERFIL UE 50X25X10X1,55 GALV', b2Code: '85518J', b2Name: 'BOB 2 PERFIL UE 50X25X10X1,55 GALV', width: 102, thickness: '1,55 GALV', type: 'BZ' },
-  { code: '00668A', name: 'PERFIL UE 50X25X10X1,80', b2Code: '85518A', b2Name: 'BOB 2 PERFIL UE 50X25X10X1,80', width: 102, thickness: '1,80', type: 'BQ' },
-  { code: '00668K', name: 'PERFIL UE 50X25X10X1,95 GALV', b2Code: '85518K', b2Name: 'BOB 2 PERFIL UE 50X25X10X1,95 GALV', width: 102, thickness: '1,95', type: 'BZ' },
-  { code: '00668B', name: 'PERFIL UE 50X25X10X2,00', b2Code: '85518B', b2Name: 'BOB 2 PERFIL UE 50X25X10X2,00', width: 102, thickness: '2,00', type: 'BQ' },
-  { code: '00670A', name: 'PERFIL UE 75X40X15X1,80', b2Code: '85520A', b2Name: 'BOB 2 PERFIL UE 75X40X15X1,80', width: 166, thickness: '1,80', type: 'BQ' },
-  { code: '00670K', name: 'PERFIL UE 75X40X15X1,95 GALV', b2Code: '85520K', b2Name: 'BOB 2 PERFIL UE 75X40X15X1,95 GALV', width: 164, thickness: '1,95 GALV', type: 'BZ' },
-  { code: '00670B', name: 'PERFIL UE 75X40X15X2,00', b2Code: '85520B', b2Name: 'BOB 2 PERFIL UE 75X40X15X2,00', width: 164, thickness: '2,00', type: 'BQ' },
-  { code: '00670C', name: 'PERFIL UE 75X40X15X2,25', b2Code: '85520C', b2Name: 'BOB 2 PERFIL UE 75X40X15X2,25', width: 162, thickness: '2,25', type: 'BQ' },
-  { code: '00670L', name: 'PERFIL UE 75X40X15X2,30 GALV', b2Code: '85520L', b2Name: 'BOB 2 PERFIL UE 75X40X15X2,30 GALV', width: 162, thickness: '2,30 GALV', type: 'BZ' },
-  { code: '00670D', name: 'PERFIL UE 75X40X15X2,65', b2Code: '85520D', b2Name: 'BOB 2 PERFIL UE 75X40X15X2,65', width: 159, thickness: '2,65', type: 'BQ' },
-  { code: '00670E', name: 'PERFIL UE 75X40X15X3,00', b2Code: '85520E', b2Name: 'BOB 2 PERFIL UE 75X40X15X3,00', width: 156, thickness: '3,00', type: 'BQ' },
-  { code: '00655A', name: 'PERFIL US 100X40X1,80', b2Code: '85505A', b2Name: 'BOB 2 PERFIL US 100X40X1,80', width: 170, thickness: '1,80', type: 'BQ' },
-  { code: '00655K', name: 'PERFIL US 100X40X1,95 GALV', b2Code: '85505K', b2Name: 'BOB 2 PERFIL US 100X40X1,95 GALV', width: 170, thickness: '1,95 GALV', type: 'BZ' },
-  { code: '00655B', name: 'PERFIL US 100X40X2,00', b2Code: '85505B', b2Name: 'BOB 2 PERFIL US 100X40X2,00', width: 170, thickness: '2,00', type: 'BQ' },
-  { code: '00655C', name: 'PERFIL US 100X40X2,25', b2Code: '85505C', b2Name: 'BOB 2 PERFIL US 100X40X2,25', width: 168, thickness: '2,25', type: 'BQ' },
-  { code: '00655D', name: 'PERFIL US 100X40X2,65', b2Code: '85505D', b2Name: 'BOB 2 PERFIL US 100X40X2,65', width: 167, thickness: '2,65', type: 'BQ' },
-  { code: '00655E', name: 'PERFIL US 100X40X3,00', b2Code: '85505E', b2Name: 'BOB 2 PERFIL US 100X40X3,00', width: 166, thickness: '3,00', type: 'BQ' },
-  { code: '00656A', name: 'PERFIL US 100X50X1,80', b2Code: '85506A', b2Name: 'BOB 2 PERFIL US 100X50X1,80', width: 190, thickness: '1,80', type: 'BQ' },
-  { code: '00656K', name: 'PERFIL US 100X50X1,95 GALV', b2Code: '85506K', b2Name: 'BOB 2 PERFIL US 100X50X1,95 GALV', width: 190, thickness: '1,95 GALV', type: 'BZ' },
-  { code: '00656B', name: 'PERFIL US 100X50X2,00', b2Code: '85506B', b2Name: 'BOB 2 PERFIL US 100X50X2,00', width: 190, thickness: '2,00', type: 'BQ' },
-  { code: '00656C', name: 'PERFIL US 100X50X2,25', b2Code: '85506C', b2Name: 'BOB 2 PERFIL US 100X50X2,25', width: 188, thickness: '2,25', type: 'BQ' },
-  { code: '00656D', name: 'PERFIL US 100X50X2,65', b2Code: '85506D', b2Name: 'BOB 2 PERFIL US 100X50X2,65', width: 187, thickness: '2,65', type: 'BQ' },
-  { code: '00656E', name: 'PERFIL US 100X50X3,00', b2Code: '85506E', b2Name: 'BOB 2 PERFIL US 100X50X3,00', width: 186, thickness: '3,00', type: 'BQ' },
-  { code: '00656I', name: 'PERFIL US 100X50X4,75', b2Code: '85506I', b2Name: 'BOB 2 PERFIL US 100X50X4,75', width: 180, thickness: '4,75', type: 'BQ' },
-  { code: '00659B', name: 'PERFIL US 127X40X2,00', b2Code: '85509B', b2Name: 'BOB 2 PERFIL US 127X40X2,00', width: 194, thickness: '2,00', type: 'BQ' },
-];
+
+
+
 
 // --- Componentes UI ---
 const Card = ({ children, className = "" }) => <div className={`bg-gray-800 rounded-xl shadow-lg border border-gray-700 p-6 ${className}`}>{children}</div>;
@@ -328,7 +189,6 @@ export default function App() {
   const [shippingLogs, setShippingLogs] = useState([]); 
   const [productCatalog, setProductCatalog] = useState(INITIAL_PRODUCT_CATALOG);
   const [motherCatalog, setMotherCatalog] = useState(INITIAL_MOTHER_CATALOG);
-  
   const [newMotherCoil, setNewMotherCoil] = useState({ code: '', weight: '', material: '', width: '', thickness: '', type: '' });
   const [selectedMotherForCut, setSelectedMotherForCut] = useState('');
   const [motherSearchQuery, setMotherSearchQuery] = useState('');
@@ -1163,7 +1023,7 @@ export default function App() {
               <div className="flex flex-col">
                 <div className="flex items-end gap-2">
                   <p className="text-3xl font-bold text-white">{childCoils.filter(c => c.status === 'stock').length}</p>
-                  <span className="text-sm text-gray-500 mb-1">rolos</span>
+                  <span className="text-sm text-gray-500 mb-1">bobinas</span>
                 </div>
                 <p className="text-sm text-indigo-400 font-bold mt-1">
                   {childCoils.filter(c => c.status === 'stock').reduce((acc, c) => acc + c.weight, 0).toLocaleString('pt-BR')} kg
