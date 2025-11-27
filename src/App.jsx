@@ -1718,7 +1718,11 @@ export default function App() {
       {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-black/90 text-gray-300 flex flex-col border-r border-white/5 shadow-2xl backdrop-blur-sm transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:w-72`}>
         <div className="h-20 flex items-center px-6 border-b border-white/5 font-bold text-xl tracking-wider bg-black/20">
-           <div className="w-8 h-8 bg-blue-600 rounded-lg mr-3 shadow-lg flex items-center justify-center"><Factory size={18} className="text-white"/></div>
+           <img 
+             src="/logo.png" 
+             alt="Logo Metalosa" 
+             className="w-10 h-10 mr-3 object-contain" 
+           />
            <span className="text-white">METALOSA</span>
         </div>
         <nav className="flex-1 py-8 px-4 space-y-2 overflow-y-auto">
