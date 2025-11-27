@@ -879,7 +879,7 @@ export default function App() {
          </Card>
          <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2"><List size={20} className="text-gray-400"/> Entradas Recentes</h3>
-            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar-dark space-y-3">
+            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar-dark space-y-3 max-h-[calc(100vh-260px)]">
                {motherCoils.slice(0, 50).map(coil => (
                  <div key={coil.id} className={`p-4 rounded-xl border flex justify-between items-center transition-all hover:bg-gray-700/50 ${coil.status === 'stock' ? 'bg-gray-900 border-gray-700' : 'bg-gray-800 border-gray-700 opacity-50'}`}>
                    <div>
@@ -932,7 +932,7 @@ export default function App() {
                   onChange={e => { setMotherSearchQuery(e.target.value); setSelectedMotherForCut(''); }}
                 />
              </div>
-             <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar-dark space-y-2">
+              <div className="flex-1 overflow-y-auto pr-1 space-y-1 max-h-[calc(100vh-260px)]">
                 {filteredMothers.map(m => (
                   <div key={m.id} onClick={() => { setSelectedMotherForCut(m.id); setTempChildCoils([]); }} className={`p-3 rounded-lg cursor-pointer border transition-all ${selectedMotherForCut === m.id ? 'bg-blue-900/20 border-blue-500 shadow-sm' : 'bg-gray-900 border-gray-700 hover:border-blue-500/50 hover:bg-gray-800'}`}>
                     <div className="flex justify-between items-center">
@@ -978,7 +978,7 @@ export default function App() {
                   </Card>
                   <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
                     <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-gray-200">Plano de Corte</h3><span className="text-xs bg-blue-900/30 text-blue-400 px-2 py-1 rounded-full font-bold">{tempChildCoils.length} itens</span></div>
-                    <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar-dark space-y-2">
+                    <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar-dark space-y-2 max-h-[calc(100vh-260px)]">
                        {tempChildCoils.map((item, idx) => (
                          <div key={idx} className="bg-gray-900/50 p-3 rounded-lg border border-gray-700 flex justify-between items-center">
                            <div><div className="font-bold text-gray-200 text-sm">{item.width}mm <span className="text-gray-500">| {item.b2Code}</span></div></div>
@@ -1052,8 +1052,8 @@ export default function App() {
         <div className="lg:col-span-5 h-full">
            <Card className="h-full flex flex-col bg-gray-900 border-gray-800">
              <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-white flex items-center gap-2"><History size={20} className="text-emerald-500"/> Histórico</h3></div>
-             <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar-dark space-y-3">
-               {paginatedLogs.map(log => (
+                <div className="flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar-dark space-y-3">
+                 {paginatedLogs.map(log => (
                  <div key={log.id} className="bg-gray-800 p-4 rounded-xl border border-gray-700 hover:bg-gray-700/80 transition-colors group">
                    <div className="flex justify-between mb-2"><span className="text-[10px] text-gray-500">{log.id}</span><span className="text-[10px] text-gray-500">{log.timestamp.split(' ')[1]}</span></div>
                    <p className="font-bold text-gray-200 text-sm mb-2">{log.productName}</p>
