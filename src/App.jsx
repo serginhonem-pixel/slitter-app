@@ -23,7 +23,65 @@ import { INITIAL_PRODUCT_CATALOG } from './data/productCatalog';
 
 // --- Componentes UI ---
 const Card = ({ children, className = "" }) => <div className={`bg-gray-800 rounded-xl shadow-lg border border-gray-700 p-6 ${className}`}>{children}</div>;
+const ProductHistoryModal = ({ product, logs, onClose, onReprint }) => {
+  // Filtra apenas os logs desse produto e ordena do mais recente para o mais antigo
+  const history = logs
+    .filter(l => l.productCode === product.code)
+    .sort((a, b) => new Date(b.timestamp || b.date) - new Date(a.timestamp || a.date));
 
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-3xl max-h-[80vh] flex flex-col shadow-2xl">
+        <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+          <div>
+             <h3 className="text-white font-bold text-lg">Histórico de Lotes</h3>
+             <p className="text-blue-400 text-sm font-bold">{product.code} - {product.name}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20}/></button>
+        </div>
+        
+        <div className="p-4 overflow-y-auto flex-1 custom-scrollbar-dark">
+          {history.length === 0 ? (
+             <div className="text-center text-gray-500 py-8">Nenhum lote produzido ainda.</div>
+          ) : (
+             <table className="w-full text-sm text-left text-gray-300">
+                <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                  <tr>
+                    <th className="p-2">ID Lote</th>
+                    <th className="p-2">Data</th>
+                    <th className="p-2">Pacote</th>
+                    <th className="p-2 text-right">Qtd</th>
+                    <th className="p-2 text-center">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {history.map(log => (
+                    <tr key={log.id} className="hover:bg-gray-700/50">
+                      <td className="p-2 font-mono text-xs text-blue-300">{log.id}</td>
+                      <td className="p-2 text-gray-400">{log.date}</td>
+                      <td className="p-2 text-xs">
+                        {log.packIndex ? <span className="bg-blue-900/50 text-blue-200 px-1.5 py-0.5 rounded border border-blue-900">{log.packIndex}</span> : '-'}
+                      </td>
+                      <td className="p-2 text-right font-bold text-emerald-400">{log.pieces} pçs</td>
+                      <td className="p-2 text-center">
+                        <button onClick={() => onReprint(log)} className="p-1.5 bg-gray-700 text-gray-200 rounded hover:bg-white hover:text-black transition-colors" title="Imprimir este lote">
+                          <Printer size={16}/>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+             </table>
+          )}
+        </div>
+        <div className="p-3 border-t border-gray-700 bg-gray-900/50 flex justify-between items-center">
+            <span className="text-xs text-gray-500">Total Produzido: {history.reduce((acc, curr) => acc + curr.pieces, 0)} peças</span>
+            <Button variant="secondary" onClick={onClose} className="px-4 py-1 text-xs">Fechar</Button>
+        </div>
+      </div>
+    </div>
+  );
+};
 const Button = ({ children, onClick, variant = "primary", className = "", disabled = false, title = "" }) => {
   const variants = {
     primary: "bg-blue-600 text-white hover:bg-blue-500 disabled:bg-blue-900/50 disabled:text-gray-400 shadow-lg shadow-blue-900/20",
@@ -201,6 +259,8 @@ export default function App() {
   const [prodPieces, setProdPieces] = useState('');
   const [prodScrap, setProdScrap] = useState('');
   const [editingLogId, setEditingLogId] = useState(null);
+  const [b2SearchQuery, setB2SearchQuery] = useState('');
+  
 
   const [shipProduct, setShipProduct] = useState('');
   const [shipQty, setShipQty] = useState('');
@@ -230,6 +290,21 @@ export default function App() {
   const importFullBackupRef = useRef(null);
   const fileInputMotherCatalogRef = useRef(null);
 
+// --- ESTADOS PARA PRODUÇÃO EM LOTE (Total + Quebra) ---
+  const [selectedInputCoils, setSelectedInputCoils] = useState([]);
+  const [totalProducedPieces, setTotalProducedPieces] = useState(''); // Total Geral (ex: 486)
+  const [standardPackSize, setStandardPackSize] = useState('');     // Padrão (ex: 100)
+  const [cutQuantity, setCutQuantity] = useState(''); // Nova variável para qtd de tiras
+  const [processScrap, setProcessScrap] = useState(''); // Sucata manual do processo de corte
+  // Adicione esta linha junto com os outros states
+  const [cuttingLogs, setCuttingLogs] = useState([]); // Novo histórico de cortes
+  const [selectedProductForHistory, setSelectedProductForHistory] = useState(null);
+  const [isOtherMode, setIsOtherMode] = useState(false); // false = Bobina 2, true = Outros
+  const [otherDescription, setOtherDescription] = useState(''); // Ex: "Telha", "Chapa"
+  // --- ESTADOS DE PESQUISA DO DASHBOARD ---
+  const [dashSearchMother, setDashSearchMother] = useState('');
+  const [dashSearchB2, setDashSearchB2] = useState('');
+  const [dashSearchFinished, setDashSearchFinished] = useState('');
   useEffect(() => {
     try {
       const savedMother = localStorage.getItem('motherCoils');
@@ -238,6 +313,8 @@ export default function App() {
       const savedShipping = localStorage.getItem('shippingLogs');
       const savedCatalog = localStorage.getItem('productCatalog');
       const savedMotherCatalog = localStorage.getItem('motherCatalog');
+      const savedCutLogs = localStorage.getItem('cuttingLogs');
+      if (savedCutLogs) setCuttingLogs(JSON.parse(savedCutLogs));
 
       if (savedMother) setMotherCoils(JSON.parse(savedMother));
       if (savedChild) setChildCoils(JSON.parse(savedChild));
@@ -267,6 +344,7 @@ export default function App() {
     localStorage.setItem('shippingLogs', JSON.stringify(shippingLogs));
     localStorage.setItem('productCatalog', JSON.stringify(productCatalog));
     localStorage.setItem('motherCatalog', JSON.stringify(motherCatalog));
+    localStorage.setItem('cuttingLogs', JSON.stringify(cuttingLogs));
   }, [motherCoils, childCoils, productionLogs, shippingLogs, productCatalog, motherCatalog]);
 
   useEffect(() => {
@@ -330,97 +408,224 @@ export default function App() {
   };
 
   const addTempChildCoil = () => {
-    if (!targetB2Code || !cutWeight) return alert("Selecione o tipo e peso");
+    // --- LÓGICA MODO "OUTROS" ---
+    if (isOtherMode) {
+        if (!cutWeight || !otherDescription) return alert("Preencha a descrição e o peso.");
+        
+        setTempChildCoils([...tempChildCoils, {
+            b2Code: 'CONSUMO', // Código genérico
+            b2Name: otherDescription.toUpperCase(), // Usa o que você digitou
+            width: 0,
+            thickness: '-',
+            type: 'OUTROS',
+            weight: parseFloat(cutWeight),
+            id: Date.now(),
+            isDirectConsumption: true // <--- ISSO IMPEDE DE VIRAR ESTOQUE DEPOIS
+        }]);
+        
+        setCutWeight('');
+        setOtherDescription(''); // Limpa o campo
+        return;
+    }
+
+    // --- LÓGICA MODO "BOBINA 2" (PADRÃO) ---
+    if (!targetB2Code || !cutWeight || !cutQuantity) return alert("Preencha todos os campos.");
+    // ... resto do código igual ao anterior ...
     const b2Data = productCatalog.find(p => p.b2Code === targetB2Code);
     if (!b2Data) return;
-    setTempChildCoils([...tempChildCoils, {
-      b2Code: b2Data.b2Code,
-      b2Name: b2Data.b2Name,
-      width: parseFloat(b2Data.width),
-      thickness: b2Data.thickness,
-      type: b2Data.type, 
-      weight: parseFloat(cutWeight),
-      id: Date.now() + Math.random() 
-    }]);
+    const totalWeight = parseFloat(cutWeight);
+    const qtd = parseInt(cutQuantity);
+    if (qtd <= 0) return alert("Qtd deve ser maior que 0");
+    const individualWeight = totalWeight / qtd;
+    const newItems = [];
+    for (let i = 0; i < qtd; i++) {
+        newItems.push({
+            b2Code: b2Data.b2Code,
+            b2Name: b2Data.b2Name,
+            width: parseFloat(b2Data.width),
+            thickness: b2Data.thickness,
+            type: b2Data.type, 
+            weight: individualWeight, 
+            id: Date.now() + Math.random() 
+        });
+    }
+    setTempChildCoils([...tempChildCoils, ...newItems]);
     setCutWeight('');
-    setTargetB2Code('');
+    setCutQuantity('');
   };
 
   const confirmCut = () => {
     const mother = motherCoils.find(m => m.id === selectedMotherForCut);
     if (!mother) return;
-    const totalWeight = tempChildCoils.reduce((acc, curr) => acc + curr.weight, 0);
-    if (totalWeight > mother.remainingWeight) {
-      if(!window.confirm(`Peso excedido. Continuar?`)) return;
+    
+    const totalCutsWeight = tempChildCoils.reduce((acc, curr) => acc + curr.weight, 0);
+    const manualScrap = parseFloat(processScrap) || 0;
+    const totalConsumed = totalCutsWeight + manualScrap;
+
+    if (totalConsumed > mother.remainingWeight) {
+      if(!window.confirm(`Peso excedido. Continuar mesmo assim?`)) return;
     }
-    const waste = Math.max(0, mother.remainingWeight - totalWeight);
-    const newChildren = tempChildCoils.map((temp, index) => ({
-      id: `B2-${mother.code}-${Date.now()}-${index}`,
-      motherId: mother.id,
-      motherCode: mother.code,
-      b2Code: temp.b2Code, b2Name: temp.b2Name, width: temp.width, thickness: temp.thickness, 
-      type: mother.type, 
-      weight: temp.weight, initialWeight: temp.weight, status: 'stock', createdAt: new Date().toLocaleDateString()
+
+    const remaining = Math.max(0, mother.remainingWeight - totalConsumed);
+    const isTotalConsumption = remaining < 10; 
+    const dateNow = new Date().toLocaleDateString();
+
+    // --- 1. GERA O TEXTO BONITO PARA O HISTÓRICO ---
+    // Se for consumo direto, usa o Nome (ex: TELHA). Se for B2, usa o Código.
+    const itemsSummary = tempChildCoils.map(t => {
+        const name = t.isDirectConsumption ? t.b2Name : t.b2Code;
+        return `${name} (${t.weight.toFixed(0)}kg)`;
+    }).join(', ');
+
+    const newCutLog = {
+        id: `CUT-${Date.now()}`,
+        date: dateNow,
+        motherCode: mother.code,
+        motherMaterial: mother.material,
+        inputWeight: totalConsumed,
+        outputCount: tempChildCoils.length,
+        scrap: manualScrap,
+        generatedItems: itemsSummary, // <--- Texto melhorado aqui
+        timestamp: new Date().toLocaleString()
+    };
+
+    const newChildren = tempChildCoils
+      .filter(item => !item.isDirectConsumption)
+      .map((temp, index) => ({
+        id: `B2-${mother.code}-${Date.now()}-${index}`,
+        motherId: mother.id,
+        motherCode: mother.code,
+        b2Code: temp.b2Code, b2Name: temp.b2Name, width: temp.width, thickness: temp.thickness, 
+        type: mother.type, 
+        weight: temp.weight, initialWeight: temp.weight, status: 'stock', createdAt: dateNow
     }));
+
     const updatedMothers = motherCoils.map(m => {
-      if (m.id === mother.id) return { ...m, remainingWeight: 0, status: 'consumed', cutWaste: waste };
+      if (m.id === mother.id) {
+          // --- 2. SALVA O MOTIVO DO CONSUMO NA BOBINA MÃE ---
+          const consumptionNote = tempChildCoils.length > 0 
+             ? (tempChildCoils[0].isDirectConsumption ? tempChildCoils[0].b2Name : 'CORTE SLITTER')
+             : 'AJUSTE/SUCATA';
+
+          if (isTotalConsumption) {
+              return { 
+                  ...m, 
+                  remainingWeight: 0, 
+                  status: 'consumed', 
+                  cutWaste: manualScrap + remaining, 
+                  consumedDate: dateNow,
+                  consumptionDetail: consumptionNote // <--- Salva para o Excel
+              };
+          } else {
+              return { 
+                  ...m, 
+                  remainingWeight: remaining, 
+                  status: 'stock', 
+                  cutWaste: (m.cutWaste || 0) + manualScrap,
+                  consumptionDetail: m.consumptionDetail ? m.consumptionDetail + ' + ' + consumptionNote : consumptionNote
+              };
+          }
+      }
       return m;
     });
+
     setMotherCoils(updatedMothers);
     setChildCoils([...childCoils, ...newChildren]);
+    setCuttingLogs([newCutLog, ...cuttingLogs]);
+    
     setTempChildCoils([]);
+    setProcessScrap(''); 
     setSelectedMotherForCut('');
     setMotherSearchQuery('');
     setItemsToPrint(newChildren);
     setPrintType('coil'); 
     setShowPrintModal(true); 
   };
-
   const registerProduction = () => {
-    if (editingLogId) {
-      const updatedLogs = productionLogs.map(log => {
-        if (log.id === editingLogId) return { ...log, pieces: parseInt(prodPieces), scrap: parseFloat(prodScrap) || 0 };
-        return log;
-      });
-      setProductionLogs(updatedLogs);
-      setEditingLogId(null);
-      alert("Atualizado!");
-      setProdPieces('');
-      setProdScrap('');
-      return;
+    // Validações básicas
+    if (selectedInputCoils.length === 0) return alert("Selecione as bobinas de entrada!");
+    if (!selectedProductCode || !totalProducedPieces) return alert("Preencha o produto e o total produzido.");
+    
+    // Se não definir padrão de pacote, assume que é tudo um pacote só
+    const packSize = parseInt(standardPackSize) || parseInt(totalProducedPieces);
+    const total = parseInt(totalProducedPieces);
+    
+    // Cálculos de quantos pacotes gera
+    const fullPacksCount = Math.floor(total / packSize); // Ex: 486 / 100 = 4
+    const remainder = total % packSize;                  // Ex: 486 % 100 = 86
+    const totalLabels = remainder > 0 ? fullPacksCount + 1 : fullPacksCount;
+
+    // Pergunta se quer imprimir (Confirmação antes de salvar)
+    if (!window.confirm(`Confirma a produção de ${total} peças?\n\nIsso irá gerar ${totalLabels} etiquetas:\n- ${fullPacksCount}x de ${packSize} peças\n- ${remainder > 0 ? `1x de ${remainder} peças (Final)` : ''}`)) {
+        return;
     }
-    const child = childCoils.find(c => c.id === selectedChildForProd);
-    if (!child || !prodPieces || !selectedProductCode) return alert("Preencha tudo");
+
     const productInfo = productCatalog.find(p => p.code === selectedProductCode);
-    const trackingId = generateTrackingId();
-    const newLog = {
-      id: trackingId,
-      childId: child.id,
-      motherCode: child.motherCode,
-      b2Code: child.b2Code,
-      b2Name: child.b2Name,
-      productCode: productInfo.code,
-      productName: productInfo.name,
-      pieces: parseInt(prodPieces),
-      scrap: parseFloat(prodScrap) || 0,
-      date: new Date().toLocaleDateString(),
-      timestamp: new Date().toLocaleString()
-    };
+    const date = new Date().toLocaleDateString();
+    const timestamp = new Date().toLocaleString();
+    
+    const sourceCodes = selectedInputCoils.map(c => c.b2Code).join(', ');
+    const sourceIds = selectedInputCoils.map(c => c.id);
+
+    const newLogs = [];
+
+    // 1. Gera os pacotes cheios
+    for (let i = 0; i < fullPacksCount; i++) {
+        newLogs.push({
+            id: generateTrackingId() + `-${i+1}`,
+            childIds: sourceIds,
+            motherCode: "MÚLTIPLO",
+            b2Code: sourceCodes,
+            b2Name: selectedInputCoils[0].b2Name,
+            productCode: productInfo.code,
+            productName: productInfo.name,
+            pieces: packSize, // Pacote Cheio
+            packIndex: `${i+1}/${totalLabels}`,
+            scrap: i === 0 ? parseFloat(prodScrap) || 0 : 0, 
+            date: date,
+            timestamp: timestamp
+        });
+    }
+
+    // 2. Gera o pacote da sobra (se houver)
+    if (remainder > 0) {
+        newLogs.push({
+            id: generateTrackingId() + `-F`,
+            childIds: sourceIds,
+            motherCode: "MÚLTIPLO",
+            b2Code: sourceCodes,
+            b2Name: selectedInputCoils[0].b2Name,
+            productCode: productInfo.code,
+            productName: productInfo.name,
+            pieces: remainder, // Resto
+            packIndex: `${totalLabels}/${totalLabels}`,
+            scrap: 0,
+            date: date,
+            timestamp: timestamp
+        });
+    }
+
+    // Atualiza Banco de Dados
     const updatedChildren = childCoils.map(c => {
-      if (c.id === child.id) return { ...c, status: 'consumed' };
+      if (sourceIds.includes(c.id)) return { ...c, status: 'consumed' };
       return c;
     });
-    setProductionLogs([newLog, ...productionLogs]);
+
+    setProductionLogs([...newLogs, ...productionLogs]);
     setChildCoils(updatedChildren);
-    setSelectedChildForProd('');
+    
+    // Limpa campos
+    setSelectedInputCoils([]);
     setSelectedProductCode('');
-    setProdPieces('');
+    setTotalProducedPieces('');
     setProdScrap('');
-    setItemsToPrint([newLog]);
+    // Mantém o standardPackSize pois geralmente o padrão se repete
+    
+    // Abre modal de impressão
+    setItemsToPrint(newLogs);
     setPrintType('product');
     setShowPrintModal(true);
   };
-
   const registerShipping = () => {
     if(!shipProduct || !shipQty) return alert("Preencha tudo");
     const stock = getFinishedStock();
@@ -772,7 +977,7 @@ export default function App() {
   const renderCuttingProcess = () => {
     const availableMothers = motherCoils.filter(m => m.status === 'stock');
     const filteredMothers = availableMothers.filter(m => 
-        motherSearchQuery === '' || m.code.toLowerCase().includes(motherSearchQuery.toLowerCase())
+        motherSearchQuery === '' || String(m.code).toLowerCase().includes(motherSearchQuery.toLowerCase())
     );
     const selectedMother = motherCoils.find(m => m.id === selectedMotherForCut);
     const availableB2Types = selectedMother ? getUniqueB2Types(selectedMother.type) : [];
@@ -806,6 +1011,7 @@ export default function App() {
            </Card>
         </div>
         <div className="lg:col-span-8 flex flex-col gap-6">
+           {/* PARTE SUPERIOR: DETALHES DA BOBINA E PLANO (Só aparece se selecionar) */}
            {selectedMother ? (
              <>
                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -821,114 +1027,307 @@ export default function App() {
                     <p className="text-gray-500 text-xs font-bold uppercase">Peso Disponível</p><p className="text-4xl font-bold text-white mt-2">{(Number(selectedMother.remainingWeight) || 0).toFixed(0)}</p><p className="text-gray-500 text-sm">kg</p>
                  </Card>
                </div>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
+               
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* CARD DE ADICIONAR TIRAS (Aquele que editamos antes) */}
                   <Card>
-                    <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2"><Plus size={20} className="text-blue-500"/> Adicionar Tira</h3>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-gray-200 flex items-center gap-2">
+                            {isOtherMode ? <LogOut size={20} className="text-amber-500"/> : <Plus size={20} className="text-blue-500"/>}
+                            {isOtherMode ? "Consumo Direto / Outros" : "Adicionar Tiras Slitter"}
+                        </h3>
+                        
+                        {/* INTERRUPTOR: BOBINA 2 vs OUTROS */}
+                        <label className="flex items-center cursor-pointer gap-2 bg-gray-900 p-2 rounded-lg border border-gray-700 select-none">
+                            <span className={`text-xs font-bold ${!isOtherMode ? 'text-blue-400' : 'text-gray-500'}`}>Bobina 2</span>
+                            <div className="relative">
+                                <input type="checkbox" className="hidden" checked={isOtherMode} onChange={e => setIsOtherMode(e.target.checked)} />
+                                <div className={`w-10 h-5 rounded-full p-0.5 transition-colors ${isOtherMode ? 'bg-amber-600' : 'bg-blue-600'}`}>
+                                    <div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform ${isOtherMode ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                                </div>
+                            </div>
+                            <span className={`text-xs font-bold ${isOtherMode ? 'text-amber-400' : 'text-gray-500'}`}>Outros</span>
+                        </label>
+                    </div>
+
                     <div className="space-y-4">
-                      <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Tipo de Bobina 2</label>
-                        <select className="w-full p-3 border border-gray-700 rounded-lg bg-gray-900 text-white outline-none text-sm" value={targetB2Code} onChange={e => setTargetB2Code(e.target.value)}>
-                          <option value="">Selecione...</option>
-                          {availableB2Types.map(t => <option key={t.code} value={t.code}>{t.width}mm - {t.name}</option>)}
-                        </select>
-                      </div>
-                      <Input label="Peso (kg)" type="number" value={cutWeight} onChange={e => setCutWeight(e.target.value)} />
-                      <Button onClick={addTempChildCoil} className="w-full py-3 mt-2" disabled={!targetB2Code || !cutWeight}>Adicionar ao Plano</Button>
+                      {isOtherMode ? (
+                          /* --- MODO OUTROS (GENÉRICO) --- */
+                          <div className="bg-amber-900/10 p-4 rounded-lg border border-amber-500/30">
+                              <p className="text-xs text-amber-200/70 mb-4">
+                                  Use esta opção para consumir a matéria prima sem gerar bobinas filhas no estoque.
+                              </p>
+                              
+                              <div className="mb-4">
+                                <Input label="Descrição / Destino" value={otherDescription} onChange={e => setOtherDescription(e.target.value)} placeholder="Ex: Telhas, Chapas, Venda..." />
+                              </div>
+                              
+                              <Input label="Peso Consumido (kg)" type="number" value={cutWeight} onChange={e => setCutWeight(e.target.value)} />
+                              
+                              <Button onClick={addTempChildCoil} variant="warning" className="w-full py-3 mt-2" disabled={!cutWeight || !otherDescription}>
+                                  Adicionar ao Plano
+                              </Button>
+                          </div>
+                      ) : (
+                          /* --- MODO BOBINA 2 (PADRÃO) --- */
+                          <>
+                              <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Tipo de Bobina 2</label>
+                                <select className="w-full p-3 border border-gray-700 rounded-lg bg-gray-900 text-white outline-none text-sm" value={targetB2Code} onChange={e => setTargetB2Code(e.target.value)}>
+                                  <option value="">Selecione...</option>
+                                  {availableB2Types.map(t => (
+                                      <option key={t.code} value={t.code}>{t.code} - {t.name} - {t.width}mm</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="grid grid-cols-2 gap-4">
+                                  <div><Input label="Peso TOTAL (kg)" type="number" value={cutWeight} onChange={e => setCutWeight(e.target.value)} /></div>
+                                  <div><Input label="Qtd Tiras" type="number" value={cutQuantity} onChange={e => setCutQuantity(e.target.value)} /></div>
+                              </div>
+                              {cutWeight && cutQuantity && (
+                                  <div className="text-xs text-center bg-gray-900 p-2 rounded text-blue-300 border border-blue-900/30">
+                                      Serão geradas <strong>{cutQuantity}</strong> tiras de <strong>{(parseFloat(cutWeight)/parseInt(cutQuantity)).toFixed(1)} kg</strong> cada.
+                                  </div>
+                              )}
+                              <Button onClick={addTempChildCoil} className="w-full py-3 mt-2" disabled={!targetB2Code || !cutWeight || !cutQuantity}>Adicionar ao Plano</Button>
+                          </>
+                      )}
                     </div>
                   </Card>
+                  {/* CARD DO PLANO DE CORTE (Direita) */}
                   <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
                     <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-gray-200">Plano de Corte</h3><span className="text-xs bg-blue-900/30 text-blue-400 px-2 py-1 rounded-full font-bold">{tempChildCoils.length} itens</span></div>
-                    <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar-dark space-y-2 max-h-[calc(100vh-260px)]">
+                    <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar-dark space-y-2 max-h-[200px]">
                        {tempChildCoils.map((item, idx) => (
                          <div key={idx} className="bg-gray-900/50 p-3 rounded-lg border border-gray-700 flex justify-between items-center">
                            <div><div className="font-bold text-gray-200 text-sm">{item.width}mm <span className="text-gray-500">| {item.b2Code}</span></div></div>
-                           <div className="flex items-center gap-3"><span className="font-bold text-blue-400 bg-gray-900 px-2 py-1 rounded">{item.weight} kg</span><button onClick={() => setTempChildCoils(tempChildCoils.filter((_, i) => i !== idx))} className="text-gray-600 hover:text-red-400"><Trash2 size={16}/></button></div>
+                           <div className="flex items-center gap-3"><span className="font-bold text-blue-400 bg-gray-900 px-2 py-1 rounded">{item.weight.toFixed(0)} kg</span><button onClick={() => setTempChildCoils(tempChildCoils.filter((_, i) => i !== idx))} className="text-gray-600 hover:text-red-400"><Trash2 size={16}/></button></div>
                          </div>
                        ))}
                     </div>
-                    <div className="mt-4 pt-4 border-t border-gray-700">
-                       <div className="flex justify-between items-end mb-4">
-                          <div><p className="text-xs text-gray-500 font-bold uppercase">Saldo Final</p><p className={`text-2xl font-bold ${(selectedMother.remainingWeight - tempChildCoils.reduce((acc, curr) => acc + curr.weight, 0)) < 0 ? "text-red-500" : "text-emerald-500"}`}>{(selectedMother.remainingWeight - tempChildCoils.reduce((acc, curr) => acc + curr.weight, 0)).toFixed(0)} kg</p></div>
-                          <Button onClick={confirmCut} variant="success" disabled={tempChildCoils.length === 0} className="px-6">PROCESSAR</Button>
+                    <div className="mt-4 pt-4 border-t border-gray-700 bg-gray-900/30 p-3 rounded-xl">
+                       <div className="mb-2"><Input label="Sucata / Aparas (kg)" type="number" value={processScrap} onChange={e => setProcessScrap(e.target.value)} placeholder="0"/></div>
+                       <div className="flex justify-between items-end">
+                          <div>
+                            <p className="text-xs text-gray-500 font-bold uppercase">Saldo Final</p>
+                            {(() => {
+                                const totalCuts = tempChildCoils.reduce((acc, curr) => acc + curr.weight, 0);
+                                const scrap = parseFloat(processScrap) || 0;
+                                const remaining = selectedMother.remainingWeight - totalCuts - scrap;
+                                return (<p className={`text-2xl font-bold ${remaining < 0 ? "text-red-500" : "text-emerald-500"}`}>{remaining.toFixed(1)} kg</p>);
+                            })()}
+                          </div>
+                          <Button onClick={confirmCut} variant="success" disabled={tempChildCoils.length === 0}>PROCESSAR</Button>
                        </div>
                     </div>
                   </Card>
                </div>
              </>
-           ) : (
-             <div className="h-full flex flex-col items-center justify-center text-gray-600 bg-gray-800/50 rounded-xl border-2 border-dashed border-gray-700"><Scissors size={64} className="mb-4 opacity-20"/><p>Selecione uma Bobina Mãe</p></div>
-           )}
+           ) : null}
+
+           {/* --- NOVO: HISTÓRICO DE CORTES (SEMPRE VISÍVEL EMBAIXO) --- */}
+           <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-t-4 border-purple-500">
+              <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2"><History size={20} className="text-purple-500"/> Histórico de Cortes Realizados</h3>
+              
+              <div className="flex-1 overflow-y-auto custom-scrollbar-dark">
+                {cuttingLogs.length === 0 ? (
+                    <div className="text-center text-gray-500 py-10">Nenhum corte registrado ainda.</div>
+                ) : (
+                    <table className="w-full text-sm text-left text-gray-300">
+                        <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                            <tr>
+                                <th className="p-3">Data</th>
+                                <th className="p-3">Bobina Mãe</th>
+                                <th className="p-3">Saída</th>
+                                <th className="p-3 text-right">Sucata</th>
+                                <th className="p-3 text-right">Total Processado</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-700">
+                            {cuttingLogs.map(log => (
+                                <tr key={log.id} className="hover:bg-gray-700/50">
+                                    <td className="p-3 text-xs text-gray-400">{log.date}</td>
+                                    <td className="p-3 font-bold text-white">{log.motherCode}</td>
+                                    <td className="p-3 text-xs">
+                                        <div className="max-w-[200px] truncate" title={log.generatedItems}>{log.generatedItems}</div>
+                                        <div className="text-blue-400 font-bold">{log.outputCount} tiras</div>
+                                    </td>
+                                    <td className="p-3 text-right text-red-400">{log.scrap} kg</td>
+                                    <td className="p-3 text-right font-bold text-emerald-400">{log.inputWeight.toFixed(0)} kg</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+              </div>
+           </Card>
         </div>
       </div>
     );
   };
 
   const renderProduction = () => {
-    const availableChildCoils = childCoils.filter(c => {
-       if (c.status !== 'stock' && (!editingLogId || c.id !== selectedChildForProd)) return false;
+    // Filtros e Listas (Mantido igual)
+    const availableForSelect = childCoils.filter(c => {
+       if (c.status !== 'stock') return false;
+       if (selectedInputCoils.find(sel => sel.id === c.id)) return false; 
        if (filterB2Type && c.type !== filterB2Type) return false;
+       if (b2SearchQuery) {
+             const query = b2SearchQuery.toLowerCase();
+             // Adicionamos String() aqui também para garantir
+             const matchCode = String(c.b2Code).toLowerCase().includes(query);
+             const matchName = String(c.b2Name).toLowerCase().includes(query);
+             if (!matchCode && !matchName) return false;
+           }
        return true;
     });
-    const selectedChild = childCoils.find(c => c.id === selectedChildForProd);
-    const compatibleProducts = selectedChild ? productCatalog.filter(p => p.b2Code === selectedChild.b2Code) : [];
+
     const uniqueTypes = [...new Set(childCoils.map(c => c.type).filter(Boolean))];
     const paginatedLogs = productionLogs.slice((logsPage - 1) * ITEMS_PER_PAGE, logsPage * ITEMS_PER_PAGE);
+
+    const totalInputWeight = selectedInputCoils.reduce((acc, c) => acc + c.weight, 0);
+
+    // Cálculos de Prévia para exibir na tela
+    const totalPcs = parseInt(totalProducedPieces) || 0;
+    const packStd = parseInt(standardPackSize) || totalPcs || 1;
+    const fullPacks = Math.floor(totalPcs / packStd);
+    const rest = totalPcs % packStd;
 
     return (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
         <div className="lg:col-span-7 flex flex-col gap-6">
            <Card>
-             <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold text-gray-200 flex items-center gap-2"><Factory className="text-emerald-500"/> Produção</h2>
-                {editingLogId && <Button variant="secondary" onClick={() => { setEditingLogId(null); setSelectedChildForProd(''); setProdPieces(''); }} className="text-xs h-8">Cancelar Edição</Button>}
+             <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-200 flex items-center gap-2"><Factory className="text-emerald-500"/> Produção por Total</h2>
              </div>
-             <div className="space-y-6">
+             
+             <div className="space-y-4">
+                {/* --- ÁREA 1: BOBINAS (Entrada) --- */}
                 <div className="bg-gray-900 p-4 rounded-xl border border-gray-700">
-                   <div className="flex justify-between mb-2">
-                      <label className="text-xs font-bold text-gray-500 uppercase">1. Matéria Prima (Bobina 2)</label>
-                      {uniqueTypes.length > 0 && ( <select className="text-xs border-none bg-transparent text-blue-400 font-bold cursor-pointer outline-none" value={filterB2Type} onChange={e => setFilterB2Type(e.target.value)}><option value="">Filtrar Tipo: Todos</option>{uniqueTypes.map(t => <option key={t} value={t}>{t}</option>)}</select>)}
+                   <div className="flex justify-between mb-2 items-center">
+                      <label className="text-xs font-bold text-gray-500 uppercase">1. Matéria Prima</label>
+                      <span className="text-xs text-blue-400 font-bold">{selectedInputCoils.length} bobinas | {totalInputWeight} kg</span>
                    </div>
-                   <select className="w-full p-3 border border-gray-700 rounded-lg bg-gray-800 text-gray-200 outline-none text-sm" value={selectedChildForProd} onChange={(e) => { setSelectedChildForProd(e.target.value); setSelectedProductCode(''); }} disabled={!!editingLogId}>
-                      <option value="">Selecione do estoque...</option>
-                      {availableChildCoils.map(c => (<option key={c.id} value={c.id}>{c.b2Code} - {c.b2Name} ({c.weight}kg) [{c.type}]</option>))}
+
+                   <div className="flex gap-2 mb-2">
+                       {uniqueTypes.length > 0 && ( 
+                         <select className="bg-gray-800 text-xs text-white border border-gray-600 rounded p-1" value={filterB2Type} onChange={e => setFilterB2Type(e.target.value)}>
+                           <option value="">Tipo: Todos</option>
+                           {uniqueTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                         </select>
+                       )}
+                       <input type="text" placeholder="Buscar..." value={b2SearchQuery} onChange={e => setB2SearchQuery(e.target.value)} className="flex-1 bg-gray-800 text-xs text-white border border-gray-600 rounded p-1 pl-2 outline-none"/>
+                   </div>
+
+                   <select 
+                     className="w-full p-3 border border-gray-700 rounded-lg bg-gray-800 text-gray-200 outline-none text-sm focus:border-blue-500 transition-colors" 
+                     value="" 
+                     onChange={(e) => { 
+                        const newId = e.target.value;
+                        if (!newId) return;
+                        const coilToAdd = childCoils.find(c => String(c.id) === String(newId));
+                        if (coilToAdd) {
+                             const newList = [...selectedInputCoils, coilToAdd];
+                             setSelectedInputCoils(newList);
+                             if (newList.length === 1) {
+                                 const match = productCatalog.find(p => String(p.b2Code) === String(coilToAdd.b2Code));
+                                 if (match) setSelectedProductCode(match.code);
+                             }
+                        }
+                     }}
+                   >
+                      <option value="">+ Adicionar bobina...</option>
+                      {availableForSelect.map(c => (
+                        <option key={c.id} value={c.id}>{c.b2Code} - {c.b2Name} ({c.weight}kg)</option>
+                      ))}
                     </select>
+
+                    {selectedInputCoils.length > 0 && (
+                        <div className="mt-2 space-y-1 max-h-32 overflow-y-auto custom-scrollbar-dark">
+                            {selectedInputCoils.map((coil, idx) => (
+                                <div key={idx} className="flex justify-between items-center bg-gray-800 px-2 py-1 rounded border border-gray-600 text-xs">
+                                    <span className="text-gray-300">{coil.b2Code} ({coil.weight}kg)</span>
+                                    <button onClick={() => setSelectedInputCoils(selectedInputCoils.filter(c => c.id !== coil.id))} className="text-red-400 hover:text-red-300"><Trash2 size={12}/></button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
-                {selectedChild && (
-                  <div className="animate-fade-in">
-                      <div className="flex gap-4 mb-6">
-                         <div className="flex-1 bg-gray-900/50 border border-gray-700 p-3 rounded-lg"><p className="text-xs text-purple-400 font-bold uppercase">Código B2</p><p className="font-bold text-gray-200">{selectedChild.b2Code}</p></div>
-                         <div className="flex-1 bg-gray-900/50 border border-gray-700 p-3 rounded-lg"><p className="text-xs text-blue-400 font-bold uppercase">Saldo</p><p className="font-bold text-gray-200">{selectedChild.weight} kg</p></div>
-                      </div>
+
+                {/* --- ÁREA 2: DADOS DE PRODUÇÃO --- */}
+                <div className="animate-fade-in">
                       <div className="space-y-4">
-                        <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">2. Produto Final</label><select className="w-full p-3 border border-gray-700 rounded-lg bg-gray-900 text-gray-200 outline-none text-sm" value={selectedProductCode} onChange={e => setSelectedProductCode(e.target.value)}><option value="">Selecione...</option>{compatibleProducts.map(p => (<option key={p.code} value={p.code}>{p.name} (Cód: {p.code})</option>))}</select></div>
-                        <div className="grid grid-cols-2 gap-4"><Input label="Qtd Peças" type="number" value={prodPieces} onChange={e => setProdPieces(e.target.value)} /><Input label="Sucata (kg)" type="number" value={prodScrap} onChange={e => setProdScrap(e.target.value)} /></div>
-                        <Button onClick={registerProduction} variant="success" className="w-full py-4 text-lg shadow-lg mt-2" disabled={!selectedProductCode}>{editingLogId ? "Salvar Alterações" : "Confirmar Produção"}</Button>
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">2. Produto Final</label>
+                          <select className="w-full p-3 border border-gray-700 rounded-lg bg-gray-900 text-gray-200 outline-none text-sm" value={selectedProductCode} onChange={e => setSelectedProductCode(e.target.value)}>
+                            <option value="">Selecione...</option>
+                            {productCatalog.map(p => (<option key={p.code} value={p.code}>{p.name}</option>))}
+                          </select>
+                        </div>
+
+                        {/* CONFIGURAÇÃO DO TOTAL E QUEBRA */}
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="col-span-1">
+                              <Input label="Total Produzido" type="number" placeholder="Ex: 486" value={totalProducedPieces} onChange={e => setTotalProducedPieces(e.target.value)} />
+                          </div>
+                          <div className="col-span-1">
+                              <Input label="Padrão por Pacote" type="number" placeholder="Ex: 100" value={standardPackSize} onChange={e => setStandardPackSize(e.target.value)} />
+                          </div>
+                          <div className="col-span-1">
+                              <Input label="Sucata (kg)" type="number" value={prodScrap} onChange={e => setProdScrap(e.target.value)} />
+                          </div>
+                        </div>
+
+                        {/* PRÉVIA VISUAL DA ETIQUETA */}
+                        {totalPcs > 0 && (
+                            <div className="bg-blue-900/20 p-3 rounded-lg border border-blue-900/50">
+                                <p className="text-xs text-blue-300 font-bold uppercase mb-2">Simulação de Etiquetas:</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {fullPacks > 0 && (
+                                        <div className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold flex items-center shadow-lg">
+                                            {fullPacks}x pacotes de {packStd} pçs
+                                        </div>
+                                    )}
+                                    {rest > 0 && (
+                                        <div className="bg-amber-600 text-white px-2 py-1 rounded text-xs font-bold flex items-center shadow-lg">
+                                            + 1x pacote de {rest} pçs (Sobra)
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <Button onClick={registerProduction} variant="success" className="w-full py-4 text-lg shadow-lg mt-2" disabled={selectedInputCoils.length === 0 || !selectedProductCode || !totalProducedPieces}>
+                          <Printer className="mr-2"/> Confirmar e Imprimir
+                        </Button>
                       </div>
                   </div>
-                )}
              </div>
            </Card>
         </div>
+
+        {/* Histórico mantido igual */}
         <div className="lg:col-span-5 h-full">
            <Card className="h-full flex flex-col bg-gray-900 border-gray-800">
-             <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-white flex items-center gap-2"><History size={20} className="text-emerald-500"/> Histórico</h3></div>
+             <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-white flex items-center gap-2"><History size={20} className="text-emerald-500"/> Últimos Lotes</h3></div>
                 <div className="flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar-dark space-y-3">
                  {paginatedLogs.map(log => (
                  <div key={log.id} className="bg-gray-800 p-4 rounded-xl border border-gray-700 hover:bg-gray-700/80 transition-colors group">
-                   <div className="flex justify-between mb-2"><span className="text-[10px] text-gray-500">{log.id}</span><span className="text-[10px] text-gray-500">{log.timestamp.split(' ')[1]}</span></div>
-                   <p className="font-bold text-gray-200 text-sm mb-2">{log.productName}</p>
+                   <div className="flex justify-between mb-2">
+                       <span className="text-[10px] text-gray-500">{log.id}</span>
+                       {log.packIndex && <span className="text-[10px] bg-blue-900 text-blue-200 px-1 rounded">Vol {log.packIndex}</span>}
+                   </div>
+                   <p className="font-bold text-gray-200 text-sm mb-1">{log.productName}</p>
                    <div className="flex justify-between items-end">
-                      <div className="flex gap-3 text-xs"><div><span className="block text-gray-500 text-[10px] uppercase">Qtd</span><span className="text-emerald-400 font-bold text-lg">{log.pieces}</span></div><div><span className="block text-gray-500 text-[10px] uppercase">Sucata</span><span className="text-red-400 font-bold text-lg">{log.scrap}</span> kg</div></div>
+                      <div className="flex gap-3 text-xs"><div><span className="block text-gray-500 text-[10px] uppercase">Qtd</span><span className="text-emerald-400 font-bold text-lg">{log.pieces}</span></div></div>
                       <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                          <button onClick={() => handleReprintProduct(log)} className="p-1.5 bg-gray-700 text-gray-300 rounded"><Printer size={14}/></button>
-                         <button onClick={() => handleEditLog(log)} className="p-1.5 bg-blue-900/30 text-blue-400 rounded"><Edit size={14}/></button>
                          <button onClick={() => handleDeleteLog(log.id)} className="p-1.5 bg-red-900/30 text-red-400 rounded"><Trash2 size={14}/></button>
                       </div>
                    </div>
                  </div>
                ))}
              </div>
-             <PaginationControls currentPage={logsPage} totalItems={productionLogs.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setLogsPage} />
            </Card>
         </div>
       </div>
@@ -978,15 +1377,29 @@ export default function App() {
   };
 
   const renderDashboard = () => {
+    // 1. Agrupa Estoque Mãe (AGORA POR CÓDIGO + LARGURA)
     const motherStockByCode = motherCoils.reduce((acc, item) => {
       if(item.status === 'stock') {
-        if(!acc[item.code]) acc[item.code] = { code: item.code, weight: 0, count: 0, type: item.type };
-        acc[item.code].weight += item.weight;
-        acc[item.code].count += 1; 
+        // Chave composta: Código + Largura (Isso separa as larguras diferentes)
+        const key = `${item.code}-${item.width}`;
+        
+        if(!acc[key]) {
+            acc[key] = { 
+                code: item.code, 
+                material: item.material, // Guarda a descrição
+                width: item.width,       // Guarda a largura
+                weight: 0, 
+                count: 0, 
+                type: item.type 
+            };
+        }
+        acc[key].weight += item.weight;
+        acc[key].count += 1; 
       }
       return acc;
     }, {});
 
+    // 2. Agrupa Estoque B2 (Mantido)
     const childStockByCode = childCoils.reduce((acc, item) => {
       if(item.status === 'stock') {
         if(!acc[item.b2Code]) acc[item.b2Code] = { code: item.b2Code, name: item.b2Name, weight: 0, count: 0, type: item.type };
@@ -996,16 +1409,54 @@ export default function App() {
       return acc;
     }, {});
 
+    // 3. Agrupa Estoque Acabado (Mantido)
     const stockBalances = getFinishedStock();
     const finishedStockList = Object.values(stockBalances).filter(item => item.count > 0);
 
-    const paginatedMotherStock = Object.values(motherStockByCode).slice((motherPage - 1) * ITEMS_PER_PAGE, motherPage * ITEMS_PER_PAGE);
-    const paginatedChildStock = Object.values(childStockByCode).slice((childPage - 1) * ITEMS_PER_PAGE, childPage * ITEMS_PER_PAGE);
-    const paginatedFinishedStock = finishedStockList.slice((finishedPage - 1) * ITEMS_PER_PAGE, finishedPage * ITEMS_PER_PAGE);
+    // --- LÓGICA DE FILTRAGEM (PESQUISA) ---
+    
+    // Filtro Mãe (Atualizado para buscar Material e Largura também)
+    const filteredMotherList = Object.values(motherStockByCode).filter(item => {
+        if (!dashSearchMother) return true;
+        const query = dashSearchMother.toLowerCase();
+        // Usa String() para garantir que não dê erro
+        return String(item.code).toLowerCase().includes(query) || 
+               String(item.material).toLowerCase().includes(query) ||
+               String(item.width).toLowerCase().includes(query);
+    });
 
+    // Filtro B2 (Mantido)
+    const filteredB2List = Object.values(childStockByCode).filter(item => {
+        if (!dashSearchB2) return true;
+        const query = dashSearchB2.toLowerCase();
+        return String(item.code).toLowerCase().includes(query) || String(item.name).toLowerCase().includes(query);
+    });
+
+    // Filtro Acabado (Mantido)
+    const filteredFinishedList = finishedStockList.filter(item => {
+        if (!dashSearchFinished) return true;
+        const query = dashSearchFinished.toLowerCase();
+        return String(item.code).toLowerCase().includes(query) || String(item.name).toLowerCase().includes(query);
+    });
+
+    // --- PAGINAÇÃO ---
+    const paginatedMotherStock = filteredMotherList.slice((motherPage - 1) * ITEMS_PER_PAGE, motherPage * ITEMS_PER_PAGE);
+    const paginatedChildStock = filteredB2List.slice((childPage - 1) * ITEMS_PER_PAGE, childPage * ITEMS_PER_PAGE);
+    const paginatedFinishedStock = filteredFinishedList.slice((finishedPage - 1) * ITEMS_PER_PAGE, finishedPage * ITEMS_PER_PAGE);
+
+    // Cálculos de totais (Mantidos)
+    const totalMotherWeight = motherCoils.filter(m => m.status === 'stock').reduce((acc, m) => acc + m.weight, 0);
+    const totalB2Weight = childCoils.filter(c => c.status === 'stock').reduce((acc, c) => acc + c.weight, 0);
+    const totalFinishedCount = finishedStockList.reduce((acc, item) => acc + item.count, 0);
+    const scrapFromProduction = productionLogs.reduce((acc, log) => acc + (parseFloat(log.scrap) || 0), 0);
+    const scrapFromCutting = motherCoils.reduce((acc, m) => acc + (parseFloat(m.cutWaste) || 0), 0);
+    const totalScrap = scrapFromProduction + scrapFromCutting;
+    const tileStockCount = motherCoils.filter(m => m.status === 'stock' && String(m.code) === '10236').length;
+    const tileStockWeight = motherCoils.filter(m => m.status === 'stock' && String(m.code) === '10236').reduce((acc, m) => acc + m.weight, 0);
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        {/* CARDS SUPERIORES (Mantidos) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
           <Card className="border-l-4 border-blue-500 bg-gray-800 transform transition-transform hover:-translate-y-1">
             <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Estoque Mãe</h3>
             <div className="flex flex-col">
@@ -1013,9 +1464,7 @@ export default function App() {
                  <p className="text-3xl font-bold text-white">{motherCoils.filter(m => m.status === 'stock').length}</p>
                  <span className="text-sm text-gray-500 mb-1">bobinas</span>
               </div>
-              <p className="text-sm text-blue-400 font-bold mt-1">
-                {motherCoils.filter(m => m.status === 'stock').reduce((acc, m) => acc + m.weight, 0).toLocaleString('pt-BR')} kg
-              </p>
+              <p className="text-sm text-blue-400 font-bold mt-1">{totalMotherWeight.toLocaleString('pt-BR')} kg</p>
             </div>
           </Card>
           <Card className="border-l-4 border-indigo-500 bg-gray-800 transform transition-transform hover:-translate-y-1">
@@ -1025,51 +1474,105 @@ export default function App() {
                   <p className="text-3xl font-bold text-white">{childCoils.filter(c => c.status === 'stock').length}</p>
                   <span className="text-sm text-gray-500 mb-1">bobinas</span>
                 </div>
-                <p className="text-sm text-indigo-400 font-bold mt-1">
-                  {childCoils.filter(c => c.status === 'stock').reduce((acc, c) => acc + c.weight, 0).toLocaleString('pt-BR')} kg
-                </p>
+                <p className="text-sm text-indigo-400 font-bold mt-1">{totalB2Weight.toLocaleString('pt-BR')} kg</p>
             </div>
           </Card>
           <Card className="border-l-4 border-emerald-500 bg-gray-800 transform transition-transform hover:-translate-y-1">
             <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Estoque Acabado</h3>
             <div className="flex items-end gap-2">
-              <p className="text-3xl font-bold text-white">{finishedStockList.reduce((acc, item) => acc + item.count, 0)}</p>
+              <p className="text-3xl font-bold text-white">{totalFinishedCount}</p>
               <span className="text-sm text-gray-500 mb-1">peças</span>
+            </div>
+          </Card>
+          <Card className="border-l-4 border-purple-500 bg-gray-800 transform transition-transform hover:-translate-y-1">
+            <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Estoque Telhas (10236)</h3>
+            <div className="flex flex-col">
+              <div className="flex items-end gap-2">
+                 <p className="text-3xl font-bold text-white">{tileStockCount}</p>
+                 <span className="text-sm text-gray-500 mb-1">bobinas</span>
+              </div>
+              <p className="text-sm text-purple-400 font-bold mt-1">{tileStockWeight.toLocaleString('pt-BR')} kg</p>
             </div>
           </Card>
           <Card className="border-l-4 border-amber-500 bg-gray-800 transform transition-transform hover:-translate-y-1">
             <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Sucata Total</h3>
             <div className="flex items-end gap-2">
-              <p className="text-3xl font-bold text-white">{productionLogs.reduce((acc, log) => acc + log.scrap, 0).toFixed(1)}</p>
+              <p className="text-3xl font-bold text-white">{totalScrap.toFixed(1)}</p>
               <span className="text-sm text-gray-500 mb-1">kg</span>
             </div>
           </Card>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-           {/* Tabela 1: Mãe */}
-           <Card className="h-[450px] flex flex-col overflow-hidden">
-             <h3 className="font-bold text-gray-200 mb-6 flex items-center gap-2 text-lg"><PieChart className="text-blue-500"/> Estoque Mãe</h3>
+           
+           {/* TABELA 1: MÃE (ATUALIZADA) */}
+           {/* TABELA 1: MÃE (VISUAL AJUSTADO IGUAL PRODUTO ACABADO) */}
+           <Card className="h-[500px] flex flex-col overflow-hidden col-span-1 lg:col-span-1">
+             <div className="mb-4">
+                 <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-blue-500"/> Estoque Mãe</h3>
+                 <div className="relative">
+                    <Search className="absolute left-2 top-2 text-gray-500" size={14}/>
+                    <input 
+                        type="text" 
+                        placeholder="Buscar cód, material ou largura..." 
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-blue-500 outline-none"
+                        value={dashSearchMother}
+                        onChange={e => setDashSearchMother(e.target.value)}
+                    />
+                 </div>
+             </div>
              <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
                <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
-                 <thead className="bg-gray-900/50 text-gray-500 sticky top-0"><tr><th className="p-3 rounded-l-lg">Código</th><th className="p-3 text-center">Qtd</th><th className="p-3 text-right rounded-r-lg">Peso</th></tr></thead>
+                 <thead className="bg-gray-900/50 text-gray-500 sticky top-0">
+                    <tr>
+                        {/* UNIFICAMOS O CABEÇALHO */}
+                        <th className="p-2 rounded-l-lg">Bobina / Material</th>
+                        <th className="p-2 text-center">Larg.</th>
+                        <th className="p-2 text-center">Qtd</th>
+                        <th className="p-2 text-right rounded-r-lg">Peso</th>
+                    </tr>
+                 </thead>
                  <tbody className="divide-y divide-gray-700/50">
-                    {paginatedMotherStock.map(row => (
-                      <tr key={row.code} className="hover:bg-gray-700/30 transition-colors">
-                        <td className="p-3 font-medium text-white">{row.code}<br/><span className="text-[10px] text-gray-500">{row.type}</span></td>
-                        <td className="p-3 text-center font-bold text-white">{row.count}</td>
-                        <td className="p-3 text-right font-mono text-gray-300">{(Number(row.weight) || 0).toFixed(0)}</td>
+                    {paginatedMotherStock.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-gray-700/30 transition-colors">
+                        {/* CÉLULA UNIFICADA (CÓDIGO + MATERIAL + TIPO) */}
+                        <td className="p-3 align-top">
+                            <div className="font-bold text-white text-base">{row.code}</div>
+                            <div className="text-[10px] text-gray-400 leading-tight mt-0.5 max-w-[180px]" title={row.material}>
+                                {row.material}
+                            </div>
+                            <div className="text-[9px] text-blue-500 font-bold mt-1 inline-block border border-blue-900/50 px-1 rounded bg-blue-900/20">
+                                {row.type}
+                            </div>
+                        </td>
+                        
+                        <td className="p-3 text-center text-white align-top font-bold pt-4">{row.width}</td>
+                        <td className="p-3 text-center font-bold text-white align-top pt-4">{row.count}</td>
+                        <td className="p-3 text-right font-mono text-gray-300 align-top pt-4">{(Number(row.weight) || 0).toLocaleString('pt-BR')}</td>
                       </tr>
                     ))}
+                    {paginatedMotherStock.length === 0 && <tr><td colSpan="4" className="text-center p-4 text-gray-500 text-xs">Nada encontrado.</td></tr>}
                  </tbody>
                </table>
              </div>
-             <PaginationControls currentPage={motherPage} totalItems={Object.values(motherStockByCode).length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setMotherPage} />
+             <PaginationControls currentPage={motherPage} totalItems={filteredMotherList.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setMotherPage} />
            </Card>
            
-           {/* Tabela 2: B2 */}
-           <Card className="h-[450px] flex flex-col overflow-hidden">
-             <h3 className="font-bold text-gray-200 mb-6 flex items-center gap-2 text-lg"><PieChart className="text-indigo-500"/> Estoque B2</h3>
+           {/* TABELA 2: B2 (MANTIDA IGUAL) */}
+           <Card className="h-[500px] flex flex-col overflow-hidden">
+             <div className="mb-4">
+                 <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-indigo-500"/> Estoque B2</h3>
+                 <div className="relative">
+                    <Search className="absolute left-2 top-2 text-gray-500" size={14}/>
+                    <input 
+                        type="text" 
+                        placeholder="Buscar código ou nome..." 
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-indigo-500 outline-none"
+                        value={dashSearchB2}
+                        onChange={e => setDashSearchB2(e.target.value)}
+                    />
+                 </div>
+             </div>
              <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
                <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
                  <thead className="bg-gray-900/50 text-gray-500 sticky top-0">
@@ -1091,15 +1594,28 @@ export default function App() {
                         </td>
                       </tr>
                     ))}
+                    {paginatedChildStock.length === 0 && <tr><td colSpan="4" className="text-center p-4 text-gray-500 text-xs">Nada encontrado.</td></tr>}
                  </tbody>
                </table>
              </div>
-             <PaginationControls currentPage={childPage} totalItems={Object.values(childStockByCode).length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setChildPage} />
+             <PaginationControls currentPage={childPage} totalItems={filteredB2List.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setChildPage} />
            </Card>
 
-           {/* Tabela 3: Produto Acabado */}
-           <Card className="h-[450px] flex flex-col border-l-4 border-emerald-500/50 overflow-hidden">
-             <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2 text-lg"><Package className="text-emerald-500"/> Produto Acabado</h3>
+           {/* TABELA 3: ACABADO (MANTIDA IGUAL) */}
+           <Card className="h-[500px] flex flex-col border-l-4 border-emerald-500/50 overflow-hidden">
+             <div className="mb-4">
+                 <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><Package className="text-emerald-500"/> Produto Acabado</h3>
+                 <div className="relative">
+                    <Search className="absolute left-2 top-2 text-gray-500" size={14}/>
+                    <input 
+                        type="text" 
+                        placeholder="Buscar produto..." 
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-emerald-500 outline-none"
+                        value={dashSearchFinished}
+                        onChange={e => setDashSearchFinished(e.target.value)}
+                    />
+                 </div>
+             </div>
              <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
                <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
                  <thead className="bg-gray-900/50 text-gray-500 sticky top-0">
@@ -1111,7 +1627,7 @@ export default function App() {
                  </thead>
                  <tbody className="divide-y divide-gray-700/50">
                     {paginatedFinishedStock.length === 0 && (
-                      <tr><td colSpan="3" className="p-4 text-center text-gray-600 italic">Nenhuma produção ainda.</td></tr>
+                      <tr><td colSpan="3" className="p-4 text-center text-gray-600 italic">Nada encontrado.</td></tr>
                     )}
                     {paginatedFinishedStock.map(row => (
                       <tr key={row.code} className="hover:bg-gray-700/30 transition-colors">
@@ -1121,40 +1637,50 @@ export default function App() {
                         </td>
                         <td className="p-3 text-right font-mono text-emerald-400 font-bold text-lg">{row.count}</td>
                          <td className="p-3 text-center">
-                          <button onClick={() => handleReprintStockBalance(row)} className="p-2 hover:text-white text-gray-400"><Printer size={18}/></button>
+                           <button onClick={() => setSelectedProductForHistory(row)} className="p-2 hover:text-blue-400 text-gray-400 transition-colors" title="Visualizar Lotes">
+                             <Printer size={18}/>
+                           </button>
                         </td>
                       </tr>
                     ))}
                  </tbody>
                </table>
              </div>
-             <PaginationControls currentPage={finishedPage} totalItems={finishedStockList.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setFinishedPage} />
+             <PaginationControls currentPage={finishedPage} totalItems={filteredFinishedList.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setFinishedPage} />
            </Card>
         </div>
         
+        {/* PARTE DE BACKUP - MANTIDA IGUAL (Copie se necessário) */}
         <Card className="border-gray-700">
           <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2"><Database className="text-blue-500"/> Backup e Restauração</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-blue-500/50 transition-colors">
+            <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700">
               <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Exportar Dados</h4>
               <div className="flex flex-col gap-2">
-                <Button variant="secondary" onClick={() => exportToCSV(motherCoils, 'estoque_bobinas_mae')} className="text-xs w-full justify-start h-9 bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"><Download size={14}/> Bobinas Mãe</Button>
+                <Button variant="secondary" onClick={() => {
+                    const dataToExport = motherCoils.map(m => ({
+                        Codigo: m.code, Material: m.material, Largura: m.width, Espessura: m.thickness, Tipo: m.type,
+                        Peso_Original: m.originalWeight, Peso_Atual: m.remainingWeight, Sucata_Gerada: m.cutWaste || 0,
+                        Status: m.status === 'stock' ? 'ESTOQUE' : 'CONSUMIDA', Data_Entrada: m.date, Data_Consumo: m.consumedDate || '-', Destino_Obs: m.consumptionDetail || ''
+                    }));
+                    exportToCSV(dataToExport, 'relatorio_bobinas_mae');
+                }} className="text-xs w-full justify-start h-9 bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"><Download size={14}/> Bobinas Mãe</Button>
+                
                 <Button variant="secondary" onClick={() => exportToCSV(childCoils, 'estoque_bobinas_2')} className="text-xs w-full justify-start h-9 bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"><Download size={14}/> Bobinas 2</Button>
                 <Button variant="secondary" onClick={() => exportToCSV(productionLogs, 'historico_producao')} className="text-xs w-full justify-start h-9 bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"><Download size={14}/> Histórico</Button>
               </div>
             </div>
-            <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-amber-500/50 transition-colors">
+             <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700">
               <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Importar Backup</h4>
               <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-2">
                     <div className="relative flex-1">
                       <input type="file" accept=".json" className="hidden" ref={importFullBackupRef} onChange={handleFullRestore} />
-                      <Button variant="primary" onClick={() => importFullBackupRef.current.click()} className="text-xs w-full justify-start h-9 bg-blue-600 hover:bg-blue-500 text-white font-bold"><Upload size={14} className="mr-2"/> Restaurar Backup Completo (.json)</Button>
+                      <Button variant="primary" onClick={() => importFullBackupRef.current.click()} className="text-xs w-full justify-start h-9 bg-blue-600 hover:bg-blue-500 text-white font-bold"><Upload size={14} className="mr-2"/> Restaurar Completo (.json)</Button>
                     </div>
                 </div>
-                <div className="border-t border-gray-700 my-2"></div>
-                <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Importar partes (CSV)</p>
-                <div className="flex items-center gap-2">
+                 {/* ... Botões CSV ... */}
+                 <div className="flex items-center gap-2">
                     <Button variant="info" onClick={() => handleDownloadTemplate('mother')} className="w-9 h-9 p-0 rounded-lg shrink-0" title="Baixar Modelo"><FileInput size={16}/></Button>
                     <div className="relative flex-1">
                       <input type="file" accept=".csv" className="hidden" ref={importMotherStockRef} onChange={(e) => handleImportBackup(e, setMotherCoils, 'Estoque Mãe')} />
@@ -1182,7 +1708,6 @@ export default function App() {
       </div>
     );
   };
-
   // --- RETURN FINAL ---
   return (
     <div className="flex h-screen bg-[#0f172a] font-sans text-gray-100 overflow-hidden">
