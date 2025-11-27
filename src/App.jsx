@@ -7,7 +7,7 @@ import {
   List, X, Barcode, Link as LinkIcon, Edit, RotateCcw, FlaskConical, FileText,
   Database, Scale, Download, Upload, HardDrive, PieChart, Menu, LogOut, User,
   Home, Moon, FileInput, ChevronLeft, Printer, Eye, Truck, Archive, PenSquare,
-  FileJson // Novo ícone para JSON
+  FileJson
 } from 'lucide-react';
 
 // --- CONFIGURAÇÕES ---
@@ -158,44 +158,11 @@ const INITIAL_PRODUCT_CATALOG = [
   { code: '00656E', name: 'PERFIL US 100X50X3,00', b2Code: '85506E', b2Name: 'BOB 2 PERFIL US 100X50X3,00', width: 186, thickness: '3,00', type: 'BQ' },
   { code: '00656I', name: 'PERFIL US 100X50X4,75', b2Code: '85506I', b2Name: 'BOB 2 PERFIL US 100X50X4,75', width: 180, thickness: '4,75', type: 'BQ' },
   { code: '00659B', name: 'PERFIL US 127X40X2,00', b2Code: '85509B', b2Name: 'BOB 2 PERFIL US 127X40X2,00', width: 194, thickness: '2,00', type: 'BQ' },
-  { code: '00660K', name: 'PERFIL US 127X50X1,95 GALV', b2Code: '85510K', b2Name: 'BOB 2 PERFIL US 127X50X1,95 GALV', width: 215, thickness: '1,95 GALV', type: 'BZ' },
-  { code: '00660C', name: 'PERFIL US 127X50X2,25', b2Code: '85510C', b2Name: 'BOB 2 PERFIL US 127X50X2,25', width: 214, thickness: '2,25', type: 'BQ' },
-  { code: '00660D', name: 'PERFIL US 127X50X2,65', b2Code: '85510D', b2Name: 'BOB 2 PERFIL US 127X50X2,65', width: 214, thickness: '2,65', type: 'BQ' },
-  { code: '00660E', name: 'PERFIL US 127X50X3,00', b2Code: '85510E', b2Name: 'BOB 2 PERFIL US 127X50X3,00', width: 214, thickness: '3,00', type: 'BQ' },
-  { code: '00660I', name: 'PERFIL US 127X50X4,75', b2Code: '85510I', b2Name: 'BOB 2 PERFIL US 127X50X4,75', width: 208, thickness: '4,75', type: 'BQ' },
-  { code: '00664K', name: 'PERFIL US 150X50X1,95 GALV', b2Code: '85514K', b2Name: 'BOB 2 PERFIL US 150X50X1,95 GALV', width: 240, thickness: '1,95 GALV', type: 'BZ' },
-  { code: '00664B', name: 'PERFIL US 150X50X2,00', b2Code: '85514B', b2Name: 'BOB 2 PERFIL US 150X50X2,00', width: 240, thickness: '2,00', type: 'BQ' },
-  { code: '00664C', name: 'PERFIL US 150X50X2,25', b2Code: '85514C', b2Name: 'BOB 2 PERFIL US 150X50X2,25', width: 238, thickness: '2,25', type: 'BQ' },
-  { code: '00664D', name: 'PERFIL US 150X50X2,65', b2Code: '85514D', b2Name: 'BOB 2 PERFIL US 150X50X2,65', width: 236, thickness: '2,65', type: 'BQ' },
-  { code: '00664E', name: 'PERFIL US 150X50X3,00', b2Code: '85514E', b2Name: 'BOB 2 PERFIL US 150X50X3,00', width: 236, thickness: '3,00', type: 'BQ' },
-  { code: '00664I', name: 'PERFIL US 150X50X4,75', b2Code: '85514I', b2Name: 'BOB 2 PERFIL US 150X50X4,75', width: 233, thickness: '4,75', type: 'BQ' },
-  { code: '00666B', name: 'PERFIL US 200X50X2,00', b2Code: '85566B', b2Name: 'BOB 2 PERFIL US 200X50X2,00', width: 290, thickness: '2,00', type: 'BQ' },
-  { code: '00666C', name: 'PERFIL US 200X50X2,25', b2Code: '85566C', b2Name: 'BOB 2 PERFIL US 200X50X2,25', width: 288, thickness: '2,25', type: 'BQ' },
-  { code: '00666E', name: 'PERFIL US 200X50X3,00', b2Code: '85566E', b2Name: 'BOB 2 PERFIL US 200X50X3,00', width: 286, thickness: '3,00', type: 'BQ' },
-  { code: '00650A', name: 'PERFIL US 45X17X1,80', b2Code: '85500A', b2Name: 'BOB 2 PERFIL US 45X17X1,80', width: 65, thickness: '1,80', type: 'BQ' },
-  { code: '00650K', name: 'PERFIL US 45X17X1,95 GALV', b2Code: '85500K', b2Name: 'BOB 2 PERFIL US 45X17X1,95 GALV', width: 65, thickness: '1,95 GALV', type: 'BZ' },
-  { code: '00650B', name: 'PERFIL US 45X17X2,00', b2Code: '85500B', b2Name: 'BOB 2 PERFIL US 45X17X2,00', width: 65, thickness: '2,00', type: 'BQ' },
-  { code: '00651A', name: 'PERFIL US 50X25X1,80', b2Code: '85501A', b2Name: 'BOB 2 PERFIL US 50X25X1,80', width: 91, thickness: '1,80', type: 'BQ' },
-  { code: '00651K', name: 'PERFIL US 50X25X1,95 GALV', b2Code: '85501K', b2Name: 'BOB 2 PERFIL US 50X25X1,95 GALV', width: 91, thickness: '1,95 GALV', type: 'BZ' },
-  { code: '00651B', name: 'PERFIL US 50X25X2,00', b2Code: '85501B', b2Name: 'BOB 2 PERFIL US 50X25X2,00', width: 90, thickness: '2,00', type: 'BQ' },
-  { code: '00652A', name: 'PERFIL US 68X30X1,80', b2Code: '85502A', b2Name: 'BOB 2 PERFIL US 68X30X1,80', width: 118, thickness: '1,80', type: 'BQ' },
-  { code: '00652K', name: 'PERFIL US 68X30X1,95 GALV', b2Code: '85502K', b2Name: 'BOB 2 PERFIL US 68X30X1,95 GALV', width: 118, thickness: '1,95 GALV', type: 'BZ' },
-  { code: '00652B', name: 'PERFIL US 68X30X2,00', b2Code: '85502B', b2Name: 'BOB 2 PERFIL US 68X30X2,00', width: 118, thickness: '2,00', type: 'BQ' },
-  { code: '00653A', name: 'PERFIL US 75X40X1,80', b2Code: '85503A', b2Name: 'BOB 2 PERFIL US 75X40X1,80', width: 145, thickness: '1,80', type: 'BQ' },
-  { code: '00653K', name: 'PERFIL US 75X40X1,95 GALV', b2Code: '85503K', b2Name: 'BOB 2 PERFIL US 75X40X1,95 GALV', width: 145, thickness: '1,95 GALV', type: 'BZ' },
-  { code: '00653B', name: 'PERFIL US 75X40X2,00', b2Code: '85503B', b2Name: 'BOB 2 PERFIL US 75X40X2,00', width: 145, thickness: '2,00', type: 'BQ' },
-  { code: '00653C', name: 'PERFIL US 75X40X2,25', b2Code: '85503C', b2Name: 'BOB 2 PERFIL US 75X40X2,25', width: 144, thickness: '2,25', type: 'BQ' },
-  { code: '00653L', name: 'PERFIL US 75X40X2,30 GALV', b2Code: '85503L', b2Name: 'BOB 2 PERFIL US 75X40X2,30 GALV', width: 144, thickness: '2,30 GALV', type: 'BZ' },
-  { code: '00653D', name: 'PERFIL US 75X40X2,65', b2Code: '85503D', b2Name: 'BOB 2 PERFIL US 75X40X2,65', width: 142, thickness: '2,65', type: 'BQ' },
-  { code: '00653E', name: 'PERFIL US 75X40X3,00', b2Code: '85503E', b2Name: 'BOB 2 PERFIL US 75X40X3,00', width: 140, thickness: '3,00', type: 'BQ' },
-  { code: '00653I', name: 'PERFIL US 75X40X4,75', b2Code: '85503I', b2Name: 'BOB 2 PERFIL US 75X40X4,75', width: 133, thickness: '4,75', type: 'BQ' },
-  { code: '00654A', name: 'PERFIL US 92X30X1,80', b2Code: '85504A', b2Name: 'BOB 2 PERFIL US 92X30X1,80', width: 142, thickness: '1,80', type: 'BQ' },
-  { code: '00654K', name: 'PERFIL US 92X30X1,95 GALV', b2Code: '85504K', b2Name: 'BOB 2 PERFIL US 92X30X1,95 GALV', width: 142, thickness: '1,95', type: 'BZ' },
-  { code: '00654B', name: 'PERFIL US 92X30X2,00', b2Code: '85504B', b2Name: 'BOB 2 PERFIL US 92X30X2,00', width: 142, thickness: '2,00', type: 'BQ' },
 ];
 
 // --- Componentes UI ---
 const Card = ({ children, className = "" }) => <div className={`bg-gray-800 rounded-xl shadow-lg border border-gray-700 p-6 ${className}`}>{children}</div>;
+
 const Button = ({ children, onClick, variant = "primary", className = "", disabled = false, title = "" }) => {
   const variants = {
     primary: "bg-blue-600 text-white hover:bg-blue-500 disabled:bg-blue-900/50 disabled:text-gray-400 shadow-lg shadow-blue-900/20",
@@ -207,6 +174,7 @@ const Button = ({ children, onClick, variant = "primary", className = "", disabl
   };
   return <button onClick={onClick} disabled={disabled} className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all flex items-center gap-2 justify-center ${variants[variant]} ${className}`} title={title}>{children}</button>;
 };
+
 const Input = ({ label, value, onChange, type = "text", placeholder = "", min, disabled = false, readOnly = false }) => (
   <div className="mb-4">
     {label && <label className="block text-xs font-bold text-gray-400 uppercase tracking-wide mb-1.5 ml-1">{label}</label>}
@@ -315,7 +283,7 @@ const StockDetailsModal = ({ code, coils, onClose, onReprint }) => {
                 <tr key={coil.id} className="hover:bg-gray-700/50">
                   <td className="p-2 font-mono text-xs text-gray-500">{coil.id}</td>
                   <td className="p-2 text-gray-300">{coil.createdAt || '-'}</td>
-                  <td className="p-2 text-right font-bold text-white">{coil.weight}</td>
+                  <td className="p-2 text-right font-bold text-white">{(Number(coil.weight) || 0).toFixed(0)}</td>
                   <td className="p-2 text-center">
                     <button onClick={() => onReprint(coil)} className="p-1.5 bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600 hover:text-white transition-colors" title="Imprimir Etiqueta"><Printer size={16}/></button>
                   </td>
@@ -393,6 +361,7 @@ export default function App() {
   const [childPage, setChildPage] = useState(1);
   const [finishedPage, setFinishedPage] = useState(1);
   const [logsPage, setLogsPage] = useState(1);
+  const [isSidebarOpen, setSidebarOpen] = useState(false);
 
   const fileInputMotherRef = useRef(null);
   const importMotherStockRef = useRef(null);
@@ -766,7 +735,15 @@ export default function App() {
           const obj = {};
           headers.forEach((header, index) => {
             let val = row[index];
-            if (!isNaN(Number(val)) && val !== "" && !header.toLowerCase().includes("code") && !header.toLowerCase().includes("id")) { val = Number(val); }
+            // BLINDAGEM CONTRA ERROS DE NÚMERO COM VÍRGULA/PONTO
+            if (typeof val === 'string' && /^[0-9.,]+$/.test(val)) {
+               const cleanVal = val.replace(/\./g, '').replace(',', '.');
+               if (!isNaN(Number(cleanVal))) val = Number(cleanVal);
+            }
+            // Forçar conversão para zero se falhar
+            if (header.toLowerCase().includes('weight') || header.toLowerCase().includes('width') || header.toLowerCase().includes('originalweight') || header.toLowerCase().includes('remainingweight')) {
+                if (isNaN(val) || val === '') val = 0;
+            }
             obj[header] = val;
           });
           return obj;
@@ -851,7 +828,7 @@ export default function App() {
     reader.readAsText(file);
   };
 
-  // --- RENDERS (DENTRO DO APP) ---
+  // --- RENDERS ---
 
   const renderMotherCoilForm = () => (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
@@ -900,7 +877,7 @@ export default function App() {
                </div>
             </div>
          </Card>
-         <Card className="flex-1 flex flex-col">
+         <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2"><List size={20} className="text-gray-400"/> Entradas Recentes</h3>
             <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar-dark space-y-3">
                {motherCoils.slice(0, 50).map(coil => (
@@ -914,7 +891,7 @@ export default function App() {
                    </div>
                    <div className="flex items-center gap-4">
                      <div className="text-right">
-                       <div className="font-bold text-xl text-white">{coil.weight} <span className="text-sm text-gray-500 font-normal">kg</span></div>
+                       <div className="font-bold text-xl text-white">{(Number(coil.weight) || 0).toFixed(0)} <span className="text-sm text-gray-500 font-normal">kg</span></div>
                        <div className="text-xs text-gray-500">{coil.width}mm</div>
                      </div>
                      {coil.status === 'stock' && (
@@ -943,7 +920,7 @@ export default function App() {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
         <div className="lg:col-span-4 flex flex-col gap-6">
-           <Card className="flex-1 flex flex-col">
+           <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
               <h3 className="font-bold text-gray-200 mb-4">1. Selecionar Origem</h3>
               <div className="relative mb-4">
                 <Search className="absolute left-3 top-3 text-gray-500" size={18} />
@@ -960,7 +937,7 @@ export default function App() {
                   <div key={m.id} onClick={() => { setSelectedMotherForCut(m.id); setTempChildCoils([]); }} className={`p-3 rounded-lg cursor-pointer border transition-all ${selectedMotherForCut === m.id ? 'bg-blue-900/20 border-blue-500 shadow-sm' : 'bg-gray-900 border-gray-700 hover:border-blue-500/50 hover:bg-gray-800'}`}>
                     <div className="flex justify-between items-center">
                       <span className="font-bold text-gray-200">{m.code}</span>
-                      <span className="text-sm font-bold text-blue-400">{m.weight} kg</span>
+                      <span className="text-sm font-bold text-blue-400">{(Number(m.weight) || 0).toFixed(0)} kg</span>
                     </div>
                     <div className="text-xs text-gray-500 mt-1 flex justify-between"><span>{m.type}</span><span>{m.thickness}mm</span></div>
                   </div>
@@ -981,7 +958,7 @@ export default function App() {
                     </div>
                  </Card>
                  <Card className="flex flex-col justify-center items-center bg-gray-800 border-gray-700">
-                    <p className="text-gray-500 text-xs font-bold uppercase">Peso Disponível</p><p className="text-4xl font-bold text-white mt-2">{selectedMother.remainingWeight}</p><p className="text-gray-500 text-sm">kg</p>
+                    <p className="text-gray-500 text-xs font-bold uppercase">Peso Disponível</p><p className="text-4xl font-bold text-white mt-2">{(Number(selectedMother.remainingWeight) || 0).toFixed(0)}</p><p className="text-gray-500 text-sm">kg</p>
                  </Card>
                </div>
                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
@@ -999,7 +976,7 @@ export default function App() {
                       <Button onClick={addTempChildCoil} className="w-full py-3 mt-2" disabled={!targetB2Code || !cutWeight}>Adicionar ao Plano</Button>
                     </div>
                   </Card>
-                  <Card className="flex flex-col">
+                  <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
                     <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-gray-200">Plano de Corte</h3><span className="text-xs bg-blue-900/30 text-blue-400 px-2 py-1 rounded-full font-bold">{tempChildCoils.length} itens</span></div>
                     <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar-dark space-y-2">
                        {tempChildCoils.map((item, idx) => (
@@ -1011,7 +988,7 @@ export default function App() {
                     </div>
                     <div className="mt-4 pt-4 border-t border-gray-700">
                        <div className="flex justify-between items-end mb-4">
-                          <div><p className="text-xs text-gray-500 font-bold uppercase">Saldo Final</p><p className={`text-2xl font-bold ${(selectedMother.remainingWeight - tempChildCoils.reduce((acc, curr) => acc + curr.weight, 0)) < 0 ? "text-red-500" : "text-emerald-500"}`}>{(selectedMother.remainingWeight - tempChildCoils.reduce((acc, curr) => acc + curr.weight, 0)).toFixed(2)} kg</p></div>
+                          <div><p className="text-xs text-gray-500 font-bold uppercase">Saldo Final</p><p className={`text-2xl font-bold ${(selectedMother.remainingWeight - tempChildCoils.reduce((acc, curr) => acc + curr.weight, 0)) < 0 ? "text-red-500" : "text-emerald-500"}`}>{(selectedMother.remainingWeight - tempChildCoils.reduce((acc, curr) => acc + curr.weight, 0)).toFixed(0)} kg</p></div>
                           <Button onClick={confirmCut} variant="success" disabled={tempChildCoils.length === 0} className="px-6">PROCESSAR</Button>
                        </div>
                     </div>
@@ -1125,7 +1102,7 @@ export default function App() {
                <Button onClick={registerShipping} variant="warning" className="w-full py-3 mt-4">Confirmar Baixa</Button>
             </div>
          </Card>
-         <Card className="flex flex-col">
+         <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2">Histórico de Expedição</h3>
             <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar-dark space-y-2">
                {shippingLogs.map(log => (
@@ -1168,7 +1145,7 @@ export default function App() {
 
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <Card className="border-l-4 border-blue-500 bg-gray-800 transform transition-transform hover:-translate-y-1">
             <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Estoque Mãe</h3>
             <div className="flex flex-col">
@@ -1210,17 +1187,18 @@ export default function App() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-           <Card className="h-[450px] flex flex-col">
+           {/* Tabela 1: Mãe */}
+           <Card className="h-[450px] flex flex-col overflow-hidden">
              <h3 className="font-bold text-gray-200 mb-6 flex items-center gap-2 text-lg"><PieChart className="text-blue-500"/> Estoque Mãe</h3>
-             <div className="overflow-y-auto flex-1 pr-2 custom-scrollbar-dark">
-               <table className="w-full text-sm text-left text-gray-300">
+             <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
+               <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
                  <thead className="bg-gray-900/50 text-gray-500 sticky top-0"><tr><th className="p-3 rounded-l-lg">Código</th><th className="p-3 text-center">Qtd</th><th className="p-3 text-right rounded-r-lg">Peso</th></tr></thead>
                  <tbody className="divide-y divide-gray-700/50">
                     {paginatedMotherStock.map(row => (
                       <tr key={row.code} className="hover:bg-gray-700/30 transition-colors">
                         <td className="p-3 font-medium text-white">{row.code}<br/><span className="text-[10px] text-gray-500">{row.type}</span></td>
                         <td className="p-3 text-center font-bold text-white">{row.count}</td>
-                        <td className="p-3 text-right font-mono text-gray-300">{row.weight.toFixed(0)}</td>
+                        <td className="p-3 text-right font-mono text-gray-300">{(Number(row.weight) || 0).toFixed(0)}</td>
                       </tr>
                     ))}
                  </tbody>
@@ -1229,10 +1207,11 @@ export default function App() {
              <PaginationControls currentPage={motherPage} totalItems={Object.values(motherStockByCode).length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setMotherPage} />
            </Card>
            
-           <Card className="h-[450px] flex flex-col">
+           {/* Tabela 2: B2 */}
+           <Card className="h-[450px] flex flex-col overflow-hidden">
              <h3 className="font-bold text-gray-200 mb-6 flex items-center gap-2 text-lg"><PieChart className="text-indigo-500"/> Estoque B2</h3>
-             <div className="overflow-y-auto flex-1 pr-2 custom-scrollbar-dark">
-               <table className="w-full text-sm text-left text-gray-300">
+             <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
+               <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
                  <thead className="bg-gray-900/50 text-gray-500 sticky top-0">
                    <tr>
                      <th className="p-3 rounded-l-lg">Código</th>
@@ -1246,9 +1225,9 @@ export default function App() {
                       <tr key={row.code} className="hover:bg-gray-700/30 transition-colors">
                         <td className="p-3 font-medium text-white" title={row.name}>{row.code}</td>
                         <td className="p-3 text-center font-bold text-white">{row.count}</td>
-                        <td className="p-3 text-right font-mono text-gray-300">{row.weight.toFixed(0)}</td>
+                        <td className="p-3 text-right font-mono text-gray-300">{(Number(row.weight) || 0).toFixed(0)}</td>
                         <td className="p-3 text-center">
-                          <button onClick={() => handleViewStockDetails(row.code)} className="p-1 hover:text-white text-gray-400"><Eye size={16}/></button>
+                          <button onClick={() => handleViewStockDetails(row.code)} className="p-2 hover:text-white text-gray-400"><Eye size={18}/></button>
                         </td>
                       </tr>
                     ))}
@@ -1258,10 +1237,11 @@ export default function App() {
              <PaginationControls currentPage={childPage} totalItems={Object.values(childStockByCode).length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setChildPage} />
            </Card>
 
-           <Card className="h-[450px] flex flex-col border-l-4 border-emerald-500/50">
-             <h3 className="font-bold text-gray-200 mb-6 flex items-center gap-2 text-lg"><Package className="text-emerald-500"/> Produto Acabado</h3>
-             <div className="overflow-y-auto flex-1 pr-2 custom-scrollbar-dark">
-               <table className="w-full text-sm text-left text-gray-300">
+           {/* Tabela 3: Produto Acabado */}
+           <Card className="h-[450px] flex flex-col border-l-4 border-emerald-500/50 overflow-hidden">
+             <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2 text-lg"><Package className="text-emerald-500"/> Produto Acabado</h3>
+             <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
+               <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
                  <thead className="bg-gray-900/50 text-gray-500 sticky top-0">
                    <tr>
                      <th className="p-3 rounded-l-lg">Produto</th>
@@ -1281,7 +1261,7 @@ export default function App() {
                         </td>
                         <td className="p-3 text-right font-mono text-emerald-400 font-bold text-lg">{row.count}</td>
                          <td className="p-3 text-center">
-                          <button onClick={() => handleReprintStockBalance(row)} className="p-1 hover:text-white text-gray-400"><Printer size={16}/></button>
+                          <button onClick={() => handleReprintStockBalance(row)} className="p-2 hover:text-white text-gray-400"><Printer size={18}/></button>
                         </td>
                       </tr>
                     ))}
@@ -1306,19 +1286,14 @@ export default function App() {
             <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-amber-500/50 transition-colors">
               <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Importar Backup</h4>
               <div className="flex flex-col gap-4">
-                
-                {/* Botão de Restaurar Backup Completo (JSON) */}
                 <div className="flex items-center gap-2">
-                    <Button variant="info" className="w-9 h-9 p-0 rounded-lg shrink-0 opacity-50 cursor-not-allowed" title="Modelo JSON indisponível (automático)"><FileJson size={16}/></Button>
                     <div className="relative flex-1">
                       <input type="file" accept=".json" className="hidden" ref={importFullBackupRef} onChange={handleFullRestore} />
                       <Button variant="primary" onClick={() => importFullBackupRef.current.click()} className="text-xs w-full justify-start h-9 bg-blue-600 hover:bg-blue-500 text-white font-bold"><Upload size={14} className="mr-2"/> Restaurar Backup Completo (.json)</Button>
                     </div>
                 </div>
-                
                 <div className="border-t border-gray-700 my-2"></div>
                 <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Importar partes (CSV)</p>
-
                 <div className="flex items-center gap-2">
                     <Button variant="info" onClick={() => handleDownloadTemplate('mother')} className="w-9 h-9 p-0 rounded-lg shrink-0" title="Baixar Modelo"><FileInput size={16}/></Button>
                     <div className="relative flex-1">
@@ -1350,29 +1325,33 @@ export default function App() {
 
   // --- RETURN FINAL ---
   return (
-    <div className="flex h-screen bg-[#0f172a] font-sans text-gray-100">
+    <div className="flex h-screen bg-[#0f172a] font-sans text-gray-100 overflow-hidden">
+      
+      {/* Mobile Overlay */}
+      <div className={`fixed inset-0 z-30 bg-black/50 md:hidden ${isSidebarOpen ? 'block' : 'hidden'}`} onClick={() => setSidebarOpen(false)}></div>
+
       {/* Sidebar */}
-      <aside className="w-72 bg-black/40 text-gray-300 flex flex-col border-r border-white/5 shadow-2xl z-20 backdrop-blur-sm">
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-black/90 text-gray-300 flex flex-col border-r border-white/5 shadow-2xl backdrop-blur-sm transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:w-72`}>
         <div className="h-20 flex items-center px-6 border-b border-white/5 font-bold text-xl tracking-wider bg-black/20">
            <div className="w-8 h-8 bg-blue-600 rounded-lg mr-3 shadow-lg flex items-center justify-center"><Factory size={18} className="text-white"/></div>
            <span className="text-white">METALOSA</span>
         </div>
-        <nav className="flex-1 py-8 px-4 space-y-2">
+        <nav className="flex-1 py-8 px-4 space-y-2 overflow-y-auto">
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Principal</p>
-           <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'dashboard' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+           <button onClick={() => { setActiveTab('dashboard'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'dashboard' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <LayoutDashboard size={20} className={activeTab === 'dashboard' ? "text-blue-400" : "group-hover:text-blue-400 transition-colors"}/> <span className="font-medium">Visão Geral</span>
            </button>
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mt-8 mb-4">Operacional</p>
-           <button onClick={() => setActiveTab('mother')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'mother' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+           <button onClick={() => { setActiveTab('mother'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'mother' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <ScrollText size={20} className={activeTab === 'mother' ? "text-blue-400" : "group-hover:text-blue-400 transition-colors"}/> <span className="font-medium">Bobina Mãe</span>
            </button>
-           <button onClick={() => setActiveTab('cutting')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'cutting' ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+           <button onClick={() => { setActiveTab('cutting'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'cutting' ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <Scissors size={20} className={activeTab === 'cutting' ? "text-purple-400" : "group-hover:text-purple-400 transition-colors"}/> <span className="font-medium">Corte Slitter</span>
            </button>
-           <button onClick={() => setActiveTab('production')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'production' ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+           <button onClick={() => { setActiveTab('production'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'production' ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <Factory size={20} className={activeTab === 'production' ? "text-emerald-400" : "group-hover:text-emerald-400 transition-colors"}/> <span className="font-medium">Apontamento</span>
            </button>
-           <button onClick={() => setActiveTab('shipping')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'shipping' ? 'bg-amber-600/20 text-amber-400 border border-amber-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+           <button onClick={() => { setActiveTab('shipping'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'shipping' ? 'bg-amber-600/20 text-amber-400 border border-amber-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <Truck size={20} className={activeTab === 'shipping' ? "text-amber-400" : "group-hover:text-amber-400 transition-colors"}/> <span className="font-medium">Expedição</span>
            </button>
            <div className="mt-8 px-4">
@@ -1385,22 +1364,25 @@ export default function App() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden relative bg-[#111827]">
-         <header className="h-20 bg-[#1f293b] shadow-lg flex items-center justify-between px-8 z-10 border-b border-gray-800">
-            <div>
-              <h2 className="text-2xl font-bold text-white tracking-tight">
-                {activeTab === 'dashboard' && "Dashboard"}
-                {activeTab === 'mother' && "Gestão de Estoque"}
-                {activeTab === 'cutting' && "Processo de Corte"}
-                {activeTab === 'production' && "Apontamento"}
-                {activeTab === 'shipping' && "Expedição / Baixa"}
-              </h2>
-              <p className="text-xs text-gray-500 mt-1 font-medium uppercase tracking-wider">Controle de Produção</p>
+         <header className="h-16 md:h-20 bg-[#1f293b] shadow-lg flex items-center justify-between px-4 md:px-8 z-10 border-b border-gray-800 shrink-0">
+            <div className="flex items-center gap-4">
+              <button className="md:hidden p-2 text-gray-400 hover:text-white" onClick={() => setSidebarOpen(true)}><Menu size={24}/></button>
+              <div>
+                <h2 className="text-lg md:text-2xl font-bold text-white tracking-tight truncate">
+                  {activeTab === 'dashboard' && "Dashboard"}
+                  {activeTab === 'mother' && "Estoque Mãe"}
+                  {activeTab === 'cutting' && "Corte Slitter"}
+                  {activeTab === 'production' && "Apontamento"}
+                  {activeTab === 'shipping' && "Expedição"}
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5 font-medium uppercase tracking-wider hidden md:block">Controle de Produção</p>
+              </div>
             </div>
-            <div className="flex items-center gap-4"><div className="text-right px-4 py-2 bg-gray-800 rounded-lg border border-gray-700"><p className="text-sm font-bold text-gray-300">{new Date().toLocaleDateString()}</p></div></div>
+            <div className="flex items-center gap-4"><div className="text-right px-3 py-1.5 md:px-4 md:py-2 bg-gray-800 rounded-lg border border-gray-700"><p className="text-xs md:text-sm font-bold text-gray-300">{new Date().toLocaleDateString()}</p></div></div>
          </header>
 
-         <main className="flex-1 overflow-y-auto p-8 custom-scrollbar-dark">
-            <div className="max-w-7xl mx-auto">
+         <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar-dark">
+            <div className="max-w-7xl mx-auto pb-20 md:pb-0">
               {activeTab === 'dashboard' && renderDashboard()}
               {activeTab === 'mother' && renderMotherCoilForm()}
               {activeTab === 'cutting' && renderCuttingProcess()}
