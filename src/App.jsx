@@ -252,13 +252,14 @@ export default function App() {
   const [motherCatalog, setMotherCatalog] = useState(INITIAL_MOTHER_CATALOG);
   const [newMotherCoil, setNewMotherCoil] = useState({ 
       code: '', 
+      nf: '', // <--- CAMPO NOVO
       weight: '', 
       material: '', 
       width: '', 
       thickness: '', 
       type: '',
-      entryDate: new Date().toISOString().split('T')[0] // <--- PREENCHE HOJE AUTOMÁTICO (YYYY-MM-DD)
-  });  
+      entryDate: new Date().toISOString().split('T')[0] 
+  });
   const [selectedMotherForCut, setSelectedMotherForCut] = useState('');
   const [motherSearchQuery, setMotherSearchQuery] = useState('');
   const [tempChildCoils, setTempChildCoils] = useState([]);
@@ -934,7 +935,7 @@ export default function App() {
 
   const renderMotherCoilForm = () => (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
-      <div className="lg:co -span-1">
+      <div className="lg:col-span-1">
         <Card className="h-full flex flex-col justify-center">
            <div className="flex flex-col items-center text-center mb-8">
               <div className="w-16 h-16 bg-blue-500/10 text-blue-400 rounded-full flex items-center justify-center mb-4 border border-blue-500/20">
@@ -945,21 +946,20 @@ export default function App() {
            </div>
            
            <div className="space-y-4">
-              {/* --- MUDANÇA AQUI: GRID PARA CÓDIGO E DATA --- */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* --- LINHA 1: CÓDIGO, NF e DATA (3 Colunas) --- */}
+              <div className="grid grid-cols-3 gap-3">
                   <div className="col-span-1">
-                      <Input label="Código Lote" value={newMotherCoil.code} onChange={e => setNewMotherCoil({...newMotherCoil, code: e.target.value})} placeholder="Digite..." />
+                      <Input label="Código Lote" value={newMotherCoil.code} onChange={e => setNewMotherCoil({...newMotherCoil, code: e.target.value})} placeholder="Ex: 10644" />
                   </div>
                   <div className="col-span-1">
-                      <Input 
-                        label="Data de Entrada" 
-                        type="date" 
-                        value={newMotherCoil.entryDate} 
-                        onChange={e => setNewMotherCoil({...newMotherCoil, entryDate: e.target.value})} 
-                      />
+                      <Input label="Nota Fiscal" value={newMotherCoil.nf} onChange={e => setNewMotherCoil({...newMotherCoil, nf: e.target.value})} placeholder="Ex: 12345" />
+                  </div>
+                  <div className="col-span-1">
+                      <Input label="Data Entrada" type="date" value={newMotherCoil.entryDate} onChange={e => setNewMotherCoil({...newMotherCoil, entryDate: e.target.value})} />
                   </div>
               </div>
 
+              {/* --- LINHA 2: PESO e LARGURA --- */}
               <div className="grid grid-cols-2 gap-4">
                 <Input label="Peso (kg)" type="number" value={newMotherCoil.weight} onChange={e => setNewMotherCoil({...newMotherCoil, weight: e.target.value})} />
                 <Input label="Largura (mm)" type="number" value={newMotherCoil.width} onChange={e => setNewMotherCoil({...newMotherCoil, width: e.target.value})} />
@@ -967,6 +967,7 @@ export default function App() {
 
               <Button onClick={addMotherCoil} className="w-full py-3 text-lg shadow-md mt-4">Confirmar Entrada</Button>
               
+              {/* Rodapé de Importação (Mantido igual) */}
               <div className="pt-6 border-t border-gray-700 mt-2">
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-3 text-center">Importação em Lote</label>
                   <div className="grid grid-cols-2 gap-2">
@@ -983,6 +984,8 @@ export default function App() {
            </div>
         </Card>
       </div>
+      
+      {/* Lado Direito (Lista de Entradas) - Mantido igual, só adicionei a NF no visual */}
       <div className="lg:col-span-2 flex flex-col gap-6">
          <Card className="bg-gray-800/80 border-blue-900/30">
             <div className="flex gap-4">
@@ -999,7 +1002,6 @@ export default function App() {
          <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2"><List size={20} className="text-gray-400"/> Entradas Recentes</h3>
             <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar-dark space-y-3 max-h-[calc(100vh-260px)]">
-               {/* AQUI ESTÁ A LISTA INVERTIDA QUE FIZEMOS ANTES */}
                {[...motherCoils].reverse().slice(0, 50).map(coil => (
                  <div key={coil.id} className={`p-4 rounded-xl border flex justify-between items-center transition-all hover:bg-gray-700/50 ${coil.status === 'stock' ? 'bg-gray-900 border-gray-700' : 'bg-gray-800 border-gray-700 opacity-50'}`}>
                    <div>
@@ -1008,8 +1010,10 @@ export default function App() {
                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${coil.status === 'stock' ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-900' : 'bg-gray-800 text-gray-500'}`}>{coil.status === 'stock' ? 'EM ESTOQUE' : 'CONSUMIDA'}</span>
                      </div>
                      <div className="text-sm text-gray-500 mt-1">{coil.type} | {coil.thickness} | {coil.material}</div>
-                     {/* MOSTRANDO A DATA NO CARD TAMBÉM */}
-                     <div className="text-[10px] text-blue-400 mt-1 font-bold">Entrada: {coil.date}</div>
+                     {/* MOSTRANDO A NF NA LISTA TAMBÉM */}
+                     <div className="text-[10px] text-blue-400 mt-1 font-bold">
+                        NF: {coil.nf || '-'} | Entrada: {coil.date}
+                     </div>
                    </div>
                    <div className="flex items-center gap-4">
                      <div className="text-right">
@@ -1030,7 +1034,6 @@ export default function App() {
       </div>
     </div>
   );
-
   const renderCuttingProcess = () => {
     // 1. Filtra as bobinas mães (Com blindagem na busca)
     const availableMothers = motherCoils.filter(m => m.status === 'stock');
@@ -1766,11 +1769,12 @@ export default function App() {
               <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Exportar Dados</h4>
               <div className="flex flex-col gap-2">
                 
-                {/* BOTÃO 1: BOBINAS MÃE (COM ID SISTEMA) */}
+                {/* 1. BOTÃO BOBINAS MÃE (COM NF) */}
                 <Button variant="secondary" onClick={() => {
                     const dataToExport = motherCoils.map(m => ({
                         "ID Rastreio (Sistema)": m.id,
                         "Lote / Código": m.code,
+                        "Nota Fiscal": m.nf || '-', // <--- NOVA COLUNA NO EXCEL
                         "Material": m.material,
                         "Largura (mm)": m.width,
                         "Espessura (mm)": m.thickness,
