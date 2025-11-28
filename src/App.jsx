@@ -372,15 +372,41 @@ export default function App() {
     }
   }, [newMotherCoil.code, motherCatalog]);
 
-  const getUniqueB2Types = (motherType) => {
+  // Função auxiliar para limpar números (troca vírgula por ponto)
+  const parseNum = (val) => {
+      if (!val) return 0;
+      return parseFloat(String(val).replace(',', '.').trim());
+  };
+
+  const getUniqueB2Types = (motherType, motherThickness) => {
     const uniqueMap = new Map();
+    
+    // Converte a espessura da Mãe para número limpo (ex: "1,90" vira 1.9)
+    const targetThick = parseNum(motherThickness);
+
     productCatalog.forEach(p => {
-      if (motherType && p.type && motherType.toUpperCase() !== p.type.toUpperCase()) return;
-      if (!uniqueMap.has(p.b2Code)) uniqueMap.set(p.b2Code, { code: p.b2Code, name: p.b2Name, width: p.width, thickness: p.thickness, type: p.type });
+      // 1. Filtro por TIPO (Ignora se um deles estiver vazio ou for diferente)
+      if (motherType && p.type && String(motherType).trim().toUpperCase() !== String(p.type).trim().toUpperCase()) return;
+
+      // 2. Filtro por ESPESSURA (A Correção do 1,90 vs 1.9)
+      if (motherThickness) {
+          const prodThick = parseNum(p.thickness);
+          // Aceita se a diferença for mínima (para evitar erros de arredondamento)
+          if (Math.abs(prodThick - targetThick) > 0.05) return; 
+      }
+
+      if (!uniqueMap.has(p.b2Code)) {
+          uniqueMap.set(p.b2Code, { 
+              code: p.b2Code, 
+              name: p.b2Name, 
+              width: p.width, 
+              thickness: p.thickness, 
+              type: p.type 
+          });
+      }
     });
     return Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   };
-
   const getFinishedStock = () => {
     const stock = {};
     productionLogs.forEach(log => {
