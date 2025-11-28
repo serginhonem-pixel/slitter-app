@@ -945,7 +945,10 @@ export default function App() {
          <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2"><List size={20} className="text-gray-400"/> Entradas Recentes</h3>
             <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar-dark space-y-3 max-h-[calc(100vh-260px)]">
-               {motherCoils.slice(0, 50).map(coil => (
+               
+               {/* AQUI ESTÁ A ALTERAÇÃO: [...motherCoils].reverse() */}
+               {[...motherCoils].reverse().slice(0, 50).map(coil => (
+                 
                  <div key={coil.id} className={`p-4 rounded-xl border flex justify-between items-center transition-all hover:bg-gray-700/50 ${coil.status === 'stock' ? 'bg-gray-900 border-gray-700' : 'bg-gray-800 border-gray-700 opacity-50'}`}>
                    <div>
                      <div className="font-bold text-gray-200 flex items-center gap-2">
