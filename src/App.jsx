@@ -196,8 +196,30 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil' }) => {
         <div className="print:block w-full flex flex-col items-center">
           {items.map((item, index) => {
             const isProduct = type === 'product' || type === 'product_stock';
-            const name = isProduct ? (item.productName || item.name) : item.b2Name;
-            const code = isProduct ? (item.productCode || item.code) : item.b2Code;
+            
+            // --- CORREÇÃO AQUI: Lógica Inteligente para Nomes e Códigos ---
+            let name = '';
+            let code = '';
+            let labelTitle = '';
+
+            if (isProduct) {
+                name = item.productName || item.name;
+                code = item.productCode || item.code;
+                labelTitle = 'Produto Final';
+            } else {
+                // Tenta pegar dados de B2 (Slitter), se não tiver, pega da Mãe (Matéria Prima)
+                if (item.b2Name) {
+                    name = item.b2Name;
+                    code = item.b2Code;
+                    labelTitle = 'Bobina Slitter';
+                } else {
+                    name = item.material || item.description; // Pega Material da mãe
+                    code = item.code;      // Pega Código da mãe
+                    labelTitle = 'Matéria Prima';
+                }
+            }
+            // -------------------------------------------------------------
+
             const quantity = type === 'product_stock' ? `${item.count} PÇS` : (isProduct ? `${item.pieces} PÇS` : `${item.weight} KG`);
             const date = item.date || new Date().toLocaleDateString();
             const id = item.id || 'ESTOQUE';
@@ -216,12 +238,14 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil' }) => {
                  </div>
                  <div className="flex-1 flex flex-col justify-center gap-2">
                    <div>
-                     <p className="text-xs font-bold uppercase">{isProduct ? 'Produto Final' : 'Bobina Slitter'}</p>
+                     <p className="text-xs font-bold uppercase">{labelTitle}</p>
+                     {/* Aqui vai aparecer a Descrição agora */}
                      <h2 className="text-lg font-bold leading-tight">{name}</h2>
                    </div>
                    <div className="grid grid-cols-1 gap-2 mt-2">
                       <div className="border border-black p-2 text-center">
                         <p className="text-[10px] font-bold uppercase">Código</p>
+                        {/* Aqui vai aparecer o Código agora */}
                         <p className="text-3xl font-black">{code}</p>
                       </div>
                       <div className="border border-black p-2 text-center">
@@ -468,9 +492,16 @@ const EditMotherCoilModal = ({ coil, onClose, onSave }) => {
   );
 };
 // --- MODAL DE DETALHES DO ESTOQUE (COM EXPORTAÇÃO) ---
-const StockDetailsModal = ({ code, coils, onClose, onReprint }) => {
+// --- MODAL DE DETALHES DO ESTOQUE (COM EXPORTAÇÃO) ---
+// --- MODAL DE DETALHES DO ESTOQUE (COM DESCRIÇÃO) ---
+const StockDetailsModal = ({ code, coils, onClose, onReprint, type }) => { 
 
-  // Função para baixar o CSV desta lista específica
+  const isMother = type === 'mother';
+  
+  // Pega a descrição do primeiro item da lista (já que todos são do mesmo código)
+  const description = coils.length > 0 ? (isMother ? coils[0].material : coils[0].b2Name) : '';
+
+  // Função para baixar o CSV
   const handleExport = () => {
     if (!coils || coils.length === 0) return alert("Nada para exportar.");
     
@@ -478,7 +509,8 @@ const StockDetailsModal = ({ code, coils, onClose, onReprint }) => {
         "ID Rastreio": c.id,
         "Data Entrada/Corte": c.date || c.createdAt || '-',
         "Código Item": code,
-        "Origem (Mãe/NF)": c.motherCode || c.nf || '-',
+        "Descrição": isMother ? c.material : c.b2Name, // <--- ADICIONADO NO CSV
+        [isMother ? "Nota Fiscal" : "Origem (Mãe)"]: isMother ? (c.nf || '-') : (c.motherCode || '-'),
         "Peso (kg)": (Number(c.weight) || 0).toFixed(1).replace('.', ','),
         "Status": c.status === 'stock' ? 'EM ESTOQUE' : 'CONSUMIDA'
     }));
@@ -504,7 +536,11 @@ const StockDetailsModal = ({ code, coils, onClose, onReprint }) => {
         <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-900 rounded-t-xl">
           <div>
              <h3 className="text-white font-bold text-lg">Detalhes do Estoque: {code}</h3>
-             <p className="text-sm text-gray-400">{coils.length} bobinas disponíveis</p>
+             
+             {/* --- NOVA LINHA COM A DESCRIÇÃO --- */}
+             <p className="text-emerald-400 font-bold text-sm mb-1">{description}</p>
+             
+             <p className="text-xs text-gray-500">{coils.length} bobinas disponíveis</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20}/></button>
         </div>
@@ -514,8 +550,8 @@ const StockDetailsModal = ({ code, coils, onClose, onReprint }) => {
             <thead className="bg-gray-800 text-gray-400 sticky top-0 shadow-md">
               <tr>
                 <th className="p-3">ID Rastreio</th>
-                <th className="p-3">Data Entrada/Corte</th>
-                <th className="p-3">Origem (Mãe)</th>
+                <th className="p-3">Data {isMother ? 'Entrada' : 'Corte'}</th>
+                <th className="p-3">{isMother ? 'Nota Fiscal' : 'Origem (Mãe)'}</th>
                 <th className="p-3 text-right">Peso (kg)</th>
                 <th className="p-3 text-center">Ação</th>
               </tr>
@@ -528,8 +564,7 @@ const StockDetailsModal = ({ code, coils, onClose, onReprint }) => {
                       {coil.date || coil.createdAt || '-'}
                   </td>
                   <td className="p-3 text-xs text-gray-500">
-                      {/* Mostra a mãe se for B2, ou NF se for Mãe */}
-                      {coil.motherCode || coil.nf || '-'}
+                      {isMother ? (coil.nf || '-') : (coil.motherCode || '-')}
                   </td>
                   <td className="p-3 text-right font-bold text-white">
                       {(Number(coil.weight) || 0).toLocaleString('pt-BR')}
@@ -553,7 +588,6 @@ const StockDetailsModal = ({ code, coils, onClose, onReprint }) => {
                 Total: <strong className="text-white">{coils.reduce((acc, c) => acc + (parseFloat(c.weight)||0), 0).toLocaleString('pt-BR')} kg</strong>
             </span>
             <div className="flex gap-2">
-                {/* --- NOVO BOTÃO AQUI --- */}
                 <Button onClick={handleExport} className="h-8 text-xs bg-emerald-600 hover:bg-emerald-500 text-white border-none">
                     <Download size={14}/> Baixar CSV
                 </Button>
@@ -745,6 +779,7 @@ export default function App() {
   const [shippingLogs, setShippingLogs] = useState([]); 
   const [productCatalog, setProductCatalog] = useState(INITIAL_PRODUCT_CATALOG);
   const [motherCatalog, setMotherCatalog] = useState(INITIAL_MOTHER_CATALOG);
+  const [viewingStockType, setViewingStockType] = useState('b2'); // 'mother' ou 'b2'
   const [newMotherCoil, setNewMotherCoil] = useState({ 
       code: '', 
       nf: '', // <--- CAMPO NOVO
@@ -1425,8 +1460,9 @@ export default function App() {
     return `PROD-${ymd}-${random}`;
   };
 
-  const handleViewStockDetails = (code) => {
+  const handleViewStockDetails = (code, type) => { // <--- Adicionei 'type' aqui
     setViewingStockCode(code);
+    setViewingStockType(type); // <--- Salva se é mãe ou filha
     setStockDetailsModalOpen(true);
   };
 
@@ -2778,8 +2814,13 @@ const renderReports = () => {
       {showPrintModal && <PrintLabelsModal items={itemsToPrint} type={printType} onClose={() => setShowPrintModal(false)} />}
       {stockDetailsModalOpen && viewingStockCode && (
         <StockDetailsModal 
-          code={viewingStockCode} 
-          coils={childCoils.filter(c => c.b2Code === viewingStockCode && c.status === 'stock')}
+          code={viewingStockCode}
+          type={viewingStockType} // <--- ADICIONE ESTA LINHA NOVA
+          coils={
+            viewingStockType === 'mother' 
+              ? motherCoils.filter(c => String(c.code) === String(viewingStockCode) && c.status === 'stock')
+              : childCoils.filter(c => c.b2Code === viewingStockCode && c.status === 'stock')
+          }
           onClose={() => setStockDetailsModalOpen(false)}
           onReprint={handleReprintSingle}
         />
