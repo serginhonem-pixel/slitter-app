@@ -2442,7 +2442,63 @@ const renderReports = () => {
           <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2"><Database className="text-blue-500"/> Backup e Restauração</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-blue-500/50 transition-colors"><h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Exportar Dados</h4><div className="flex flex-col gap-2"><Button variant="secondary" onClick={() => { const data = motherCoils.map(m => ({ "ID Rastreio": m.id, "Lote": m.code, "NF": m.nf||'-', "Material": m.material, "Peso": m.originalWeight, "Status": m.status, "Data": m.date })); exportToCSV(data, 'relatorio_mae'); }} className="text-xs w-full h-9"><Download size={14}/> Bobinas Mãe</Button><Button variant="secondary" onClick={() => { const data = childCoils.map(c => ({ "ID": c.id, "Cód": c.b2Code, "Desc": c.b2Name, "Peso": c.weight, "Status": c.status, "Mãe": c.motherCode })); exportToCSV(data, 'relatorio_b2'); }} className="text-xs w-full h-9"><Download size={14}/> Bobinas 2</Button><Button variant="secondary" onClick={() => { const data = productionLogs.map(l => ({ "Lote": l.id, "Prod": l.productName, "Qtd": l.pieces, "Data": l.date, "Mãe": l.motherCode })); exportToCSV(data, 'relatorio_prod'); }} className="text-xs w-full h-9"><Download size={14}/> Histórico Produção</Button></div></div>
-            <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-amber-500/50 transition-colors"><h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Importar Backup</h4><div className="flex flex-col gap-4"><div className="flex items-center gap-2"><div className="relative flex-1"><input type="file" accept=".json" className="hidden" ref={importFullBackupRef} onChange={handleFullRestore} /><Button variant="primary" onClick={() => importFullBackupRef.current.click()} className="text-xs w-full h-9 bg-blue-600 hover:bg-blue-500 font-bold"><Upload size={14} className="mr-2"/> Restaurar Completo</Button></div></div><div className="border-t border-gray-700 my-2"></div><div className="flex items-center gap-2"><Button variant="info" onClick={() => { const csv = "Codigo;Quantidade Real\n00652B;500"; const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'}); const l = document.createElement("a"); l.href = URL.createObjectURL(blob); l.download = "modelo_inventario.csv"; l.click(); }} className="w-9 h-9 p-0"><FileInput size={16}/></Button><div className="relative flex-1"><input type="file" accept=".csv" className="hidden" ref={importFinishedStockRef} onChange={handleImportFinishedStock} /><Button variant="warning" onClick={() => importFinishedStockRef.current.click()} className="text-xs w-full h-9 bg-purple-900/20 text-purple-400 border-purple-900/50 hover:bg-purple-900/40"><Upload size={14}/> Atualizar Saldo Acabado</Button></div></div></div></div>
+            {/* COLUNA DA DIREITA: IMPORTAR BACKUP */}
+            <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-amber-500/50 transition-colors">
+                <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Importar Backup</h4>
+                
+                <div className="flex flex-col gap-4">
+                    
+                    {/* 1. RESTAURAÇÃO COMPLETA (AZUL) */}
+                    <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                            <input type="file" accept=".json" className="hidden" ref={importFullBackupRef} onChange={handleFullRestore} />
+                            <Button variant="primary" onClick={() => importFullBackupRef.current.click()} className="text-xs w-full h-9 bg-blue-600 hover:bg-blue-500 font-bold">
+                                <Upload size={14} className="mr-2"/> Restaurar Completo
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div className="border-t border-gray-700 my-1"></div>
+
+                    {/* 2. SALDO ACABADO (ROXO - JÁ EXISTIA) */}
+                    <div className="flex items-center gap-2">
+                        <Button variant="info" onClick={() => { const csv = "Codigo;Quantidade Real\n00652B;500"; const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'}); const l = document.createElement("a"); l.href = URL.createObjectURL(blob); l.download = "modelo_inventario.csv"; l.click(); }} className="w-9 h-9 p-0" title="Modelo Inventário">
+                            <FileInput size={16}/>
+                        </Button>
+                        <div className="relative flex-1">
+                            <input type="file" accept=".csv" className="hidden" ref={importFinishedStockRef} onChange={handleImportFinishedStock} />
+                            <Button variant="warning" onClick={() => importFinishedStockRef.current.click()} className="text-xs w-full h-9 bg-purple-900/20 text-purple-400 border-purple-900/50 hover:bg-purple-900/40">
+                                <Upload size={14}/> Atualizar Saldo Acabado
+                            </Button>
+                        </div>
+                    </div>
+
+                    {/* 3. SALDO B2 / SLITTER (NOVO - INSIRA AQUI) */}
+                    <div className="flex items-center gap-2">
+                        <Button variant="info" onClick={() => handleDownloadTemplate('b2')} className="w-9 h-9 p-0" title="Modelo CSV Bobina 2">
+                            <FileJson size={16}/>
+                        </Button>
+                        
+                        <div className="relative flex-1">
+                            <input 
+                                type="file" 
+                                accept=".csv" 
+                                className="hidden" 
+                                ref={importChildStockRef} 
+                                onChange={(e) => handleImportBackup(e, setChildCoils, 'Estoque B2')} 
+                            />
+                            <Button 
+                                variant="secondary" 
+                                onClick={() => importChildStockRef.current.click()} 
+                                className="text-xs w-full h-9 bg-indigo-900/20 text-indigo-400 border-indigo-900/50 hover:bg-indigo-900/40"
+                            >
+                                <Upload size={14}/> Saldo B2 (Slitter)
+                            </Button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
           </div>
         </Card>
       </div>
