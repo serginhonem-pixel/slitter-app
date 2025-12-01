@@ -24,6 +24,8 @@ import { INITIAL_PRODUCT_CATALOG } from './data/productCatalog';
 
 const ITEMS_PER_PAGE = 50;
 
+// --- MODAL DE DETALHES DO ESTOQUE (Cole isso no topo do arquivo) ---
+
 // --- Componentes UI ---
 // ... (daqui pra baixo seu código continua igual)
 
@@ -248,61 +250,6 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil' }) => {
     </div>
   );
 };
-
-const StockDetailsModal = ({ code, coils, onClose, onReprint }) => {
-  return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-3xl max-h-[80vh] flex flex-col shadow-2xl">
-        <div className="p-4 border-b border-gray-700 flex justify-between items-center">
-          <h3 className="text-white font-bold text-lg">Detalhes do Estoque: {code}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20}/></button>
-        </div>
-        <div className="p-4 overflow-y-auto flex-1 custom-scrollbar-dark">
-          <table className="w-full text-sm text-left text-gray-300">
-            <thead className="bg-gray-900 text-gray-400 sticky top-0">
-              <tr><th className="p-2">ID</th><th className="p-2">Data Criação</th><th className="p-2 text-right">Peso (kg)</th><th className="p-2 text-center">Ação</th></tr>
-            </thead>
-            <tbody className="divide-y divide-gray-700">
-              {coils.map(coil => (
-                <tr key={coil.id} className="hover:bg-gray-700/50">
-                  <td className="p-2 font-mono text-xs text-gray-500">{coil.id}</td>
-                  <td className="p-2 text-gray-300">{coil.createdAt || '-'}</td>
-                  <td className="p-2 text-right font-bold text-white">{(Number(coil.weight) || 0).toFixed(0)}</td>
-                  <td className="p-2 text-center">
-                    <button onClick={() => onReprint(coil)} className="p-1.5 bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600 hover:text-white transition-colors" title="Imprimir Etiqueta"><Printer size={16}/></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const EditMotherCoilModal = ({ coil, onClose, onSave }) => {
-  const [editData, setEditData] = useState(coil);
-  return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-md p-6 shadow-2xl">
-        <h3 className="text-white font-bold text-lg mb-4">Editar Bobina Mãe</h3>
-        <div className="space-y-4">
-           <Input label="Código" value={editData.code} onChange={e => setEditData({...editData, code: e.target.value})} />
-           <Input label="Descrição" value={editData.material} onChange={e => setEditData({...editData, material: e.target.value})} />
-           <div className="grid grid-cols-2 gap-4">
-              <Input label="Peso (kg)" type="number" value={editData.weight} onChange={e => setEditData({...editData, weight: parseFloat(e.target.value)})} />
-              <Input label="Largura" type="number" value={editData.width} onChange={e => setEditData({...editData, width: parseFloat(e.target.value)})} />
-           </div>
-           <div className="flex gap-2 mt-4">
-             <Button onClick={() => onSave(editData)} variant="success" className="flex-1">Salvar</Button>
-             <Button onClick={onClose} variant="secondary" className="flex-1">Cancelar</Button>
-           </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 // --- COMPONENTE DO MODAL DE DETALHES (FORA DA FUNÇÃO APP) ---
 const ReportGroupModal = ({ group, onClose }) => {
   const isMP = group.type === 'ENTRADA MP';
@@ -492,6 +439,127 @@ const ProductDetailsModal = ({ data, onClose }) => {
              </table>
         </div>
         <div className="p-3 border-t border-gray-700 bg-gray-900 flex justify-end"><Button variant="secondary" onClick={onClose}>Fechar</Button></div>
+      </div>
+    </div>
+  );
+};
+// --- MODAL DE EDIÇÃO DA BOBINA MÃE ---
+const EditMotherCoilModal = ({ coil, onClose, onSave }) => {
+  const [editData, setEditData] = useState(coil);
+  return (
+    <div className="fixed inset-0 bg-black/80 z-[90] flex items-center justify-center p-4">
+      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-md p-6 shadow-2xl">
+        <h3 className="text-white font-bold text-lg mb-4">Editar Bobina Mãe</h3>
+        <div className="space-y-4">
+           <Input label="Código" value={editData.code} onChange={e => setEditData({...editData, code: e.target.value})} />
+           <Input label="Nota Fiscal" value={editData.nf} onChange={e => setEditData({...editData, nf: e.target.value})} />
+           <Input label="Descrição" value={editData.material} onChange={e => setEditData({...editData, material: e.target.value})} />
+           <div className="grid grid-cols-2 gap-4">
+              <Input label="Peso (kg)" type="number" value={editData.weight} onChange={e => setEditData({...editData, weight: parseFloat(e.target.value)})} />
+              <Input label="Largura" type="number" value={editData.width} onChange={e => setEditData({...editData, width: parseFloat(e.target.value)})} />
+           </div>
+           <div className="flex gap-2 mt-4">
+             <Button onClick={() => onSave(editData)} variant="success" className="flex-1">Salvar</Button>
+             <Button onClick={onClose} variant="secondary" className="flex-1">Cancelar</Button>
+           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+// --- MODAL DE DETALHES DO ESTOQUE (COM EXPORTAÇÃO) ---
+const StockDetailsModal = ({ code, coils, onClose, onReprint }) => {
+
+  // Função para baixar o CSV desta lista específica
+  const handleExport = () => {
+    if (!coils || coils.length === 0) return alert("Nada para exportar.");
+    
+    const dataToExport = coils.map(c => ({
+        "ID Rastreio": c.id,
+        "Data Entrada/Corte": c.date || c.createdAt || '-',
+        "Código Item": code,
+        "Origem (Mãe/NF)": c.motherCode || c.nf || '-',
+        "Peso (kg)": (Number(c.weight) || 0).toFixed(1).replace('.', ','),
+        "Status": c.status === 'stock' ? 'EM ESTOQUE' : 'CONSUMIDA'
+    }));
+
+    const headers = Object.keys(dataToExport[0]).join(';');
+    const csvContent = [
+        headers, 
+        ...dataToExport.map(row => Object.values(row).map(val => `"${val}"`).join(';'))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `detalhe_estoque_${code}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-[90] flex items-center justify-center p-4">
+      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl">
+        <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-900 rounded-t-xl">
+          <div>
+             <h3 className="text-white font-bold text-lg">Detalhes do Estoque: {code}</h3>
+             <p className="text-sm text-gray-400">{coils.length} bobinas disponíveis</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20}/></button>
+        </div>
+        
+        <div className="p-0 overflow-y-auto custom-scrollbar-dark flex-1">
+          <table className="w-full text-sm text-left text-gray-300">
+            <thead className="bg-gray-800 text-gray-400 sticky top-0 shadow-md">
+              <tr>
+                <th className="p-3">ID Rastreio</th>
+                <th className="p-3">Data Entrada/Corte</th>
+                <th className="p-3">Origem (Mãe)</th>
+                <th className="p-3 text-right">Peso (kg)</th>
+                <th className="p-3 text-center">Ação</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700">
+              {coils.map(coil => (
+                <tr key={coil.id} className="hover:bg-gray-700/50">
+                  <td className="p-3 font-mono text-xs text-blue-300">{coil.id}</td>
+                  <td className="p-3 text-xs text-gray-400">
+                      {coil.date || coil.createdAt || '-'}
+                  </td>
+                  <td className="p-3 text-xs text-gray-500">
+                      {/* Mostra a mãe se for B2, ou NF se for Mãe */}
+                      {coil.motherCode || coil.nf || '-'}
+                  </td>
+                  <td className="p-3 text-right font-bold text-white">
+                      {(Number(coil.weight) || 0).toLocaleString('pt-BR')}
+                  </td>
+                  <td className="p-3 text-center">
+                    <button 
+                        onClick={() => onReprint(coil)} 
+                        className="p-1.5 bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600 hover:text-white transition-colors" 
+                        title="Imprimir Etiqueta"
+                    >
+                        <Printer size={16}/>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="p-3 border-t border-gray-700 bg-gray-900 flex justify-between items-center rounded-b-xl">
+            <span className="text-xs text-gray-500">
+                Total: <strong className="text-white">{coils.reduce((acc, c) => acc + (parseFloat(c.weight)||0), 0).toLocaleString('pt-BR')} kg</strong>
+            </span>
+            <div className="flex gap-2">
+                {/* --- NOVO BOTÃO AQUI --- */}
+                <Button onClick={handleExport} className="h-8 text-xs bg-emerald-600 hover:bg-emerald-500 text-white border-none">
+                    <Download size={14}/> Baixar CSV
+                </Button>
+                <Button variant="secondary" onClick={onClose} className="h-8 text-xs">Fechar</Button>
+            </div>
+        </div>
       </div>
     </div>
   );
@@ -2014,6 +2082,72 @@ const renderReports = () => {
       </div>
     );
   };
+  const handleGeneratePDF = (title, data) => {
+    // Cria uma janela popup invisível
+    const printWindow = window.open('', '', 'height=600,width=800');
+    
+    if (!printWindow) return alert("Pop-up bloqueado! Permita pop-ups para gerar o PDF.");
+
+    // Monta o HTML do Relatório
+    const htmlContent = `
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+            h1 { margin: 0; font-size: 24px; }
+            p { margin: 5px 0; font-size: 12px; color: #555; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; font-weight: bold; }
+            .right { text-align: right; }
+            .footer { margin-top: 30px; font-size: 10px; text-align: center; color: #888; border-top: 1px solid #eee; padding-top: 10px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>METALOSA</h1>
+            <p>Relatório de Estoque - ${title}</p>
+            <p>Data de Emissão: ${new Date().toLocaleString()}</p>
+          </div>
+          
+          <table>
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Produto / Descrição</th>
+                <th class="right">Quantidade</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.map(item => `
+                <tr>
+                  <td>${item.code}</td>
+                  <td>${item.name}</td>
+                  <td class="right"><strong>${item.count}</strong></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          
+          <div class="footer">
+            Sistema de Controle de Produção - Metalosa
+          </div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    printWindow.focus();
+    
+    // Espera carregar e manda imprimir
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 500);
+  };
   const renderDashboard = () => {
     // --- 1. PREPARAÇÃO DOS DADOS ---
     
@@ -2075,13 +2209,9 @@ const renderReports = () => {
     const totalMotherWeight = motherCoils.filter(m => m.status === 'stock').reduce((acc, m) => acc + m.weight, 0);
     const totalB2Weight = childCoils.filter(c => c.status === 'stock').reduce((acc, c) => acc + c.weight, 0);
     const totalFinishedCount = finishedStockList.reduce((acc, item) => acc + item.count, 0);
-    
     const tileStockCount = motherCoils.filter(m => m.status === 'stock' && String(m.code) === '10236').length;
     const tileStockWeight = motherCoils.filter(m => m.status === 'stock' && String(m.code) === '10236').reduce((acc, m) => acc + m.weight, 0);
-    
-    const totalScrapAll = 
-        productionLogs.reduce((acc, l) => acc + (parseFloat(l.scrap)||0), 0) + 
-        motherCoils.reduce((acc, m) => acc + (parseFloat(m.cutWaste)||0), 0);
+    const totalScrapAll = productionLogs.reduce((acc, l) => acc + (parseFloat(l.scrap)||0), 0) + motherCoils.reduce((acc, m) => acc + (parseFloat(m.cutWaste)||0), 0);
 
     return (
       <div className="space-y-6">
@@ -2089,57 +2219,48 @@ const renderReports = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
           <Card className="border-l-4 border-blue-500 bg-gray-800 transform transition-transform hover:-translate-y-1">
             <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Estoque Mãe</h3>
-            <div className="flex flex-col">
-              <div className="flex items-end gap-2">
-                 <p className="text-3xl font-bold text-white">{motherCoils.filter(m => m.status === 'stock').length}</p>
-                 <span className="text-sm text-gray-500 mb-1">bobinas</span>
-              </div>
-              <p className="text-sm text-blue-400 font-bold mt-1">{totalMotherWeight.toLocaleString('pt-BR')} kg</p>
-            </div>
+            <div className="flex flex-col"><div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{motherCoils.filter(m => m.status === 'stock').length}</p><span className="text-sm text-gray-500 mb-1">bobinas</span></div><p className="text-sm text-blue-400 font-bold mt-1">{totalMotherWeight.toLocaleString('pt-BR')} kg</p></div>
           </Card>
           <Card className="border-l-4 border-indigo-500 bg-gray-800 transform transition-transform hover:-translate-y-1">
             <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Estoque B2</h3>
-              <div className="flex flex-col">
-                <div className="flex items-end gap-2">
-                  <p className="text-3xl font-bold text-white">{childCoils.filter(c => c.status === 'stock').length}</p>
-                  <span className="text-sm text-gray-500 mb-1">bobinas</span>
-                </div>
-                <p className="text-sm text-indigo-400 font-bold mt-1">{totalB2Weight.toLocaleString('pt-BR')} kg</p>
-            </div>
+            <div className="flex flex-col"><div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{childCoils.filter(c => c.status === 'stock').length}</p><span className="text-sm text-gray-500 mb-1">bobinas</span></div><p className="text-sm text-indigo-400 font-bold mt-1">{totalB2Weight.toLocaleString('pt-BR')} kg</p></div>
           </Card>
           <Card className="border-l-4 border-emerald-500 bg-gray-800 transform transition-transform hover:-translate-y-1">
             <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Estoque Acabado</h3>
-            <div className="flex items-end gap-2">
-              <p className="text-3xl font-bold text-white">{totalFinishedCount}</p>
-              <span className="text-sm text-gray-500 mb-1">peças</span>
-            </div>
+            <div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{totalFinishedCount}</p><span className="text-sm text-gray-500 mb-1">peças</span></div>
           </Card>
           <Card className="border-l-4 border-purple-500 bg-gray-800 transform transition-transform hover:-translate-y-1">
             <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Estoque Telhas (10236)</h3>
-            <div className="flex flex-col">
-              <div className="flex items-end gap-2">
-                 <p className="text-3xl font-bold text-white">{tileStockCount}</p>
-                 <span className="text-sm text-gray-500 mb-1">bobinas</span>
-              </div>
-              <p className="text-sm text-purple-400 font-bold mt-1">{tileStockWeight.toLocaleString('pt-BR')} kg</p>
-            </div>
+            <div className="flex flex-col"><div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{tileStockCount}</p><span className="text-sm text-gray-500 mb-1">bobinas</span></div><p className="text-sm text-purple-400 font-bold mt-1">{tileStockWeight.toLocaleString('pt-BR')} kg</p></div>
           </Card>
           <Card className="border-l-4 border-amber-500 bg-gray-800 transform transition-transform hover:-translate-y-1">
             <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Sucata Total</h3>
-            <div className="flex items-end gap-2">
-              <p className="text-3xl font-bold text-white">{totalScrapAll.toFixed(1)}</p>
-              <span className="text-sm text-gray-500 mb-1">kg</span>
-            </div>
+            <div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{totalScrapAll.toFixed(1)}</p><span className="text-sm text-gray-500 mb-1">kg</span></div>
           </Card>
         </div>
 
         {/* --- TABELAS --- */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
            
-           {/* TABELA 1: MÃE */}
+           {/* TABELA 1: MÃE (COM CSV E PDF) */}
            <Card className="h-[500px] flex flex-col overflow-hidden col-span-1 lg:col-span-1">
              <div className="mb-4">
-                 <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-blue-500"/> Estoque Mãe</h3>
+                 <div className="flex justify-between items-center mb-2">
+                     <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-blue-500"/> Estoque Mãe</h3>
+                     <div className="flex gap-2">
+                        {/* PDF */}
+                        <Button variant="secondary" onClick={() => {
+                            const data = filteredMotherList.map(i => ({ code: i.code, name: `${i.material} (${i.width}mm)`, count: `${i.count} bob (${i.weight}kg)` }));
+                            handleGeneratePDF('Estoque Bobina Mãe', data);
+                        }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button>
+                        
+                        {/* CSV */}
+                        <Button variant="secondary" onClick={() => {
+                            const data = filteredMotherList.map(i => ({ "Código": i.code, "Material": i.material, "Largura": i.width, "Qtd Bobinas": i.count, "Peso Total (kg)": i.weight }));
+                            exportToCSV(data, 'saldo_estoque_mae');
+                        }} className="h-8 text-xs bg-blue-900/20 text-blue-400 border-blue-900/50 hover:bg-blue-900/40"><Download size={14}/> CSV</Button>
+                     </div>
+                 </div>
                  <div className="relative">
                     <Search className="absolute left-2 top-2 text-gray-500" size={14}/>
                     <input type="text" placeholder="Buscar..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-blue-500 outline-none" value={dashSearchMother} onChange={e => setDashSearchMother(e.target.value)} />
@@ -2147,25 +2268,41 @@ const renderReports = () => {
              </div>
              <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
                <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
-                 <thead className="bg-gray-900/50 text-gray-500 sticky top-0"><tr><th className="p-2 rounded-l-lg">Bobina / Material</th><th className="p-2 text-center">Larg.</th><th className="p-2 text-center">Qtd</th><th className="p-2 text-right rounded-r-lg">Peso</th></tr></thead>
+                 <thead className="bg-gray-900/50 text-gray-500 sticky top-0"><tr><th className="p-2 rounded-l-lg">Bobina / Material</th><th className="p-2 text-center">Larg.</th><th className="p-2 text-center">Qtd</th><th className="p-2 text-right rounded-r-lg">Peso</th><th className="p-2 text-center">Ver</th></tr></thead>
                  <tbody className="divide-y divide-gray-700/50">
                     {paginatedMotherStock.map((row, idx) => (
                       <tr key={idx} className="hover:bg-gray-700/30 transition-colors">
                         <td className="p-3 align-top"><div className="font-bold text-white text-base">{row.code}</div><div className="text-[10px] text-gray-400 leading-tight mt-0.5 max-w-[180px]" title={row.material}>{row.material}</div><div className="text-[9px] text-blue-500 font-bold mt-1 inline-block border border-blue-900/50 px-1 rounded bg-blue-900/20">{row.type}</div></td>
                         <td className="p-3 text-center text-white align-top font-bold pt-4">{row.width}</td><td className="p-3 text-center font-bold text-white align-top pt-4">{row.count}</td><td className="p-3 text-right font-mono text-gray-300 align-top pt-4">{(Number(row.weight) || 0).toLocaleString('pt-BR')}</td>
+                        <td className="p-3 text-center align-top pt-3"><button onClick={() => handleViewStockDetails(row.code, 'mother')} className="p-2 hover:text-blue-400 text-gray-400 transition-colors"><Eye size={18}/></button></td>
                       </tr>
                     ))}
-                    {paginatedMotherStock.length === 0 && <tr><td colSpan="4" className="text-center p-4 text-gray-500 text-xs">Nada encontrado.</td></tr>}
+                    {paginatedMotherStock.length === 0 && <tr><td colSpan="5" className="text-center p-4 text-gray-500 text-xs">Nada encontrado.</td></tr>}
                  </tbody>
                </table>
              </div>
              <PaginationControls currentPage={motherPage} totalItems={filteredMotherList.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setMotherPage} />
            </Card>
            
-           {/* TABELA 2: B2 */}
+           {/* TABELA 2: B2 (COM CSV E PDF) */}
            <Card className="h-[500px] flex flex-col overflow-hidden">
              <div className="mb-4">
-                 <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-indigo-500"/> Estoque B2</h3>
+                 <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-indigo-500"/> Estoque B2</h3>
+                    <div className="flex gap-2">
+                        {/* PDF */}
+                        <Button variant="secondary" onClick={() => {
+                            const data = filteredB2List.map(i => ({ code: i.code, name: i.name, count: `${i.count} bob (${i.weight}kg)` }));
+                            handleGeneratePDF('Estoque Bobina 2 (Slitter)', data);
+                        }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button>
+
+                        {/* CSV */}
+                        <Button variant="secondary" onClick={() => {
+                            const data = filteredB2List.map(i => ({ "Código": i.code, "Descrição": i.name, "Tipo": i.type, "Qtd Bobinas": i.count, "Peso Total (kg)": i.weight }));
+                            exportToCSV(data, 'saldo_estoque_b2');
+                        }} className="h-8 text-xs bg-indigo-900/20 text-indigo-400 border-indigo-900/50 hover:bg-indigo-900/40"><Download size={14}/> CSV</Button>
+                    </div>
+                 </div>
                  <div className="relative"><Search className="absolute left-2 top-2 text-gray-500" size={14}/><input type="text" placeholder="Buscar..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-indigo-500 outline-none" value={dashSearchB2} onChange={e => setDashSearchB2(e.target.value)} /></div>
              </div>
              <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
@@ -2174,7 +2311,7 @@ const renderReports = () => {
                  <tbody className="divide-y divide-gray-700/50">
                     {paginatedChildStock.map(row => (
                       <tr key={row.code} className="hover:bg-gray-700/30 transition-colors">
-                        <td className="p-3 font-medium text-white" title={row.name}>{row.code}</td><td className="p-3 text-center font-bold text-white">{row.count}</td><td className="p-3 text-right font-mono text-gray-300">{(Number(row.weight) || 0).toFixed(0)}</td><td className="p-3 text-center"><button onClick={() => handleViewStockDetails(row.code)} className="p-2 hover:text-white text-gray-400"><Eye size={18}/></button></td>
+                        <td className="p-3 font-medium text-white" title={row.name}>{row.code}</td><td className="p-3 text-center font-bold text-white">{row.count}</td><td className="p-3 text-right font-mono text-gray-300">{(Number(row.weight) || 0).toFixed(0)}</td><td className="p-3 text-center"><button onClick={() => handleViewStockDetails(row.code, 'b2')} className="p-2 hover:text-white text-gray-400"><Eye size={18}/></button></td>
                       </tr>
                     ))}
                     {paginatedChildStock.length === 0 && <tr><td colSpan="4" className="text-center p-4 text-gray-500 text-xs">Nada encontrado.</td></tr>}
@@ -2184,18 +2321,21 @@ const renderReports = () => {
              <PaginationControls currentPage={childPage} totalItems={filteredB2List.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setChildPage} />
            </Card>
 
-           {/* TABELA 3: ACABADO (COM BOTÃO DE DOWNLOAD NO CABEÇALHO) */}
+           {/* TABELA 3: ACABADO (COM CSV E PDF) */}
            <Card className="h-[500px] flex flex-col border-l-4 border-emerald-500/50 overflow-hidden">
              <div className="mb-4">
                  <div className="flex justify-between items-center mb-2">
                      <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg"><Package className="text-emerald-500"/> Produto Acabado</h3>
-                     {/* BOTÃO DE EXPORTAR */}
-                     <Button variant="secondary" onClick={() => {
-                        const data = filteredFinishedList.map(i => ({ "Código": i.code, "Produto": i.name, "Saldo Atual": i.count }));
-                        exportToCSV(data, 'saldo_produto_acabado');
-                     }} className="h-8 text-xs bg-emerald-900/20 text-emerald-400 border-emerald-900/50 hover:bg-emerald-900/40">
-                        <Download size={14}/> CSV
-                     </Button>
+                     <div className="flex gap-2">
+                        <Button variant="secondary" onClick={() => {
+                            const data = filteredFinishedList.map(i => ({ code: i.code, name: i.name, count: i.count }));
+                            handleGeneratePDF('Produto Acabado', data);
+                        }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button>
+                        <Button variant="secondary" onClick={() => {
+                            const data = filteredFinishedList.map(i => ({ "Código": i.code, "Produto": i.name, "Saldo Atual": i.count }));
+                            exportToCSV(data, 'saldo_produto_acabado');
+                        }} className="h-8 text-xs bg-emerald-900/20 text-emerald-400 border-emerald-900/50 hover:bg-emerald-900/40" title="Baixar CSV"><Download size={14}/> CSV</Button>
+                     </div>
                  </div>
                  <div className="relative"><Search className="absolute left-2 top-2 text-gray-500" size={14}/><input type="text" placeholder="Buscar produto..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-emerald-500 outline-none" value={dashSearchFinished} onChange={e => setDashSearchFinished(e.target.value)} /></div>
              </div>
@@ -2218,12 +2358,11 @@ const renderReports = () => {
            </Card>
         </div>
         
-        {/* EXPORTAÇÃO E BACKUP (Mantido) */}
+        {/* --- CARD DE BACKUP E RESTAURAÇÃO (MANTIDO) --- */}
+        {/* ... (A parte do backup continua igual, não precisa mexer) ... */}
         <Card className="border-gray-700">
           <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2"><Database className="text-blue-500"/> Backup e Restauração</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* ... (O bloco de backup continua igual, não alterei para não quebrar o que já funcionava) ... */}
-            {/* Copie o bloco de backup da sua versão anterior ou me peça se precisar dele completo de novo */}
             <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-blue-500/50 transition-colors"><h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Exportar Dados</h4><div className="flex flex-col gap-2"><Button variant="secondary" onClick={() => { const data = motherCoils.map(m => ({ "ID Rastreio": m.id, "Lote": m.code, "NF": m.nf||'-', "Material": m.material, "Peso": m.originalWeight, "Status": m.status, "Data": m.date })); exportToCSV(data, 'relatorio_mae'); }} className="text-xs w-full h-9"><Download size={14}/> Bobinas Mãe</Button><Button variant="secondary" onClick={() => { const data = childCoils.map(c => ({ "ID": c.id, "Cód": c.b2Code, "Desc": c.b2Name, "Peso": c.weight, "Status": c.status, "Mãe": c.motherCode })); exportToCSV(data, 'relatorio_b2'); }} className="text-xs w-full h-9"><Download size={14}/> Bobinas 2</Button><Button variant="secondary" onClick={() => { const data = productionLogs.map(l => ({ "Lote": l.id, "Prod": l.productName, "Qtd": l.pieces, "Data": l.date, "Mãe": l.motherCode })); exportToCSV(data, 'relatorio_prod'); }} className="text-xs w-full h-9"><Download size={14}/> Histórico Produção</Button></div></div>
             <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-amber-500/50 transition-colors"><h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Importar Backup</h4><div className="flex flex-col gap-4"><div className="flex items-center gap-2"><div className="relative flex-1"><input type="file" accept=".json" className="hidden" ref={importFullBackupRef} onChange={handleFullRestore} /><Button variant="primary" onClick={() => importFullBackupRef.current.click()} className="text-xs w-full h-9 bg-blue-600 hover:bg-blue-500 font-bold"><Upload size={14} className="mr-2"/> Restaurar Completo</Button></div></div><div className="border-t border-gray-700 my-2"></div><div className="flex items-center gap-2"><Button variant="info" onClick={() => { const csv = "Codigo;Quantidade Real\n00652B;500"; const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'}); const l = document.createElement("a"); l.href = URL.createObjectURL(blob); l.download = "modelo_inventario.csv"; l.click(); }} className="w-9 h-9 p-0"><FileInput size={16}/></Button><div className="relative flex-1"><input type="file" accept=".csv" className="hidden" ref={importFinishedStockRef} onChange={handleImportFinishedStock} /><Button variant="warning" onClick={() => importFinishedStockRef.current.click()} className="text-xs w-full h-9 bg-purple-900/20 text-purple-400 border-purple-900/50 hover:bg-purple-900/40"><Upload size={14}/> Atualizar Saldo Acabado</Button></div></div></div></div>
           </div>
