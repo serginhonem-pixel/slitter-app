@@ -564,6 +564,53 @@ const StockDetailsModal = ({ code, coils, onClose, onReprint }) => {
     </div>
   );
 };
+// --- FUNÇÃO DE GERAR PDF (COLE FORA DA FUNÇÃO APP) ---
+const handleGeneratePDF = (title, data) => {
+  const printWindow = window.open('', '_blank', 'height=800,width=1000');
+  if (!printWindow) return alert("Erro: O navegador bloqueou a janela. Permita pop-ups.");
+
+  const htmlContent = `
+    <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body { font-family: sans-serif; padding: 20px; }
+          h1 { text-align: center; font-size: 20px; margin-bottom: 10px; }
+          p { text-align: center; font-size: 12px; color: #666; margin-bottom: 20px; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+          th { background-color: #f2f2f2; }
+          .right { text-align: right; }
+        </style>
+      </head>
+      <body>
+        <h1>METALOSA - ${title}</h1>
+        <p>Emissão: ${new Date().toLocaleString()}</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Produto / Descrição</th>
+              <th class="right">Quantidade / Detalhes</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data.map(item => `
+              <tr>
+                <td><strong>${item.code}</strong></td>
+                <td>${item.name}</td>
+                <td class="right">${item.count}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </body>
+    </html>
+  `;
+
+  printWindow.document.write(htmlContent);
+  printWindow.document.close();
+};
 export default function App() {
   const [viewingCutLog, setViewingCutLog] = useState(null); // Para abrir o modal de detalhes do corte
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -1140,16 +1187,47 @@ export default function App() {
   };
 
   const handleFullBackup = () => {
-    const data = { motherCoils, childCoils, productionLogs, shippingLogs, productCatalog, motherCatalog };
-    const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `backup_metalosa_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+    try {
+      // 1. Prepara e Baixa o Arquivo (Isso já está funcionando)
+      const data = { 
+        motherCoils: motherCoils || [], 
+        childCoils: childCoils || [], 
+        productionLogs: productionLogs || [], 
+        shippingLogs: shippingLogs || [], 
+        productCatalog: productCatalog || [], 
+        motherCatalog: motherCatalog || [] 
+      };
+      
+      const fileName = `backup_metalosa_${new Date().toISOString().split('T')[0]}.json`;
+      const jsonString = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonString], {type: "application/json"});
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
 
+      // 2. Prepara o Link do Gmail
+      const recipients = "pcp@metalosa.com.br,pcp5@metalosa.com.br,pcp3@metalosa.com.br";
+      const subject = `Backup Sistema Metalosa - ${new Date().toLocaleDateString()}`;
+      const body = `Backup realizado com sucesso.\n\nO arquivo foi salvo na rede em: Z:\\PCP\\Coord PCP\\BDPCP\\saves-app\n\nFavor utilizar o último save.`;
+      
+      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${recipients}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+      // 3. Dá um tempinho para o download terminar e pergunta
+      setTimeout(() => {
+          if (window.confirm("Backup baixado com sucesso!\n\nClique em OK para abrir o Gmail e avisar a equipe.")) {
+              window.open(gmailUrl, '_blank');
+          }
+      }, 500);
+
+    } catch (error) {
+      alert("Erro ao gerar backup: " + error.message);
+    }
+  };
   const handleFullRestore = (e) => {
     const file = e.target.files[0];
     if (!file) return;
