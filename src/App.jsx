@@ -823,7 +823,9 @@ export default function App() {
   const [reportEndDate, setReportEndDate] = useState(new Date().toISOString().split('T')[0]);   // Hoje
   const [reportSearch, setReportSearch] = useState('');
   const [viewingProdDetails, setViewingProdDetails] = useState(null); // <--- ADICIONE ESSA LINHA
-
+// ... outros states
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [selectedGroupData, setSelectedGroupData] = useState(null);
 
   const [productionDate, setProductionDate] = useState(new Date().toISOString().split('T')[0]);
   useEffect(() => {
@@ -1889,9 +1891,39 @@ export default function App() {
     });
 
     const uniqueTypes = [...new Set(childCoils.map(c => c.type).filter(Boolean))];
-    const paginatedLogs = productionLogs.slice((logsPage - 1) * ITEMS_PER_PAGE, logsPage * ITEMS_PER_PAGE);
 
-    // Totais visuais
+    // --- NOVA LÓGICA DE AGRUPAMENTO ---
+    const groupedLogs = productionLogs.reduce((acc, log) => {
+        const code = log.productCode;
+        if (!acc[code]) {
+            acc[code] = {
+                productCode: code,
+                productName: log.productName,
+                totalPieces: 0,
+                logs: [],
+                lastDate: log.date,
+                lastTimestamp: log.timestamp || log.date // Para ordenação
+            };
+        }
+        acc[code].totalPieces += Number(log.pieces);
+        acc[code].logs.push(log);
+        // Mantém a data mais recente
+        if (new Date(log.timestamp || log.date) > new Date(acc[code].lastTimestamp)) {
+            acc[code].lastDate = log.date;
+            acc[code].lastTimestamp = log.timestamp || log.date;
+        }
+        return acc;
+    }, {});
+
+    // Transforma em array e ordena pelo movimento mais recente
+    const groupedList = Object.values(groupedLogs).sort((a, b) => {
+        return new Date(b.lastTimestamp) - new Date(a.lastTimestamp);
+    });
+
+    // Paginação aplicada aos GRUPOS agora
+    const paginatedGroups = groupedList.slice((logsPage - 1) * ITEMS_PER_PAGE, logsPage * ITEMS_PER_PAGE);
+
+    // Totais visuais (Mantido igual)
     const totalInputWeight = selectedInputCoils.reduce((acc, c) => acc + c.weight, 0);
     const totalPcs = parseInt(totalProducedPieces) || 0;
     const packStd = parseInt(standardPackSize) || totalPcs || 1;
@@ -1934,7 +1966,6 @@ export default function App() {
                         if (coilToAdd) {
                              const newList = [...selectedInputCoils, coilToAdd];
                              setSelectedInputCoils(newList);
-                             // Auto-seleciona produto se for a primeira bobina
                              if (newList.length === 1) {
                                  const match = productCatalog.find(p => String(p.b2Code) === String(coilToAdd.b2Code));
                                  if (match) setSelectedProductCode(match.code);
@@ -1971,7 +2002,6 @@ export default function App() {
                             onChange={e => setSelectedProductCode(e.target.value)}
                           >
                             <option value="">Selecione...</option>
-                            {/* --- CORREÇÃO AQUI: MOSTRA CÓDIGO E NOME DO PRODUTO --- */}
                             {productCatalog.map(p => (
                                 <option key={p.code} value={p.code}>
                                     {p.code} - {p.name}
@@ -1980,15 +2010,9 @@ export default function App() {
                           </select>
                         </div>
 
-                        {/* GRID DE INPUTS */}
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                           <div className="col-span-1">
-                              <Input 
-                                label="Data Produção" 
-                                type="date" 
-                                value={productionDate} 
-                                onChange={e => setProductionDate(e.target.value)} 
-                              />
+                              <Input label="Data Produção" type="date" value={productionDate} onChange={e => setProductionDate(e.target.value)} />
                           </div>
                           <div className="col-span-1">
                               <Input label="Total Produzido" type="number" placeholder="Ex: 486" value={totalProducedPieces} onChange={e => setTotalProducedPieces(e.target.value)} />
@@ -2001,21 +2025,12 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* PRÉVIA VISUAL */}
                         {totalPcs > 0 && (
                             <div className="bg-blue-900/20 p-3 rounded-lg border border-blue-900/50">
                                 <p className="text-xs text-blue-300 font-bold uppercase mb-2">Simulação de Etiquetas:</p>
                                 <div className="flex flex-wrap gap-2">
-                                    {fullPacks > 0 && (
-                                        <div className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold flex items-center shadow-lg">
-                                            {fullPacks}x pacotes de {packStd} pçs
-                                        </div>
-                                    )}
-                                    {rest > 0 && (
-                                        <div className="bg-amber-600 text-white px-2 py-1 rounded text-xs font-bold flex items-center shadow-lg">
-                                            + 1x pacote de {rest} pçs (Sobra)
-                                        </div>
-                                    )}
+                                    {fullPacks > 0 && <div className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold flex items-center shadow-lg">{fullPacks}x pacotes de {packStd} pçs</div>}
+                                    {rest > 0 && <div className="bg-amber-600 text-white px-2 py-1 rounded text-xs font-bold flex items-center shadow-lg">+ 1x pacote de {rest} pçs (Sobra)</div>}
                                 </div>
                             </div>
                         )}
@@ -2029,32 +2044,48 @@ export default function App() {
            </Card>
         </div>
 
-        {/* --- HISTÓRICO LATERAL --- */}
+        {/* --- HISTÓRICO LATERAL AGRUPADO --- */}
         <div className="lg:col-span-5 h-full">
            <Card className="h-full flex flex-col bg-gray-900 border-gray-800">
-             <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-white flex items-center gap-2"><History size={20} className="text-emerald-500"/> Últimos Lotes</h3></div>
+             <div className="flex justify-between items-center mb-6">
+                <h3 className="font-bold text-white flex items-center gap-2"><History size={20} className="text-emerald-500"/> Produção Recente</h3>
+             </div>
                 <div className="flex-1 min-h-0 overflow-y-auto pr-2 custom-scrollbar-dark space-y-3">
-                 {paginatedLogs.map(log => (
-                 <div key={log.id} className="bg-gray-800 p-4 rounded-xl border border-gray-700 hover:bg-gray-700/80 transition-colors group">
-                   <div className="flex justify-between mb-2">
-                       <span className="text-[10px] text-gray-500">{log.id}</span>
-                       <div className="flex gap-2">
-                           <span className="text-[10px] text-gray-400">{log.date}</span>
-                           {log.packIndex && <span className="text-[10px] bg-blue-900 text-blue-200 px-1 rounded">{log.packIndex.includes('Vol') ? log.packIndex : `Vol. ${log.packIndex}`}</span>}
-                       </div>
+                 {paginatedGroups.length === 0 ? <div className="text-gray-500 text-center py-4">Nenhum registro.</div> : paginatedGroups.map(group => (
+                 <div key={group.productCode} className="bg-gray-800 p-4 rounded-xl border border-gray-700 hover:bg-gray-700/80 transition-colors">
+                   
+                   <div className="flex justify-between mb-1">
+                       <span className="text-[10px] text-emerald-400 font-mono font-bold">{group.productCode}</span>
+                       <span className="text-[10px] text-gray-400">{group.lastDate}</span>
                    </div>
-                   <p className="font-bold text-gray-200 text-sm mb-1">{log.productName}</p>
-                   <div className="flex justify-between items-end">
-                      <div className="flex gap-3 text-xs"><div><span className="block text-gray-500 text-[10px] uppercase">Qtd</span><span className="text-emerald-400 font-bold text-lg">{log.pieces}</span></div></div>
-                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                         <button onClick={() => handleReprintProduct(log)} className="p-1.5 bg-gray-700 text-gray-300 rounded"><Printer size={14}/></button>
-                         <button onClick={() => handleDeleteLog(log.id)} className="p-1.5 bg-red-900/30 text-red-400 rounded"><Trash2 size={14}/></button>
+                   
+                   <p className="font-bold text-gray-200 text-sm mb-2 truncate" title={group.productName}>{group.productName}</p>
+                   
+                   <div className="flex justify-between items-center bg-gray-900/50 p-2 rounded-lg border border-gray-700/50">
+                      <div className="flex flex-col">
+                          <span className="text-[10px] text-gray-500 uppercase">Total Produzido</span>
+                          <span className="text-emerald-400 font-bold text-lg">{group.totalPieces} <span className="text-xs font-normal text-gray-500">pçs</span></span>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                         <div className="text-right mr-2">
+                            <span className="block text-[10px] text-gray-500 uppercase">Lotes</span>
+                            <span className="font-bold text-white text-sm">{group.logs.length}</span>
+                         </div>
+                         <Button 
+                            onClick={() => { setSelectedGroupData({code: group.productCode, name: group.productName}); setShowHistoryModal(true); }} 
+                            variant="secondary" 
+                            className="h-8 px-3 text-xs"
+                         >
+                            <List size={14} className="mr-1"/> Detalhes
+                         </Button>
                       </div>
                    </div>
+
                  </div>
                ))}
              </div>
-             <PaginationControls currentPage={logsPage} totalItems={productionLogs.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setLogsPage} />
+             <PaginationControls currentPage={logsPage} totalItems={groupedList.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setLogsPage} />
            </Card>
         </div>
       </div>
@@ -2782,6 +2813,14 @@ const renderReports = () => {
         <ProductDetailsModal 
             data={viewingProdDetails} 
             onClose={() => setViewingProdDetails(null)} 
+        />
+      )}
+      {showHistoryModal && selectedGroupData && (
+        <ProductHistoryModal 
+          product={selectedGroupData} 
+          logs={productionLogs} 
+          onClose={() => setShowHistoryModal(false)}
+          onReprint={handleReprintProduct}
         />
       )}
     </div>    
