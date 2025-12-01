@@ -611,6 +611,131 @@ const handleGeneratePDF = (title, data) => {
   printWindow.document.write(htmlContent);
   printWindow.document.close();
 };
+// --- FUNÇÃO DE INVENTÁRIO (BOBINA MÃE) ---
+  const handleMotherInventory = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target.result;
+        const delimiter = text.includes(';') ? ';' : ',';
+        const rows = parseCSVLine(text, delimiter);
+        
+        // Pula cabeçalho se existir e filtra linhas inválidas
+        const dataRows = rows.slice(1).filter(r => r.length >= 2 && r[0]);
+
+        // 1. Agrupa o Inventário Físico (CSV)
+        const inventoryMap = {}; 
+        dataRows.forEach(row => {
+             const rawCode = String(row[0] || '').trim();
+             // Limpa peso (1.200,50 -> 1200.50)
+             let weightStr = String(row[1] || '').replace(/\./g, '').replace(',', '.');
+             const weight = parseFloat(weightStr);
+
+             if (rawCode && !isNaN(weight)) {
+                 inventoryMap[rawCode] = (inventoryMap[rawCode] || 0) + weight;
+             }
+        });
+
+        let newMotherCoils = [...motherCoils];
+        let newCuttingLogs = [...cuttingLogs];
+        const dateNow = new Date().toLocaleDateString(); // DD/MM/YYYY
+        
+        let adjustedCount = 0;
+        let diffTotal = 0;
+
+        // 2. Processa cada Código do CSV
+        Object.keys(inventoryMap).forEach(code => {
+            const realWeight = inventoryMap[code];
+
+            // Busca bobinas ativas desse código no sistema
+            const systemCoils = newMotherCoils.filter(m => String(m.code) === code && m.status === 'stock');
+            const systemWeight = systemCoils.reduce((acc, m) => acc + (parseFloat(m.remainingWeight) || 0), 0);
+
+            const diff = realWeight - systemWeight;
+
+            // Se a diferença for muito pequena (ex: gramas), ignora
+            if (Math.abs(diff) < 0.1) return;
+
+            // Busca metadados (Nome, Espessura) para criar registros novos se precisar
+            let meta = systemCoils[0] || motherCatalog.find(m => String(m.code) === code) || { material: 'AJUSTE INVENTÁRIO', thickness: '-', type: 'AJUSTE', width: 0 };
+
+            if (diff > 0) {
+                // --- SOBRA FÍSICA (ENTRADA DE AJUSTE) ---
+                newMotherCoils.push({
+                    id: `INV-ENT-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+                    code: code,
+                    nf: 'INVENTARIO',
+                    material: meta.material,
+                    weight: diff,
+                    originalWeight: diff,
+                    remainingWeight: diff,
+                    width: meta.width || 0,
+                    thickness: meta.thickness,
+                    type: meta.type,
+                    status: 'stock',
+                    date: dateNow,
+                    isAdjustment: true
+                });
+            } else {
+                // --- FALTA FÍSICA (SAÍDA/CONSUMO DE AJUSTE) ---
+                let weightToDeduct = Math.abs(diff);
+                
+                // Consome das bobinas existentes (da mais antiga para a mais nova ou vice-versa)
+                // Aqui vamos iterar sobre as bobinas do sistema e baixar o saldo
+                for (let coil of systemCoils) {
+                    if (weightToDeduct <= 0) break;
+
+                    const current = parseFloat(coil.remainingWeight);
+                    let deduction = 0;
+
+                    if (current <= weightToDeduct) {
+                        // Consome a bobina toda
+                        deduction = current;
+                        coil.remainingWeight = 0;
+                        coil.status = 'consumed';
+                        coil.consumptionDetail = 'AJUSTE INVENTÁRIO';
+                        coil.consumedDate = dateNow;
+                    } else {
+                        // Consome parcial
+                        deduction = weightToDeduct;
+                        coil.remainingWeight = current - deduction;
+                    }
+                    
+                    weightToDeduct -= deduction;
+                }
+
+                // Gera log de corte/consumo para constar no relatório
+                newCuttingLogs.push({
+                    id: `INV-SAI-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+                    date: dateNow,
+                    motherCode: code,
+                    motherMaterial: meta.material,
+                    inputWeight: Math.abs(diff), // O quanto sumiu
+                    outputCount: 0,
+                    scrap: Math.abs(diff), // Consideramos como perda/sucata para fechar a conta
+                    generatedItems: 'AJUSTE DE INVENTÁRIO',
+                    timestamp: new Date().toLocaleString()
+                });
+            }
+            adjustedCount++;
+            diffTotal += diff;
+        });
+
+        setMotherCoils(newMotherCoils);
+        setCuttingLogs(newCuttingLogs);
+        
+        alert(`Inventário Processado!\n\nItens Ajustados: ${adjustedCount}\nDiferença de Peso Total: ${diffTotal.toFixed(1)} kg`);
+        e.target.value = ''; // Limpa input
+
+      } catch (error) {
+        alert("Erro ao processar inventário: " + error.message);
+      }
+    };
+    reader.readAsText(file);
+  };
 export default function App() {
   const [viewingCutLog, setViewingCutLog] = useState(null); // Para abrir o modal de detalhes do corte
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -666,7 +791,7 @@ export default function App() {
   const [finishedPage, setFinishedPage] = useState(1);
   const [logsPage, setLogsPage] = useState(1);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
-
+  const inventoryMotherRef = useRef(null); // <--- ADICIONE ISSO
   const fileInputMotherRef = useRef(null);
   const importMotherStockRef = useRef(null);
   const importChildStockRef = useRef(null);
@@ -2459,6 +2584,32 @@ const renderReports = () => {
                     </div>
 
                     <div className="border-t border-gray-700 my-1"></div>
+                    {/* 2. SALDO MÃE (Backup + Inventário) */}
+                    <div className="flex items-center gap-2">
+                        {/* Botão Modelo CSV */}
+                        <Button variant="info" onClick={() => { const csv = "Codigo;Peso Real\n10644;5200.50\n10591;2000"; const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'}); const l = document.createElement("a"); l.href = URL.createObjectURL(blob); l.download = "modelo_inventario_mae.csv"; l.click(); }} className="w-9 h-9 p-0" title="Modelo Inventário Mãe">
+                            <FileInput size={16}/>
+                        </Button>
+                        
+                        {/* Grupo de Importação */}
+                        <div className="relative flex-1 flex gap-1">
+                            {/* Input Escondido para Backup (Substituição Total) */}
+                            <input type="file" accept=".csv" className="hidden" ref={importMotherStockRef} onChange={(e) => handleImportBackup(e, setMotherCoils, 'Estoque Mãe')} />
+                            
+                            {/* Input Escondido para Inventário (Ajuste Inteligente) */}
+                            <input type="file" accept=".csv" className="hidden" ref={inventoryMotherRef} onChange={handleMotherInventory} />
+
+                            {/* Botão Backup (Substituir) */}
+                            <Button variant="secondary" onClick={() => importMotherStockRef.current.click()} className="text-xs flex-1 h-9 bg-gray-800 border-gray-600 hover:bg-gray-700 text-gray-400" title="Apaga tudo e substitui">
+                                <Database size={14} className="mr-1"/> Backup
+                            </Button>
+
+                            {/* Botão Inventário (Ajustar) */}
+                            <Button variant="secondary" onClick={() => inventoryMotherRef.current.click()} className="text-xs flex-[2] h-9 bg-sky-900/20 text-sky-400 border-sky-900/50 hover:bg-sky-900/40 font-bold" title="Lê arquivo e faz ajustes de entrada/saída">
+                                <Scale size={14} className="mr-2"/> Ajustar Estoque
+                            </Button>
+                        </div>
+                    </div>
 
                     {/* 2. SALDO ACABADO (ROXO - JÁ EXISTIA) */}
                     <div className="flex items-center gap-2">
