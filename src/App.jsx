@@ -861,10 +861,26 @@ export default function App() {
 // ... outros states
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [selectedGroupData, setSelectedGroupData] = useState(null);
+  // --- COLE ISSO JUNTO COM OS OUTROS STATES (No início da função App) ---
+  const [currentFileName, setCurrentFileName] = useState(() => {
+    return localStorage.getItem('currentFileName') || 'Nenhum arquivo carregado';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('currentFileName', currentFileName);
+  }, [currentFileName]);
+  // ----------------------------------------------------------------------
 
   const [productionDate, setProductionDate] = useState(new Date().toISOString().split('T')[0]);
   useEffect(() => {
     try {
+      // Adicione junto com os outros states
+    
+
+  // Salva no localStorage para não perder se der F5
+  useEffect(() => {
+    localStorage.setItem('currentFileName', currentFileName);
+  }, [currentFileName]);
       const savedMother = localStorage.getItem('motherCoils');
       const savedChild = localStorage.getItem('childCoils');
       const savedLogs = localStorage.getItem('productionLogs');
@@ -873,6 +889,7 @@ export default function App() {
       const savedMotherCatalog = localStorage.getItem('motherCatalog');
       const savedCutLogs = localStorage.getItem('cuttingLogs');
       if (savedCutLogs) setCuttingLogs(JSON.parse(savedCutLogs));
+      
 
       if (savedMother) setMotherCoils(JSON.parse(savedMother));
       if (savedChild) setChildCoils(JSON.parse(savedChild));
@@ -1350,7 +1367,6 @@ export default function App() {
 
   const handleFullBackup = () => {
     try {
-      // 1. Prepara e Baixa o Arquivo (Isso já está funcionando)
       const data = { 
         motherCoils: motherCoils || [], 
         childCoils: childCoils || [], 
@@ -1360,7 +1376,13 @@ export default function App() {
         motherCatalog: motherCatalog || [] 
       };
       
-      const fileName = `backup_metalosa_${new Date().toISOString().split('T')[0]}.json`;
+      // Formata nome do arquivo
+      const dateStr = new Date().toISOString().split('T')[0];
+      const fileName = `backup_metalosa_${dateStr}.json`;
+      
+      // Pega Data e Hora de AGORA para mostrar na tela
+      const now = new Date().toLocaleString();
+
       const jsonString = JSON.stringify(data, null, 2);
       const blob = new Blob([jsonString], {type: "application/json"});
       const url = URL.createObjectURL(blob);
@@ -1372,16 +1394,18 @@ export default function App() {
       link.click();
       document.body.removeChild(link);
 
-      // 2. Prepara o Link do Gmail
+      // --- ATUALIZA O NOME COM A DATA ATUAL ---
+      setCurrentFileName(`💾 ${fileName} (Gerado em: ${now})`);
+      // ----------------------------------------
+
+      // Lógica do Gmail (Mantida)
       const recipients = "pcp@metalosa.com.br,pcp5@metalosa.com.br,pcp3@metalosa.com.br";
       const subject = `Backup Sistema Metalosa - ${new Date().toLocaleDateString()}`;
-      const body = `Backup realizado com sucesso.\n\nO arquivo foi salvo na rede em: Z:\\PCP\\Coord PCP\\BDPCP\\saves-app\n\nFavor utilizar o último save.`;
-      
+      const body = `Backup realizado com sucesso.\nArquivo: ${fileName}`;
       const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${recipients}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
-      // 3. Dá um tempinho para o download terminar e pergunta
       setTimeout(() => {
-          if (window.confirm("Backup baixado com sucesso!\n\nClique em OK para abrir o Gmail e avisar a equipe.")) {
+          if (window.confirm("Backup baixado!\n\nClique em OK para abrir o Gmail.")) {
               window.open(gmailUrl, '_blank');
           }
       }, 500);
@@ -1389,26 +1413,6 @@ export default function App() {
     } catch (error) {
       alert("Erro ao gerar backup: " + error.message);
     }
-  };
-  const handleFullRestore = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = JSON.parse(event.target.result);
-        if (data.motherCoils) setMotherCoils(data.motherCoils);
-        if (data.childCoils) setChildCoils(data.childCoils);
-        if (data.productionLogs) setProductionLogs(data.productionLogs);
-        if (data.shippingLogs) setShippingLogs(data.shippingLogs);
-        if (data.productCatalog) setProductCatalog(data.productCatalog);
-        if (data.motherCatalog) setMotherCatalog(data.motherCatalog);
-        alert("Backup completo restaurado com sucesso!");
-      } catch (err) {
-        alert("Erro ao ler arquivo de backup: " + err.message);
-      }
-    };
-    reader.readAsText(file);
   };
 
   const handleEditLog = (log) => {
@@ -2418,6 +2422,37 @@ const renderReports = () => {
       printWindow.close();
     }, 500);
   };
+
+  // --- FUNÇÃO DE RESTAURAR BACKUP (COM DATA) ---
+  const handleFullRestore = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const fileName = file.name;
+    // Pega a data de modificação do arquivo para exibir
+    const fileDate = file.lastModified ? new Date(file.lastModified).toLocaleString() : new Date().toLocaleString();
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target.result);
+        if (data.motherCoils) setMotherCoils(data.motherCoils);
+        if (data.childCoils) setChildCoils(data.childCoils);
+        if (data.productionLogs) setProductionLogs(data.productionLogs);
+        if (data.shippingLogs) setShippingLogs(data.shippingLogs);
+        if (data.productCatalog) setProductCatalog(data.productCatalog);
+        if (data.motherCatalog) setMotherCatalog(data.motherCatalog);
+        
+        // Atualiza o nome na barra superior
+        setCurrentFileName(`📂 ${fileName} (Salvo em: ${fileDate})`);
+
+        alert(`Backup restaurado com sucesso!\n\nArquivo: ${fileName}\nData: ${fileDate}`);
+      } catch (err) {
+        alert("Erro ao ler arquivo de backup: " + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
   const renderDashboard = () => {
     // --- 1. PREPARAÇÃO DOS DADOS ---
     
@@ -2780,6 +2815,18 @@ const renderReports = () => {
     
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden relative bg-[#111827]">
+         
+         {/* 👇👇👇 AQUI ENTRA A BARRA DE STATUS 👇👇👇 */}
+         <div className={`w-full py-1 px-4 text-center text-xs font-bold uppercase tracking-widest shadow-md z-20 flex justify-between items-center ${
+            currentFileName.includes('Salvo') ? 'bg-emerald-600 text-white' : 
+            currentFileName.includes('Carregado') ? 'bg-blue-600 text-white' : 'bg-amber-600 text-black'
+         }`}>
+            <span>STATUS DA BASE DE DADOS:</span>
+            <span className="font-black text-sm">{currentFileName}</span>
+            <span>{new Date().toLocaleTimeString()}</span>
+         </div>
+         {/* 👆👆👆 FIM DA BARRA 👆👆👆 */}
+
          <header className="h-16 md:h-20 bg-[#1f293b] shadow-lg flex items-center justify-between px-4 md:px-8 z-10 border-b border-gray-800 shrink-0">
             <div className="flex items-center gap-4">
               <button className="md:hidden p-2 text-gray-400 hover:text-white" onClick={() => setSidebarOpen(true)}><Menu size={24}/></button>
@@ -2797,6 +2844,7 @@ const renderReports = () => {
             </div>
             <div className="flex items-center gap-4"><div className="text-right px-3 py-1.5 md:px-4 md:py-2 bg-gray-800 rounded-lg border border-gray-700"><p className="text-xs md:text-sm font-bold text-gray-300">{new Date().toLocaleDateString()}</p></div></div>
          </header>
+         
 
          <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar-dark">
             <div className="max-w-7xl mx-auto pb-20 md:pb-0">
@@ -2809,7 +2857,7 @@ const renderReports = () => {
             </div>
          </main>
       </div>
-      
+
       {showCatalogModal && renderCatalogModal()}
       {showPrintModal && <PrintLabelsModal items={itemsToPrint} type={printType} onClose={() => setShowPrintModal(false)} />}
       {stockDetailsModalOpen && viewingStockCode && (
