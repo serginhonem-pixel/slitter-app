@@ -304,7 +304,7 @@ export default function App() {
   const importLogsRef = useRef(null);
   const importFullBackupRef = useRef(null);
   const fileInputMotherCatalogRef = useRef(null);
-
+  const importFinishedStockRef = useRef(null);
 // --- ESTADOS PARA PRODUÇÃO EM LOTE (Total + Quebra) ---
   const [selectedInputCoils, setSelectedInputCoils] = useState([]);
   const [totalProducedPieces, setTotalProducedPieces] = useState(''); // Total Geral (ex: 486)
@@ -580,6 +580,91 @@ export default function App() {
     setItemsToPrint(newChildren);
     setPrintType('coil'); 
     setShowPrintModal(true); 
+  };
+
+  const handleImportFinishedStock = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target.result;
+        const delimiter = detectDelimiter(text);
+        const rows = parseCSVLine(text, delimiter); // Usa sua função auxiliar existente
+        
+        // Pula cabeçalho se houver e filtra linhas vazias
+        const dataRows = rows.slice(1).filter(r => r.length >= 2 && r[0]); 
+        
+        let addedCount = 0;
+        let removedCount = 0;
+        
+        const newProdLogs = [...productionLogs];
+        const newShipLogs = [...shippingLogs];
+        const dateNow = new Date().toLocaleDateString();
+        const timeNow = new Date().toLocaleString();
+
+        dataRows.forEach(row => {
+            // 1. Ler dados do CSV
+            const code = String(row[0]).trim(); // Coluna A: Código
+            const targetQty = parseInt(String(row[1]).replace(/\./g,'').replace(',','')); // Coluna B: Qtd Real (Limpa pontos de milhar)
+
+            if (!code || isNaN(targetQty)) return;
+
+            // 2. Calcular Saldo Atual no Sistema
+            const currentProd = newProdLogs.filter(l => l.productCode === code).reduce((acc, l) => acc + l.pieces, 0);
+            const currentShip = newShipLogs.filter(l => l.productCode === code).reduce((acc, l) => acc + l.quantity, 0);
+            const currentStock = currentProd - currentShip;
+
+            // 3. Calcular Diferença (Ajuste)
+            const diff = targetQty - currentStock;
+
+            if (diff === 0) return; // Está batendo, não faz nada.
+
+            const productData = INITIAL_PRODUCT_CATALOG.find(p => p.code === code) || { name: 'PRODUTO DESCONHECIDO' };
+
+            if (diff > 0) {
+                // PRECISA ADICIONAR (Entrada por Ajuste)
+                newProdLogs.push({
+                    id: `AJUSTE-ENT-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+                    date: dateNow,
+                    timestamp: timeNow,
+                    productCode: code,
+                    productName: productData.name,
+                    pieces: diff,
+                    b2Code: 'AJUSTE', // Marca para saber que foi inventário
+                    motherCode: '-',
+                    scrap: 0,
+                    packIndex: 'Inventário'
+                });
+                addedCount++;
+            } else {
+                // PRECISA REMOVER (Saída por Ajuste)
+                newShipLogs.push({
+                    id: `AJUSTE-SAI-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+                    date: dateNow,
+                    timestamp: timeNow,
+                    productCode: code,
+                    productName: productData.name,
+                    quantity: Math.abs(diff), // Valor positivo para a baixa
+                    destination: 'AJUSTE DE ESTOQUE'
+                });
+                removedCount++;
+            }
+        });
+
+        // 4. Salvar tudo
+        setProductionLogs(newProdLogs);
+        setShippingLogs(newShipLogs);
+        
+        alert(`Inventário Processado!\n\nItens Ajustados (Entrada): ${addedCount}\nItens Ajustados (Saída): ${removedCount}`);
+        e.target.value = ''; // Limpa input
+
+      } catch (err) {
+        alert("Erro ao processar arquivo: " + err.message);
+      }
+    };
+    reader.readAsText(file);
   };
   const registerProduction = () => {
     // 1. Validações Iniciais
@@ -1781,7 +1866,9 @@ export default function App() {
                 }} className="text-xs w-full justify-start h-9 bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white">
                     <Download size={14}/> Bobinas 2 (Slitter)
                 </Button>
-
+                {/* ... Botões anteriores de Mother e B2 ... */}
+                
+                {/* ... Botão Restaurar Logs ... */}
                 {/* BOTÃO 3: HISTÓRICO (COM RASTREIO PROFUNDO E ID ÚNICO) */}
                 <Button variant="secondary" onClick={() => {
                     const dataToExport = productionLogs.map(l => {
@@ -1826,7 +1913,7 @@ export default function App() {
                 </Button>
               </div>
             </div>
-
+            
             {/* COLUNA 2: RESTAURAR (MANTIDA IGUAL) */}
             <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-amber-500/50 transition-colors">
               <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Importar Backup</h4>
@@ -1838,6 +1925,37 @@ export default function App() {
                     </div>
                 </div>
                 <div className="border-t border-gray-700 my-2"></div>
+              <div className="flex items-center gap-2">
+                    {/* Botão de Baixar Modelo CSV */}
+                    <Button variant="info" onClick={() => {
+                        const csvContent = "Codigo;Quantidade Real\n00652B;500\n00671A;120";
+                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                        const link = document.createElement("a");
+                        link.href = URL.createObjectURL(blob);
+                        link.download = "modelo_inventario_acabado.csv";
+                        link.click();
+                    }} className="w-9 h-9 p-0 rounded-lg shrink-0" title="Baixar Modelo de Inventário">
+                        <FileInput size={16}/>
+                    </Button>
+
+                    {/* Botão de Upload e Processamento */}
+                    <div className="relative flex-1">
+                      <input 
+                        type="file" 
+                        accept=".csv" 
+                        className="hidden" 
+                        ref={importFinishedStockRef} 
+                        onChange={handleImportFinishedStock} 
+                      />
+                      <Button 
+                        variant="warning" 
+                        onClick={() => importFinishedStockRef.current.click()} 
+                        className="text-xs w-full justify-start h-9 bg-purple-900/20 text-purple-400 border border-purple-900/50 hover:bg-purple-900/40"
+                      >
+                        <Upload size={14}/> Atualizar Saldo Acabado (CSV)
+                      </Button>
+                    </div>
+                </div>
                 
                 <div className="flex items-center gap-2">
                     <Button variant="info" onClick={() => handleDownloadTemplate('mother')} className="w-9 h-9 p-0 rounded-lg shrink-0" title="Baixar Modelo"><FileInput size={16}/></Button>
