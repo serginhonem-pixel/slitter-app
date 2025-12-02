@@ -1992,43 +1992,74 @@ export default function App() {
     );
   };
 const renderReports = () => {
-    // --- 0. SEGURANÇA ---
+    // --- 0. SEGURANÇA E UTILITÁRIOS ---
     const isValidDate = (d) => d && typeof d === 'string' && d.includes('/');
     const getTimestamp = (d) => { if (!isValidDate(d)) return 0; const p = d.split('/'); return new Date(`${p[2]}-${p[1]}-${p[0]}`).getTime(); };
+    // Função para comparar datas no formato YYYY-MM-DD
+    const getYMD = (d) => d.split('/').reverse().join('-'); 
     
     const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
     const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
     const safeCutting = Array.isArray(cuttingLogs) ? cuttingLogs : [];
     const safeShipping = Array.isArray(shippingLogs) ? shippingLogs : [];
 
-    // --- 1. DADOS: MP (KARDEX) ---
+    // --- 1. DADOS: MP (KARDEX COM SALDO INICIAL) ---
     const mpGroupedMap = {};
+
+    // Processa ENTRADAS (Bobinas Mãe)
     safeMother.forEach(m => {
         if (!isValidDate(m.date)) return;
-        const d = m.date.split('/').reverse().join('-');
-        if (d >= reportStartDate && d <= reportEndDate) {
-            const code = m.code || 'S/ COD';
-            if (!mpGroupedMap[code]) { mpGroupedMap[code] = { code, desc: m.material, totalIn: 0, totalOut: 0, movements: [] }; }
-            const w = parseFloat(m.originalWeight) || 0;
-            mpGroupedMap[code].totalIn += w;
+        const d = getYMD(m.date);
+        const code = m.code || 'S/ COD';
+        const w = parseFloat(m.originalWeight) || 0;
+
+        if (!mpGroupedMap[code]) { 
+            mpGroupedMap[code] = { 
+                code, 
+                desc: m.material, 
+                initialBalance: 0, // Novo: Saldo Anterior
+                periodIn: 0,       // Novo: Entrada no Período
+                periodOut: 0,      // Novo: Saída no Período
+                movements: [] 
+            }; 
+        }
+
+        if (d < reportStartDate) {
+            // Se foi antes da data filtro, soma no Saldo Inicial
+            mpGroupedMap[code].initialBalance += w;
+        } else if (d >= reportStartDate && d <= reportEndDate) {
+            // Se foi dentro do período, soma na Entrada do Período
+            mpGroupedMap[code].periodIn += w;
             mpGroupedMap[code].movements.push({ date: m.date, timestamp: getTimestamp(m.date), type: 'ENTRADA', weightChange: w, detail: `NF: ${m.nf||'-'}` });
         }
     });
+
+    // Processa SAÍDAS (Cortes)
     safeCutting.forEach(c => {
         if (!isValidDate(c.date)) return;
-        const d = c.date.split('/').reverse().join('-');
-        if (d >= reportStartDate && d <= reportEndDate) {
-            const code = c.motherCode || 'S/ COD';
-            if (!mpGroupedMap[code]) { mpGroupedMap[code] = { code, desc: c.motherMaterial || 'Material Diverso', totalIn: 0, totalOut: 0, movements: [] }; }
-            const w = parseFloat(c.inputWeight) || 0;
-            mpGroupedMap[code].totalOut += w;
+        const d = getYMD(c.date);
+        const code = c.motherCode || 'S/ COD';
+        const w = parseFloat(c.inputWeight) || 0;
+
+        // Garante que o objeto existe (caso tenha consumo sem entrada registrada nesse código)
+        if (!mpGroupedMap[code]) { 
+            mpGroupedMap[code] = { code, desc: c.motherMaterial || 'Material Diverso', initialBalance: 0, periodIn: 0, periodOut: 0, movements: [] }; 
+        }
+
+        if (d < reportStartDate) {
+            // Se foi antes da data filtro, subtrai do Saldo Inicial
+            mpGroupedMap[code].initialBalance -= w;
+        } else if (d >= reportStartDate && d <= reportEndDate) {
+            // Se foi dentro do período, soma na Saída do Período
+            mpGroupedMap[code].periodOut += w;
             mpGroupedMap[code].movements.push({ date: c.date, timestamp: getTimestamp(c.date), type: 'CONSUMO', weightChange: -w, detail: c.generatedItems });
         }
     });
+
     const mpSummaryList = Object.values(mpGroupedMap).sort((a, b) => String(a.code).localeCompare(String(b.code)));
 
     // --- 2. DADOS: PRODUÇÃO (RESUMO) ---
-    // Primeiro agrupa lotes fracionados
+    // Agrupa lotes fracionados
     const prodLotesUnicos = safeProd.reduce((acc, log) => {
         if (!log.id) return acc;
         const baseId = log.id.includes('-') ? log.id.split('-').slice(0, -1).join('-') : log.id;
@@ -2040,11 +2071,11 @@ const renderReports = () => {
         return acc;
     }, {});
     
-    // Depois agrupa por Produto
+    // Agrupa por Produto
     const prodByProductMap = {};
     Object.values(prodLotesUnicos).forEach(lot => {
         if (!isValidDate(lot.date)) return;
-        const d = lot.date.split('/').reverse().join('-');
+        const d = getYMD(lot.date);
         const search = reportSearch.toLowerCase();
         const matchesSearch = !reportSearch || (lot.productName||'').toLowerCase().includes(search) || (lot.productCode||'').toLowerCase().includes(search);
 
@@ -2070,7 +2101,7 @@ const renderReports = () => {
     const globalAggregator = {};
     rawGlobalEvents.forEach(event => {
         if (!isValidDate(event.rawDate)) return;
-        const d = event.rawDate.split('/').reverse().join('-');
+        const d = getYMD(event.rawDate);
         if (d < reportStartDate || d > reportEndDate) return;
         const search = reportSearch.toLowerCase();
         if (reportSearch && !(event.type.toLowerCase().includes(search) || String(event.id).toLowerCase().includes(search) || event.desc.toLowerCase().includes(search))) return;
@@ -2089,7 +2120,7 @@ const renderReports = () => {
     });
     const globalTimeline = Object.values(globalAggregator).sort((a, b) => b.timestamp - a.timestamp);
 
-    // KPIs
+    // KPIs Globais
     const stats = {
         entradaKg: globalTimeline.filter(e => e.type === 'ENTRADA MP').reduce((acc, e) => acc + e.totalWeight, 0),
         corteKg: globalTimeline.filter(e => e.type === 'CORTE').reduce((acc, e) => acc + e.totalWeight, 0),
@@ -2148,13 +2179,64 @@ const renderReports = () => {
         ) : reportViewMode === 'MP_KARDEX' ? (
             <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-t-4 border-emerald-600">
                 <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700 p-4 bg-emerald-900/10 -mt-6 -mx-6">
-                    <div><h3 className="font-bold text-xl text-emerald-100">Extrato MP</h3><p className="text-sm text-emerald-300/70">Resumo por Código</p></div>
-                    <Button onClick={() => { const data = mpSummaryList.map(i => ({ "Código": i.code, "Descrição": i.desc, "Entrada Período (kg)": i.totalIn, "Consumo Período (kg)": i.totalOut, "Saldo Período (kg)": i.totalIn - i.totalOut })); exportToCSV(data, `resumo_mp_${reportStartDate}`); }} className="h-9 bg-emerald-600 text-white hover:bg-emerald-500"><Download size={14}/> Baixar Resumo</Button>
+                    <div><h3 className="font-bold text-xl text-emerald-100">Extrato MP</h3><p className="text-sm text-emerald-300/70">Resumo por Código e Período</p></div>
+                    {/* BOTÃO EXCEL ATUALIZADO COM SALDO INICIAL */}
+                    <Button onClick={() => { 
+                        const data = mpSummaryList.map(i => ({ 
+                            "Código": i.code, 
+                            "Descrição": i.desc,
+                            "Saldo Inicial (kg)": i.initialBalance,
+                            "Entradas Período (kg)": i.periodIn, 
+                            "Saídas Período (kg)": i.periodOut, 
+                            "Saldo Final (kg)": (i.initialBalance + i.periodIn - i.periodOut)
+                        })); 
+                        exportToCSV(data, `extrato_mp_${reportStartDate}_a_${reportEndDate}`); 
+                    }} className="h-9 bg-emerald-600 text-white hover:bg-emerald-500">
+                        <Download size={14}/> Baixar Extrato
+                    </Button>
                 </div>
                 <div className="flex-1 overflow-auto custom-scrollbar-dark px-4 pb-4">
                     <table className="w-full text-sm text-left text-gray-300">
-                        <thead className="bg-gray-800 text-gray-400 sticky top-0"><tr><th className="p-3">Código</th><th className="p-3">Descrição Material</th><th className="p-3 text-right text-emerald-400">Total Entrada</th><th className="p-3 text-right text-red-400">Total Consumo</th><th className="p-3 text-right text-white">Saldo Período</th><th className="p-3 text-center">Ação</th></tr></thead>
-                        <tbody className="divide-y divide-gray-700">{mpSummaryList.length === 0 ? (<tr><td colSpan="6" className="p-8 text-center text-gray-500">Nenhum movimento neste período.</td></tr>) : (mpSummaryList.map((row, idx) => (<tr key={idx} className="hover:bg-gray-700/50"><td className="p-3 font-bold text-white">{row.code}</td><td className="p-3 text-gray-400">{row.desc}</td><td className="p-3 text-right text-emerald-400 font-mono">{row.totalIn.toLocaleString('pt-BR')}</td><td className="p-3 text-right text-red-400 font-mono">{row.totalOut.toLocaleString('pt-BR')}</td><td className="p-3 text-right font-bold text-white font-mono">{(row.totalIn - row.totalOut).toLocaleString('pt-BR')}</td><td className="p-3 text-center"><button onClick={() => setViewingMpDetails(row)} className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs transition-colors flex items-center gap-2 mx-auto"><Eye size={14}/> Detalhes</button></td></tr>)))}</tbody>
+                        <thead className="bg-gray-800 text-gray-400 sticky top-0">
+                            <tr>
+                                <th className="p-3">Código</th>
+                                <th className="p-3">Descrição Material</th>
+                                <th className="p-3 text-right text-gray-400 bg-gray-900/50">Saldo Inicial</th>
+                                <th className="p-3 text-right text-emerald-400">Entradas</th>
+                                <th className="p-3 text-right text-red-400">Saídas</th>
+                                <th className="p-3 text-right text-white font-bold bg-gray-700/30">Saldo Final</th>
+                                <th className="p-3 text-center">Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-700">
+                            {mpSummaryList.length === 0 ? (
+                                <tr><td colSpan="7" className="p-8 text-center text-gray-500">Nenhum registro para exibir.</td></tr>
+                            ) : (
+                                mpSummaryList.map((row, idx) => (
+                                    <tr key={idx} className="hover:bg-gray-700/50">
+                                        <td className="p-3 font-bold text-white">{row.code}</td>
+                                        <td className="p-3 text-gray-400">{row.desc}</td>
+                                        <td className="p-3 text-right text-gray-300 font-mono bg-gray-900/30">
+                                            {row.initialBalance.toLocaleString('pt-BR')}
+                                        </td>
+                                        <td className="p-3 text-right text-emerald-400 font-mono">
+                                            {row.periodIn > 0 ? `+${row.periodIn.toLocaleString('pt-BR')}` : '-'}
+                                        </td>
+                                        <td className="p-3 text-right text-red-400 font-mono">
+                                            {row.periodOut > 0 ? `-${row.periodOut.toLocaleString('pt-BR')}` : '-'}
+                                        </td>
+                                        <td className="p-3 text-right font-bold text-white font-mono bg-gray-700/20">
+                                            {(row.initialBalance + row.periodIn - row.periodOut).toLocaleString('pt-BR')}
+                                        </td>
+                                        <td className="p-3 text-center">
+                                            <button onClick={() => setViewingMpDetails(row)} className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs transition-colors flex items-center gap-2 mx-auto">
+                                                <Eye size={14}/> Detalhes
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
                     </table>
                 </div>
             </Card>
@@ -2174,7 +2256,7 @@ const renderReports = () => {
         )}
       </div>
     );
-  };
+  };''
   const handleGeneratePDF = (title, data) => {
     // Cria uma janela popup invisível
     const printWindow = window.open('', '', 'height=600,width=800');
