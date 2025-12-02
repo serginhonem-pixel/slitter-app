@@ -352,15 +352,11 @@ const ReportGroupModal = ({ group, onClose }) => {
   );
 };
 const MpDetailsModal = ({ data, onClose }) => {
-  // Ordena cronologicamente
-  const movements = data.movements.sort((a, b) => a.timestamp - b.timestamp);
+  // 1. Ordena cronologicamente (Antigo -> Novo)
+  const movements = [...data.movements].sort((a, b) => a.timestamp - b.timestamp);
   
-  // Calcula saldo linha a linha
-  let runningBalance = 0;
-  const movementsWithBalance = movements.map(m => {
-      runningBalance += m.weightChange;
-      return { ...m, balance: runningBalance };
-  });
+  // 2. Começa do Saldo Inicial que foi calculado na tela anterior
+  let currentBalance = data.initialBalance || 0;
 
   return (
     <div className="fixed inset-0 bg-black/80 z-[90] flex items-center justify-center p-4">
@@ -382,42 +378,69 @@ const MpDetailsModal = ({ data, onClose }) => {
                     <th className="p-3">Histórico / Documento</th>
                     <th className="p-3 text-right text-emerald-400">Entrada</th>
                     <th className="p-3 text-right text-red-400">Saída</th>
-                    <th className="p-3 text-right font-bold text-white bg-gray-800">Saldo</th>
+                    <th className="p-3 text-right font-bold text-white bg-gray-800 border-l border-gray-700">Saldo Acumulado</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700">
-                  {movementsWithBalance.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-gray-700/50">
-                        <td className="p-3 font-mono text-xs">{row.date}</td>
-                        <td className="p-3">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${row.type === 'ENTRADA' ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800' : 'bg-red-900/30 text-red-400 border-red-800'}`}>
-                                {row.type}
-                            </span>
-                        </td>
-                        <td className="p-3">
-                            <div className="text-gray-200">{row.type === 'ENTRADA' ? `Entrada Nota Fiscal` : `Consumo Slitter`}</div>
-                            <div className="text-[10px] text-gray-500">{row.detail}</div>
-                        </td>
-                        <td className="p-3 text-right text-emerald-400 font-mono">
-                            {row.type === 'ENTRADA' ? row.weightChange.toLocaleString('pt-BR') : '-'}
-                        </td>
-                        <td className="p-3 text-right text-red-400 font-mono">
-                            {row.type === 'CONSUMO' ? Math.abs(row.weightChange).toLocaleString('pt-BR') : '-'}
-                        </td>
-                        <td className="p-3 text-right font-bold text-white font-mono bg-gray-800/30">
-                            {row.balance.toLocaleString('pt-BR')}
-                        </td>
-                    </tr>
-                  ))}
+                  
+                  {/* LINHA 0: SALDO ANTERIOR */}
+                  <tr className="bg-gray-900/50">
+                      <td className="p-3 text-xs text-gray-500 font-bold" colSpan="5">SALDO ANTERIOR (INÍCIO DO PERÍODO)</td>
+                      <td className="p-3 text-right font-bold text-gray-400 font-mono border-l border-gray-700">
+                          {data.initialBalance.toLocaleString('pt-BR')}
+                      </td>
+                  </tr>
+
+                  {/* LINHAS DE MOVIMENTO */}
+                  {movements.map((row, idx) => {
+                    // Atualiza o saldo progressivamente
+                    // weightChange é positivo para entrada e negativo para saída
+                    currentBalance += row.weightChange;
+
+                    const isEntry = row.weightChange > 0;
+
+                    return (
+                        <tr key={idx} className="hover:bg-gray-700/50">
+                            <td className="p-3 font-mono text-xs">{row.date}</td>
+                            <td className="p-3">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${isEntry ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800' : 'bg-red-900/30 text-red-400 border-red-800'}`}>
+                                    {row.type}
+                                </span>
+                            </td>
+                            <td className="p-3">
+                                <div className="text-gray-200">{isEntry ? 'Entrada Nota Fiscal' : 'Consumo Slitter'}</div>
+                                <div className="text-[10px] text-gray-500">{row.detail}</div>
+                            </td>
+                            
+                            {/* ENTRADA */}
+                            <td className="p-3 text-right text-emerald-400 font-mono">
+                                {isEntry ? row.weightChange.toLocaleString('pt-BR') : '-'}
+                            </td>
+                            
+                            {/* SAÍDA */}
+                            <td className="p-3 text-right text-red-400 font-mono">
+                                {!isEntry ? Math.abs(row.weightChange).toLocaleString('pt-BR') : '-'}
+                            </td>
+                            
+                            {/* SALDO PROGRESSIVO */}
+                            <td className="p-3 text-right font-bold text-white font-mono bg-gray-800/30 border-l border-gray-700">
+                                {currentBalance.toLocaleString('pt-BR')}
+                            </td>
+                        </tr>
+                    );
+                  })}
                 </tbody>
              </table>
         </div>
-        <div className="p-3 border-t border-gray-700 bg-gray-900 flex justify-end gap-2">
-            <div className="mr-auto flex items-center gap-4 text-xs">
-                <span className="text-gray-400">Total Entradas: <strong className="text-emerald-400">{data.totalIn.toLocaleString('pt-BR')} kg</strong></span>
-                <span className="text-gray-400">Total Consumo: <strong className="text-red-400">{data.totalOut.toLocaleString('pt-BR')} kg</strong></span>
+        <div className="p-3 border-t border-gray-700 bg-gray-900 flex justify-end gap-2 items-center">
+            <div className="mr-auto flex gap-4 text-xs text-gray-400">
+                <span>Entradas: <strong className="text-emerald-400">+{data.periodIn.toLocaleString('pt-BR')}</strong></span>
+                <span>Saídas: <strong className="text-red-400">-{data.periodOut.toLocaleString('pt-BR')}</strong></span>
             </div>
-            <Button variant="secondary" onClick={onClose}>Fechar</Button>
+            <div className="text-sm">
+                Saldo Final (Calculado): <strong className="text-white text-lg">{currentBalance.toLocaleString('pt-BR')}</strong>
+            </div>
+            <Button variant="secondary" onClick={onClose} className="ml-4">Fechar</Button>
         </div>
       </div>
     </div>
@@ -1995,174 +2018,413 @@ export default function App() {
       </div>
     );
   };
+
+// --- GERADOR DE PDF PROFISSIONAL (EXTRATO MP) ---
+  const handleGenerateMPReportPDF = (dataList, start, end) => {
+    const printWindow = window.open('', '', 'height=800,width=1200');
+    if (!printWindow) return alert("Pop-up bloqueado! Permita pop-ups.");
+
+    const now = new Date().toLocaleString();
+
+    // Gera o HTML de cada item (Bobina)
+    const itemsHtml = dataList.map(item => {
+        // Recalcula o saldo linha a linha para o PDF ficar perfeito
+        let runningBalance = item.initialBalance;
+        const movementsRows = item.movements.map(mov => {
+            runningBalance += mov.weightChange;
+            const isEntry = mov.weightChange > 0;
+            return `
+                <tr>
+                    <td style="text-align:center">${mov.date}</td>
+                    <td>${mov.type}</td>
+                    <td>${mov.detail}</td>
+                    <td style="text-align:right; color:${isEntry ? '#059669' : '#ccc'}">${isEntry ? mov.weightChange.toLocaleString('pt-BR') : '-'}</td>
+                    <td style="text-align:right; color:${!isEntry ? '#dc2626' : '#ccc'}">${!isEntry ? Math.abs(mov.weightChange).toLocaleString('pt-BR') : '-'}</td>
+                    <td style="text-align:right; font-weight:bold; background-color:#f3f4f6">${runningBalance.toLocaleString('pt-BR')}</td>
+                </tr>
+            `;
+        }).join('');
+
+        return `
+            <div class="item-container">
+                <div class="item-header">
+                    <span class="item-code">${item.code}</span>
+                    <span class="item-desc">${item.desc}</span>
+                </div>
+                
+                <div class="kpi-box">
+                    <div><span class="label">Saldo Anterior:</span> <span class="value">${item.initialBalance.toLocaleString('pt-BR')} kg</span></div>
+                    <div><span class="label">Entradas:</span> <span class="value" style="color:#059669">+${item.periodIn.toLocaleString('pt-BR')} kg</span></div>
+                    <div><span class="label">Saídas:</span> <span class="value" style="color:#dc2626">-${item.periodOut.toLocaleString('pt-BR')} kg</span></div>
+                    <div style="border-left:1px solid #ccc; padding-left:10px"><span class="label">Saldo Atual:</span> <span class="value" style="font-weight:900">${item.finalBalance.toLocaleString('pt-BR')} kg</span></div>
+                </div>
+
+                ${item.movements.length > 0 ? `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th width="15%">Data</th>
+                                <th width="15%">Tipo</th>
+                                <th>Histórico / NF</th>
+                                <th width="12%" style="text-align:right">Entrada</th>
+                                <th width="12%" style="text-align:right">Saída</th>
+                                <th width="15%" style="text-align:right">Saldo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${movementsRows}
+                        </tbody>
+                    </table>
+                ` : '<div style="padding:10px; color:#999; font-style:italic; text-align:center; border:1px solid #eee;">Sem movimentação no período selecionado.</div>'}
+            </div>
+        `;
+    }).join('');
+
+    const htmlContent = `
+      <html>
+        <head>
+          <title>Extrato de Movimentação - Metalosa</title>
+          <style>
+            @page { size: A4; margin: 10mm; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 11px; color: #333; -webkit-print-color-adjust: exact; }
+            .header { border-bottom: 2px solid #1f2937; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+            .title h1 { margin: 0; font-size: 18px; text-transform: uppercase; color: #111827; }
+            .title p { margin: 0; color: #6b7280; }
+            .meta { text-align: right; font-size: 10px; color: #6b7280; }
+            
+            .item-container { margin-bottom: 25px; page-break-inside: avoid; border: 1px solid #e5e7eb; border-radius: 4px; overflow: hidden; }
+            .item-header { background-color: #1f2937; color: white; padding: 8px 12px; font-size: 13px; font-weight: bold; display: flex; gap: 10px; align-items: center; }
+            .item-code { background: #374151; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+            
+            .kpi-box { display: flex; justify-content: space-between; background: #f9fafb; padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 11px; }
+            .label { text-transform: uppercase; color: #6b7280; font-size: 9px; font-weight: bold; margin-right: 5px; }
+            .value { font-size: 12px; font-weight: 600; }
+
+            table { width: 100%; border-collapse: collapse; font-size: 10px; }
+            th { background-color: #f3f4f6; color: #4b5563; text-align: left; padding: 6px 8px; border-bottom: 1px solid #e5e7eb; text-transform: uppercase; font-size: 9px; }
+            td { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+            tr:last-child td { border-bottom: none; }
+            tr:nth-child(even) { background-color: #fff; }
+            
+            .footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 9px; color: #9ca3af; padding: 10px; background: white; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="title">
+                <h1>Extrato de Movimentação de Estoque</h1>
+                <p>Período: <strong>${start.split('-').reverse().join('/')}</strong> até <strong>${end.split('-').reverse().join('/')}</strong></p>
+            </div>
+            <div class="meta">
+                <p>Emissão: ${now}</p>
+                <p>METALOSA INDÚSTRIA</p>
+            </div>
+          </div>
+
+          ${itemsHtml}
+          
+          <div class="footer">Relatório gerado pelo Sistema de Controle de Produção</div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    setTimeout(() => printWindow.print(), 500);
+  };
+
 const renderReports = () => {
-    // --- 0. SEGURANÇA E UTILITÁRIOS ---
-    const isValidDate = (d) => d && typeof d === 'string' && d.includes('/');
-    const getTimestamp = (d) => { if (!isValidDate(d)) return 0; const p = d.split('/'); return new Date(`${p[2]}-${p[1]}-${p[0]}`).getTime(); };
-    // Função para comparar datas no formato YYYY-MM-DD
-    const getYMD = (d) => d.split('/').reverse().join('-'); 
-    
-    const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
-    const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
-    const safeCutting = Array.isArray(cuttingLogs) ? cuttingLogs : [];
-    const safeShipping = Array.isArray(shippingLogs) ? shippingLogs : [];
-
-    // --- 1. DADOS: MP (KARDEX COM SALDO INICIAL) ---
-    const mpGroupedMap = {};
-
-    // Processa ENTRADAS (Bobinas Mãe)
-    safeMother.forEach(m => {
-        if (!isValidDate(m.date)) return;
-        const d = getYMD(m.date);
-        const code = m.code || 'S/ COD';
-        const w = parseFloat(m.originalWeight) || 0;
-
-        if (!mpGroupedMap[code]) { 
-            mpGroupedMap[code] = { 
-                code, 
-                desc: m.material, 
-                initialBalance: 0, // Novo: Saldo Anterior
-                periodIn: 0,       // Novo: Entrada no Período
-                periodOut: 0,      // Novo: Saída no Período
-                movements: [] 
-            }; 
-        }
-
-        if (d < reportStartDate) {
-            // Se foi antes da data filtro, soma no Saldo Inicial
-            mpGroupedMap[code].initialBalance += w;
-        } else if (d >= reportStartDate && d <= reportEndDate) {
-            // Se foi dentro do período, soma na Entrada do Período
-            mpGroupedMap[code].periodIn += w;
-            mpGroupedMap[code].movements.push({ date: m.date, timestamp: getTimestamp(m.date), type: 'ENTRADA', weightChange: w, detail: `NF: ${m.nf||'-'}` });
-        }
-    });
-
-    // Processa SAÍDAS (Cortes)
-    safeCutting.forEach(c => {
-        if (!isValidDate(c.date)) return;
-        const d = getYMD(c.date);
-        const code = c.motherCode || 'S/ COD';
-        const w = parseFloat(c.inputWeight) || 0;
-
-        // Garante que o objeto existe (caso tenha consumo sem entrada registrada nesse código)
-        if (!mpGroupedMap[code]) { 
-            mpGroupedMap[code] = { code, desc: c.motherMaterial || 'Material Diverso', initialBalance: 0, periodIn: 0, periodOut: 0, movements: [] }; 
-        }
-
-        if (d < reportStartDate) {
-            // Se foi antes da data filtro, subtrai do Saldo Inicial
-            mpGroupedMap[code].initialBalance -= w;
-        } else if (d >= reportStartDate && d <= reportEndDate) {
-            // Se foi dentro do período, soma na Saída do Período
-            mpGroupedMap[code].periodOut += w;
-            mpGroupedMap[code].movements.push({ date: c.date, timestamp: getTimestamp(c.date), type: 'CONSUMO', weightChange: -w, detail: c.generatedItems });
-        }
-    });
-
-    const mpSummaryList = Object.values(mpGroupedMap).sort((a, b) => String(a.code).localeCompare(String(b.code)));
-
-    // --- 2. DADOS: PRODUÇÃO (RESUMO) ---
-    // Agrupa lotes fracionados
-    const prodLotesUnicos = safeProd.reduce((acc, log) => {
-        if (!log.id) return acc;
-        const baseId = log.id.includes('-') ? log.id.split('-').slice(0, -1).join('-') : log.id;
-        if (!acc[baseId]) { acc[baseId] = { ...log, id: baseId, pieces: 0, weight: 0, scrap: 0, packCount: 0 }; }
-        acc[baseId].pieces += (parseInt(log.pieces) || 0);
-        acc[baseId].weight += (parseFloat(log.weight) || 0);
-        acc[baseId].scrap += (parseFloat(log.scrap) || 0);
-        acc[baseId].packCount += 1;
-        return acc;
-    }, {});
-    
-    // Agrupa por Produto
-    const prodByProductMap = {};
-    Object.values(prodLotesUnicos).forEach(lot => {
-        if (!isValidDate(lot.date)) return;
-        const d = getYMD(lot.date);
-        const search = reportSearch.toLowerCase();
-        const matchesSearch = !reportSearch || (lot.productName||'').toLowerCase().includes(search) || (lot.productCode||'').toLowerCase().includes(search);
-
-        if (d >= reportStartDate && d <= reportEndDate && matchesSearch) {
-            const code = lot.productCode || 'S/ COD';
-            if (!prodByProductMap[code]) { prodByProductMap[code] = { code, name: lot.productName, totalQty: 0, totalWeight: 0, totalScrap: 0, items: [] }; }
-            prodByProductMap[code].totalQty += lot.pieces;
-            prodByProductMap[code].totalWeight += lot.weight;
-            prodByProductMap[code].totalScrap += lot.scrap;
-            prodByProductMap[code].items.push({ ...lot, timestamp: getTimestamp(lot.date) });
-        }
-    });
-    const prodSummaryList = Object.values(prodByProductMap).sort((a, b) => String(a.name).localeCompare(String(b.name)));
-
-    // --- 3. DADOS: VISÃO GLOBAL CONSOLIDADA ---
-    const rawGlobalEvents = [
-        ...safeMother.map(m => ({ rawDate: m.date, type: 'ENTRADA MP', id: m.code, desc: `Bobina ${m.material}`, detail: `NF: ${m.nf||'-'}`, qty: 1, weight: parseFloat(m.originalWeight)||0 })),
-        ...safeCutting.map(c => ({ rawDate: c.date, type: 'CORTE', id: c.motherCode, desc: 'Corte Slitter', detail: c.generatedItems, qty: c.outputCount, weight: parseFloat(c.inputWeight)||0, scrap: parseFloat(c.scrap)||0 })),
-        ...Object.values(prodLotesUnicos).map(p => ({ rawDate: p.date, type: 'PRODUÇÃO', id: p.productCode, desc: p.productName, detail: `Lote ${p.id}`, qty: p.pieces, weight: p.weight, scrap: p.scrap })),
-        ...safeShipping.map(s => ({ rawDate: s.date, type: 'EXPEDIÇÃO', id: s.productCode, desc: s.productName, detail: s.destination, qty: s.quantity, weight: 0 }))
-    ];
-
-    const globalAggregator = {};
-    rawGlobalEvents.forEach(event => {
-        if (!isValidDate(event.rawDate)) return;
-        const d = getYMD(event.rawDate);
-        if (d < reportStartDate || d > reportEndDate) return;
-        const search = reportSearch.toLowerCase();
-        if (reportSearch && !(event.type.toLowerCase().includes(search) || String(event.id).toLowerCase().includes(search) || event.desc.toLowerCase().includes(search))) return;
-
-        const key = `${event.rawDate}|${event.type}|${event.id}`;
-        if (!globalAggregator[key]) {
-            globalAggregator[key] = {
-                date: event.rawDate, type: event.type, id: event.id, description: event.desc,
-                count: 0, totalQty: 0, totalWeight: 0, items: [], timestamp: getTimestamp(event.rawDate)
-            };
-        }
-        globalAggregator[key].count += 1;
-        globalAggregator[key].totalQty += (event.qty || 0);
-        globalAggregator[key].totalWeight += (event.weight || 0);
-        globalAggregator[key].items.push(event);
-    });
-    const globalTimeline = Object.values(globalAggregator).sort((a, b) => b.timestamp - a.timestamp);
-
-    // KPIs Globais
-    const stats = {
-        entradaKg: globalTimeline.filter(e => e.type === 'ENTRADA MP').reduce((acc, e) => acc + e.totalWeight, 0),
-        corteKg: globalTimeline.filter(e => e.type === 'CORTE').reduce((acc, e) => acc + e.totalWeight, 0),
-        prodPcs: globalTimeline.filter(e => e.type === 'PRODUÇÃO').reduce((acc, e) => acc + e.totalQty, 0),
-        expPcs: globalTimeline.filter(e => e.type === 'EXPEDIÇÃO').reduce((acc, e) => acc + e.totalQty, 0),
+    // =================================================================================
+    // 1. UTILITÁRIOS E SEGURANÇA (Para não travar a tela)
+    // =================================================================================
+    const safeNum = (val) => {
+        const n = parseFloat(val);
+        return isNaN(n) ? 0 : n;
     };
+    
+    const isValidDate = (d) => d && typeof d === 'string' && (d.includes('/') || d.includes('-'));
+    
+    const toISODate = (d) => {
+        if (!isValidDate(d)) return '0000-00-00';
+        if (d.includes('/')) return d.split('/').reverse().join('-');
+        return d;
+    };
+
+    const getTimestamp = (d) => {
+        if (!isValidDate(d)) return 0;
+        const iso = d.includes('/') ? d.split('/').reverse().join('-') : d;
+        return new Date(`${iso}T12:00:00`).getTime();
+    };
+
     const getTypeColor = (type) => {
         if(type === 'ENTRADA MP') return 'text-blue-400';
         if(type === 'CORTE') return 'text-purple-400';
         if(type === 'PRODUÇÃO') return 'text-emerald-400';
-        if(type === 'EXPEDIÇÃO') return 'text-amber-400';
-        return 'text-gray-400';
+        return 'text-amber-400';
     };
 
+    // Helper para abrir detalhes da Visão Geral
+    const handleGlobalDetail = (item) => {
+        if (item.type === 'PRODUÇÃO' || item.type === 'EXPEDIÇÃO') {
+            if(typeof setSelectedGroupData === 'function') {
+                setSelectedGroupData({ code: item.id, name: item.desc });
+                setShowHistoryModal(true);
+            }
+        } else {
+            // Tenta encontrar o dado completo no resumo de MP para abrir o modal com saldo
+            const mpData = mpSummaryList.find(m => String(m.code) === String(item.id));
+            if (mpData) {
+                setViewingMpDetails(mpData);
+            } else {
+                // Fallback se não achar no resumo (ex: fora de filtro)
+                alert("Detalhe histórico não disponível nesta visualização.");
+            }
+        }
+    };
+
+    // Arrays Seguros
+    const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
+    const safeCutting = Array.isArray(cuttingLogs) ? cuttingLogs : [];
+    const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
+    const safeShipping = Array.isArray(shippingLogs) ? shippingLogs : [];
+
+    // =================================================================================
+    // 2. LÓGICA DO EXTRATO MP (CÁLCULO REVERSO / AUDITORIA)
+    // =================================================================================
+    
+    // A. Mapa do Estoque Real (O que existe fisicamente HOJE)
+    const realStockMap = {};
+    safeMother.forEach(m => {
+        if (m.status === 'stock') {
+            const code = m.code || 'S/ COD';
+            if (!realStockMap[code]) realStockMap[code] = 0;
+            // Soma o peso restante atual
+            realStockMap[code] += safeNum(m.remainingWeight) || safeNum(m.weight);
+        }
+    });
+
+    // B. Movimentações do Período Selecionado
+    const movementsMap = {};
+
+    // B1. Entradas (Filtradas por Data)
+    safeMother.forEach(m => {
+        if (!m.date) return;
+        const d = toISODate(m.date);
+        
+        if (d >= reportStartDate && d <= reportEndDate) {
+            const code = m.code || 'S/ COD';
+            if (!movementsMap[code]) movementsMap[code] = { in: 0, out: 0, details: [] };
+            
+            // Prioriza peso original, senão peso atual
+            let w = safeNum(m.originalWeight);
+            if (w === 0) w = safeNum(m.weight);
+            
+            movementsMap[code].in += w;
+            movementsMap[code].details.push({
+                date: m.date, 
+                timestamp: getTimestamp(m.date), 
+                type: 'ENTRADA', 
+                weightChange: w, 
+                desc: m.material, 
+                detail: `NF: ${m.nf||'-'}`
+            });
+        }
+    });
+
+    // B2. Saídas (Filtradas por Data)
+    safeCutting.forEach(c => {
+        if (!c.date) return;
+        const d = toISODate(c.date);
+        
+        if (d >= reportStartDate && d <= reportEndDate) {
+            const code = c.motherCode || 'S/ COD';
+            if (!movementsMap[code]) movementsMap[code] = { in: 0, out: 0, details: [] };
+            
+            const w = safeNum(c.inputWeight);
+            
+            movementsMap[code].out += w;
+            movementsMap[code].details.push({
+                date: c.date, 
+                timestamp: getTimestamp(c.date), 
+                type: 'SAIDA', 
+                weightChange: -w, 
+                desc: c.motherMaterial, 
+                detail: c.generatedItems
+            });
+        }
+    });
+
+    // C. Consolidação Final MP
+    const mpSummaryList = [];
+    const allCodes = new Set([...Object.keys(movementsMap), ...Object.keys(realStockMap)]);
+
+    allCodes.forEach(code => {
+        // Saldo Final = Estoque Real Hoje
+        const stock = realStockMap[code] || 0; 
+        const mov = movementsMap[code] || { in: 0, out: 0, details: [] };
+        
+        // Filtro: Esconde se tudo estiver zerado
+        if (stock === 0 && mov.in === 0 && mov.out === 0) return; 
+
+        // CÁLCULO REVERSO: Saldo Inicial = Final - Entradas + Saídas
+        const calculatedInitial = stock - mov.in + mov.out;
+
+        // Nome do Material (Busca na lista de bobinas para ser preciso)
+        const originalCoil = safeMother.find(m => String(m.code) === String(code));
+        const description = originalCoil ? originalCoil.material : (mov.details[0]?.desc || 'Item');
+
+        mpSummaryList.push({
+            code,
+            desc: description,
+            initialBalance: calculatedInitial,
+            periodIn: mov.in,
+            periodOut: mov.out,
+            finalBalance: stock,
+            movements: mov.details.sort((a,b) => a.timestamp - b.timestamp)
+        });
+    });
+    // Ordena lista MP
+    mpSummaryList.sort((a, b) => String(a.code).localeCompare(String(b.code)));
+
+
+    // =================================================================================
+    // 3. LÓGICA VISÃO GERAL (GLOBAL) & KPIs
+    // =================================================================================
+    
+    // Cria lista unificada de eventos para o gráfico e KPIs
+    const rawGlobalEvents = [];
+    
+    // Adiciona Entradas MP
+    safeMother.forEach(m => rawGlobalEvents.push({ 
+        rawDate: m.date, 
+        type: 'ENTRADA MP', 
+        id: m.code || '?', 
+        desc: m.material || '-', 
+        qty: 1, 
+        weight: safeNum(m.originalWeight)||safeNum(m.weight) 
+    }));
+    
+    // Adiciona Cortes
+    safeCutting.forEach(c => rawGlobalEvents.push({ 
+        rawDate: c.date, 
+        type: 'CORTE', 
+        id: c.motherCode || '?', 
+        desc: 'Corte Slitter', 
+        qty: safeNum(c.outputCount), 
+        weight: safeNum(c.inputWeight) 
+    }));
+    
+    // Adiciona Produção
+    safeProd.forEach(p => rawGlobalEvents.push({ 
+        rawDate: p.date, 
+        type: 'PRODUÇÃO', 
+        id: p.productCode || '?', 
+        desc: p.productName || '-', 
+        qty: safeNum(p.pieces), 
+        weight: safeNum(p.weight) 
+    }));
+    
+    // Adiciona Expedição
+    safeShipping.forEach(s => rawGlobalEvents.push({ 
+        rawDate: s.date, 
+        type: 'EXPEDIÇÃO', 
+        id: s.productCode || '?', 
+        desc: s.productName || '-', 
+        qty: safeNum(s.quantity), 
+        weight: 0 
+    }));
+
+    const globalTimeline = [];
+    const stats = { entradaKg: 0, corteKg: 0, prodPcs: 0, expPcs: 0 };
+
+    // Filtra e Soma
+    rawGlobalEvents.forEach(e => {
+        if(!e.rawDate) return;
+        const d = toISODate(e.rawDate);
+        
+        // Verifica se está no período selecionado
+        if(d >= reportStartDate && d <= reportEndDate) {
+            
+            // Filtro de Busca por Texto
+            if (reportSearch) {
+                const term = reportSearch.toLowerCase();
+                const text = (String(e.id) + String(e.desc) + String(e.type)).toLowerCase();
+                if (!text.includes(term)) return;
+            }
+            
+            globalTimeline.push(e);
+            
+            // Atualiza KPIs
+            if(e.type === 'ENTRADA MP') stats.entradaKg += e.weight;
+            if(e.type === 'CORTE') stats.corteKg += e.weight;
+            if(e.type === 'PRODUÇÃO') stats.prodPcs += e.qty;
+            if(e.type === 'EXPEDIÇÃO') stats.expPcs += e.qty;
+        }
+    });
+    // Ordena timeline do mais recente para o mais antigo
+    globalTimeline.sort((a,b) => getTimestamp(b.rawDate) - getTimestamp(a.rawDate));
+
+
+    // =================================================================================
+    // 4. LÓGICA RESUMO PRODUÇÃO
+    // =================================================================================
+    const prodByProductMap = {};
+    
+    safeProd.forEach(lot => {
+        if (!lot.date) return;
+        const d = toISODate(lot.date);
+        
+        if (d >= reportStartDate && d <= reportEndDate) {
+            if (reportSearch) {
+                const term = reportSearch.toLowerCase();
+                const text = (String(lot.productCode) + String(lot.productName)).toLowerCase();
+                if (!text.includes(term)) return;
+            }
+
+            const code = lot.productCode || 'S/ COD';
+            if (!prodByProductMap[code]) { 
+                prodByProductMap[code] = { 
+                    code, 
+                    name: lot.productName, 
+                    totalQty: 0, 
+                    totalWeight: 0, 
+                    totalScrap: 0 
+                }; 
+            }
+            prodByProductMap[code].totalQty += safeNum(lot.pieces);
+            prodByProductMap[code].totalWeight += safeNum(lot.weight);
+            prodByProductMap[code].totalScrap += safeNum(lot.scrap);
+        }
+    });
+    const prodSummaryList = Object.values(prodByProductMap).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+
+    // =================================================================================
+    // 5. RENDERIZAÇÃO FINAL (HTML)
+    // =================================================================================
     return (
       <div className="space-y-6 h-full flex flex-col">
-        {/* SELETOR DE ABAS */}
+        
+        {/* MENU DE ABAS DE NAVEGAÇÃO */}
         <div className="flex gap-2 border-b border-gray-700 pb-2 overflow-x-auto">
-            <button onClick={() => setReportViewMode('GLOBAL')} className={`px-4 py-3 font-bold text-xs md:text-sm transition-all rounded-t-lg whitespace-nowrap ${reportViewMode === 'GLOBAL' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Visão Geral</button>
-            <button onClick={() => setReportViewMode('MP_KARDEX')} className={`px-4 py-3 font-bold text-xs md:text-sm transition-all rounded-t-lg whitespace-nowrap ${reportViewMode === 'MP_KARDEX' ? 'bg-emerald-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Extrato MP</button>
-            <button onClick={() => setReportViewMode('PROD_SUMMARY')} className={`px-4 py-3 font-bold text-xs md:text-sm transition-all rounded-t-lg whitespace-nowrap ${reportViewMode === 'PROD_SUMMARY' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Resumo Produção</button>
+            <button onClick={() => setReportViewMode('GLOBAL')} className={`px-4 py-3 font-bold text-xs md:text-sm rounded-t-lg transition-colors ${reportViewMode === 'GLOBAL' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Visão Geral</button>
+            <button onClick={() => setReportViewMode('MP_KARDEX')} className={`px-4 py-3 font-bold text-xs md:text-sm rounded-t-lg transition-colors ${reportViewMode === 'MP_KARDEX' ? 'bg-emerald-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Extrato MP</button>
+            <button onClick={() => setReportViewMode('PROD_SUMMARY')} className={`px-4 py-3 font-bold text-xs md:text-sm rounded-t-lg transition-colors ${reportViewMode === 'PROD_SUMMARY' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Resumo Produção</button>
         </div>
 
-        {/* FILTROS */}
+        {/* FILTROS DE DATA E BUSCA */}
         <Card>
-            <div className="flex flex-col md:flex-row justify-between items-end gap-4">
-                <div className="w-full md:w-auto flex-1">
-                    <div className="flex gap-4">
-                        <div className="flex-1"><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Data Início</label><input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-white outline-none focus:border-blue-500"/></div>
-                        <div className="flex-1"><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Data Fim</label><input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-white outline-none focus:border-blue-500"/></div>
-                    </div>
+            <div className="flex flex-col md:flex-row gap-4 items-end">
+                <div className="flex gap-2 flex-1">
+                    <div className="flex-1"><label className="block text-xs text-gray-500 mb-1">Início</label><input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-blue-500"/></div>
+                    <div className="flex-1"><label className="block text-xs text-gray-500 mb-1">Fim</label><input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-blue-500"/></div>
                 </div>
-                <div className="w-full md:w-1/3"><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Buscar</label><div className="relative"><Search className="absolute left-3 top-2.5 text-gray-500" size={16} /><input type="text" placeholder="Buscar..." className="w-full pl-9 p-2 bg-gray-900 border border-gray-700 rounded-lg text-white outline-none focus:border-blue-500" value={reportSearch} onChange={e => setReportSearch(e.target.value)} /></div></div>
+                <div className="w-full md:w-1/3"><input type="text" placeholder="Buscar..." value={reportSearch} onChange={e => setReportSearch(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-blue-500"/></div>
             </div>
         </Card>
 
-        {/* CONTEÚDO */}
-        {reportViewMode === 'GLOBAL' ? (
+        {/* --- CONTEÚDO DA ABA 1: VISÃO GERAL --- */}
+        {reportViewMode === 'GLOBAL' && (
             <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0">
                     <Card className="border-l-4 border-blue-500 bg-gray-800 p-4"><p className="text-gray-400 text-[10px] font-bold uppercase">Entrada MP</p><div className="flex items-end gap-1 mt-1"><span className="text-xl font-bold text-white">{stats.entradaKg.toLocaleString('pt-BR')}</span><span className="text-xs text-blue-400 mb-1">kg</span></div></Card>
@@ -2171,84 +2433,108 @@ const renderReports = () => {
                     <Card className="border-l-4 border-amber-500 bg-gray-800 p-4"><p className="text-gray-400 text-[10px] font-bold uppercase">Expedição PA</p><div className="flex items-end gap-1 mt-1"><span className="text-xl font-bold text-white">{stats.expPcs.toLocaleString('pt-BR')}</span><span className="text-xs text-amber-400 mb-1">pçs</span></div></Card>
                 </div>
                 <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                    <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700"><h3 className="font-bold text-gray-200">Linha do Tempo Global</h3><Button variant="secondary" onClick={() => { const data = globalTimeline.map(e => ({ "Data": e.date, "Tipo": e.type, "Código": e.id, "Descrição": e.description, "Qtd Total": e.totalQty, "Peso Total (kg)": e.totalWeight, "Registros": e.count })); exportToCSV(data, `relatorio_global`); }} className="h-8 text-xs"><Download size={14}/> Baixar Excel</Button></div>
+                    <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700"><h3 className="font-bold text-gray-200">Linha do Tempo Global</h3><Button variant="secondary" onClick={() => { const data = globalTimeline.map(e => ({ "Data": e.rawDate, "Tipo": e.type, "Código": e.id, "Descrição": e.desc, "Qtd": e.qty, "Peso": e.weight })); exportToCSV(data, `relatorio_global`); }} className="h-8 text-xs"><Download size={14}/> Excel</Button></div>
                     <div className="flex-1 overflow-auto custom-scrollbar-dark">
                         <table className="w-full text-sm text-left text-gray-300">
-                            <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10"><tr><th className="p-3">Data</th><th className="p-3 text-center">Tipo</th><th className="p-3">Item / Descrição</th><th className="p-3 text-center">Resumo</th><th className="p-3 text-right">Qtd Total</th><th className="p-3 text-right">Peso Total</th><th className="p-3 text-center">Ação</th></tr></thead>
-                            <tbody className="divide-y divide-gray-700">{globalTimeline.length === 0 ? <tr><td colSpan="7" className="p-8 text-center text-gray-500">Nada encontrado.</td></tr> : globalTimeline.map((row, idx) => (<tr key={idx} className="hover:bg-gray-700/50"><td className="p-3 text-xs text-gray-400 font-mono">{row.date}</td><td className={`p-3 text-center font-bold text-xs ${getTypeColor(row.type)}`}>{row.type}</td><td className="p-3"><div className="font-bold text-white">{row.id}</div><div className="text-xs text-gray-400 truncate max-w-[300px]">{row.description}</div></td><td className="p-3 text-center text-xs text-gray-500">{row.count} registros</td><td className="p-3 text-right font-mono text-gray-300">{row.totalQty > 0 ? row.totalQty : '-'}</td><td className="p-3 text-right font-mono text-gray-300">{row.totalWeight > 0 ? row.totalWeight.toLocaleString('pt-BR') : '-'}</td><td className="p-3 text-center"><button onClick={() => setReportGroupData(row)} className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs transition-colors flex items-center gap-2 mx-auto"><Eye size={14}/> Detalhes</button></td></tr>))}</tbody>
+                            <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10">
+                                <tr>
+                                    <th className="p-3">Data</th><th className="p-3 text-center">Tipo</th><th className="p-3">Descrição</th><th className="p-3 text-right">Qtd</th><th className="p-3 text-right">Peso</th>
+                                    <th className="p-3 text-center">Ver</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-700">
+                                {globalTimeline.length === 0 ? <tr><td colSpan="6" className="p-8 text-center text-gray-500">Nenhum registro no período.</td></tr> : globalTimeline.map((e, idx) => (
+                                    <tr key={idx} className="hover:bg-gray-700/50">
+                                        <td className="p-3 text-xs text-gray-400 font-mono">{e.rawDate}</td>
+                                        <td className={`p-3 font-bold text-xs ${getTypeColor(e.type)}`}>{e.type}</td>
+                                        <td className="p-3 text-white">{e.desc}</td>
+                                        <td className="p-3 text-right text-gray-300">{e.qty}</td>
+                                        <td className="p-3 text-right font-mono text-gray-300">{e.weight.toFixed(1)}</td>
+                                        <td className="p-3 text-center">
+                                            <button onClick={() => handleGlobalDetail(e)} className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs transition-colors flex items-center gap-2 mx-auto"><Eye size={14}/></button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
                         </table>
                     </div>
                 </Card>
             </>
-        ) : reportViewMode === 'MP_KARDEX' ? (
+        )}
+
+        {/* --- CONTEÚDO DA ABA 2: EXTRATO MP --- */}
+        {reportViewMode === 'MP_KARDEX' && (
             <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-t-4 border-emerald-600">
                 <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700 p-4 bg-emerald-900/10 -mt-6 -mx-6">
-                    <div><h3 className="font-bold text-xl text-emerald-100">Extrato MP</h3><p className="text-sm text-emerald-300/70">Resumo por Código e Período</p></div>
-                    {/* BOTÃO EXCEL ATUALIZADO COM SALDO INICIAL */}
-                    <Button onClick={() => { 
-                        const data = mpSummaryList.map(i => ({ 
-                            "Código": i.code, 
-                            "Descrição": i.desc,
-                            "Saldo Inicial (kg)": i.initialBalance,
-                            "Entradas Período (kg)": i.periodIn, 
-                            "Saídas Período (kg)": i.periodOut, 
-                            "Saldo Final (kg)": (i.initialBalance + i.periodIn - i.periodOut)
-                        })); 
-                        exportToCSV(data, `extrato_mp_${reportStartDate}_a_${reportEndDate}`); 
-                    }} className="h-9 bg-emerald-600 text-white hover:bg-emerald-500">
-                        <Download size={14}/> Baixar Extrato
-                    </Button>
+                    <div><h3 className="font-bold text-xl text-emerald-100">Extrato MP</h3><p className="text-sm text-emerald-300/70">Auditoria de Estoque</p></div>
+                    
+                    {/* GRUPO DE BOTÕES DE EXPORTAÇÃO (ANALÍTICO + RESUMO) */}
+                    <div className="flex gap-2">
+                        <Button onClick={() => { 
+                            const analyticalData = [];
+                            mpSummaryList.forEach(item => {
+                                item.movements.forEach(mov => {
+                                    analyticalData.push({
+                                        "Código": item.code, "Descrição": item.desc,
+                                        "Data": mov.date, "Tipo": mov.type, "Detalhe/NF": mov.detail,
+                                        "Entrada (kg)": mov.type === 'ENTRADA' ? mov.weight : 0,
+                                        "Saída (kg)": mov.type !== 'ENTRADA' ? Math.abs(mov.weight) : 0
+                                    });
+                                });
+                            });
+                            exportToCSV(analyticalData, `relatorio_analitico_mp`); 
+                        }} className="h-9 bg-blue-600 text-white hover:bg-blue-500" title="Baixar Linha a Linha">
+                            <FileText size={14}/> Detalhado
+                        </Button>
+
+                        <Button onClick={() => { 
+                            const data = mpSummaryList.map(i => ({ 
+                                "Código": i.code, "Descrição": i.desc,
+                                "Saldo Anterior (kg)": i.initialBalance,
+                                "Entradas (kg)": i.periodIn, "Saídas (kg)": i.periodOut, 
+                                "Saldo Atual (kg)": i.finalBalance
+                            })); 
+                            exportToCSV(data, `extrato_mp_saldos`); 
+                        }} className="h-9 bg-emerald-600 text-white"><Download size={14}/> Saldos</Button>
+                    </div>
                 </div>
+                
                 <div className="flex-1 overflow-auto custom-scrollbar-dark px-4 pb-4">
                     <table className="w-full text-sm text-left text-gray-300">
                         <thead className="bg-gray-800 text-gray-400 sticky top-0">
                             <tr>
-                                <th className="p-3">Código</th>
-                                <th className="p-3">Descrição Material</th>
-                                <th className="p-3 text-right text-gray-400 bg-gray-900/50">Saldo Inicial</th>
+                                <th className="p-3">Código</th><th className="p-3">Descrição</th>
+                                <th className="p-3 text-right text-gray-400 bg-gray-900/50">Saldo Ant.</th>
                                 <th className="p-3 text-right text-emerald-400">Entradas</th>
                                 <th className="p-3 text-right text-red-400">Saídas</th>
-                                <th className="p-3 text-right text-white font-bold bg-gray-700/30">Saldo Final</th>
+                                <th className="p-3 text-right text-white font-bold bg-blue-900/40 border-l border-blue-700">Saldo Atual</th>
                                 <th className="p-3 text-center">Ação</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-700">
-                            {mpSummaryList.length === 0 ? (
-                                <tr><td colSpan="7" className="p-8 text-center text-gray-500">Nenhum registro para exibir.</td></tr>
-                            ) : (
-                                mpSummaryList.map((row, idx) => (
-                                    <tr key={idx} className="hover:bg-gray-700/50">
-                                        <td className="p-3 font-bold text-white">{row.code}</td>
-                                        <td className="p-3 text-gray-400">{row.desc}</td>
-                                        <td className="p-3 text-right text-gray-300 font-mono bg-gray-900/30">
-                                            {row.initialBalance.toLocaleString('pt-BR')}
-                                        </td>
-                                        <td className="p-3 text-right text-emerald-400 font-mono">
-                                            {row.periodIn > 0 ? `+${row.periodIn.toLocaleString('pt-BR')}` : '-'}
-                                        </td>
-                                        <td className="p-3 text-right text-red-400 font-mono">
-                                            {row.periodOut > 0 ? `-${row.periodOut.toLocaleString('pt-BR')}` : '-'}
-                                        </td>
-                                        <td className="p-3 text-right font-bold text-white font-mono bg-gray-700/20">
-                                            {(row.initialBalance + row.periodIn - row.periodOut).toLocaleString('pt-BR')}
-                                        </td>
-                                        <td className="p-3 text-center">
-                                            <button onClick={() => setViewingMpDetails(row)} className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs transition-colors flex items-center gap-2 mx-auto">
-                                                <Eye size={14}/> Detalhes
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
+                            {mpSummaryList.filter(i => !reportSearch || i.code.includes(reportSearch)).map((row, idx) => (
+                                <tr key={idx} className="hover:bg-gray-700/50">
+                                    <td className="p-3 font-bold text-white">{row.code}</td>
+                                    <td className="p-3 text-gray-400 truncate max-w-[200px]">{row.desc}</td>
+                                    <td className="p-3 text-right text-gray-300 font-mono bg-gray-900/30">{row.initialBalance.toLocaleString('pt-BR')}</td>
+                                    <td className="p-3 text-right text-emerald-400 font-mono">{row.periodIn.toLocaleString('pt-BR')}</td>
+                                    <td className="p-3 text-right text-red-400 font-mono">{row.periodOut.toLocaleString('pt-BR')}</td>
+                                    <td className="p-3 text-right font-bold text-white font-mono bg-blue-900/20 border-l border-gray-700">{row.finalBalance.toLocaleString('pt-BR')}</td>
+                                    <td className="p-3 text-center"><button onClick={() => setViewingMpDetails({...row, initialBalance: row.initialBalance})} className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs"><Eye size={14}/></button></td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 </div>
             </Card>
-        ) : (
+        )}
+
+        {/* --- CONTEÚDO DA ABA 3: RESUMO PRODUÇÃO --- */}
+        {reportViewMode === 'PROD_SUMMARY' && (
             <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-t-4 border-purple-600">
                 <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700 p-4 bg-purple-900/10 -mt-6 -mx-6">
                     <div><h3 className="font-bold text-xl text-purple-100">Resumo Produção</h3><p className="text-sm text-purple-300/70">Por Produto</p></div>
-                    <Button onClick={() => { const data = prodSummaryList.map(i => ({ "Produto": i.name, "Código": i.code, "Qtd Total": i.totalQty, "Peso Total": i.totalWeight })); exportToCSV(data, `resumo_producao`); }} className="h-9 bg-purple-600 text-white"><Download size={14}/> Baixar</Button>
+                    <Button onClick={() => { const data = prodSummaryList.map(i => ({ "Produto": i.name, "Código": i.code, "Qtd": i.totalQty, "Peso": i.totalWeight })); exportToCSV(data, `resumo_producao`); }} className="h-9 bg-purple-600 text-white"><Download size={14}/> Excel</Button>
                 </div>
                 <div className="flex-1 overflow-auto custom-scrollbar-dark px-4 pb-4">
                     <table className="w-full text-sm text-left text-gray-300">
@@ -2258,9 +2544,10 @@ const renderReports = () => {
                 </div>
             </Card>
         )}
+
       </div>
     );
-  };''
+  };
   const handleGeneratePDF = (title, data) => {
     // Cria uma janela popup invisível
     const printWindow = window.open('', '', 'height=600,width=800');
