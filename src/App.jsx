@@ -1522,36 +1522,73 @@ export default function App() {
     document.body.removeChild(link);
   };
 
+  // --- FUNÇÃO DE IMPORTAÇÃO GENÉRICA (ATUALIZADA COM LARGURA) ---
   const handleImportBackup = (e, setter, label) => {
     const file = e.target.files[0];
     if (!file) return;
+
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const text = e.target.result;
         const delimiter = detectDelimiter(text);
         const rows = parseCSVLine(text, delimiter);
+        
         if (rows.length < 2) return alert("Arquivo inválido ou vazio.");
-        const headers = rows[0];
+        
+        const headers = rows[0].map(h => h.toLowerCase().trim()); // Cabeçalhos em minúsculo
+        
         const data = rows.slice(1).map(row => {
           const obj = {};
+          
           headers.forEach((header, index) => {
             let val = row[index];
-            // BLINDAGEM CONTRA ERROS DE NÚMERO COM VÍRGULA/PONTO
+            if (val === undefined) return;
+
+            // --- MAPEAMENTO INTELIGENTE DE COLUNAS ---
+            let key = header;
+            if (header === 'largura') key = 'width';
+            if (header === 'peso' || header === 'peso (kg)') key = 'weight';
+            if (header === 'código' || header === 'codigo' || header === 'lote') key = 'code';
+            if (header === 'material' || header === 'descrição') key = 'material';
+            if (header === 'nota fiscal' || header === 'nf') key = 'nf';
+            // -----------------------------------------
+
+            // Limpeza de Números (1.200,50 -> 1200.5)
             if (typeof val === 'string' && /^[0-9.,]+$/.test(val)) {
+               // Se parece número, tenta converter
                const cleanVal = val.replace(/\./g, '').replace(',', '.');
-               if (!isNaN(Number(cleanVal))) val = Number(cleanVal);
+               if (!isNaN(Number(cleanVal)) && cleanVal !== '') {
+                   val = Number(cleanVal);
+               }
             }
-            // Forçar conversão para zero se falhar
-            if (header.toLowerCase().includes('weight') || header.toLowerCase().includes('width') || header.toLowerCase().includes('originalweight') || header.toLowerCase().includes('remainingweight')) {
-                if (isNaN(val) || val === '') val = 0;
-            }
-            obj[header] = val;
+            
+            obj[key] = val;
           });
+
+          // Ajustes finais para garantir integridade
+          if (!obj.id) obj.id = `IMP-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+          if (!obj.status) obj.status = 'stock';
+          
+          // Se for Mãe, garante que weight vá para remainingWeight também
+          if (label.includes('Mãe')) {
+              if (obj.weight && !obj.remainingWeight) obj.remainingWeight = obj.weight;
+              if (obj.weight && !obj.originalWeight) obj.originalWeight = obj.weight;
+              if (!obj.width) obj.width = 1200; // Padrão se não tiver largura
+          }
+
           return obj;
         });
-        if(data.length > 0){ setter(data); alert(`${label} atualizado com ${data.length} registros!`); } else { alert("Nenhum dado encontrado."); }
-      } catch (err) { alert("Erro: " + err.message); }
+
+        if(data.length > 0){ 
+            setter(data); 
+            alert(`${label} atualizado com ${data.length} registros!`); 
+        } else { 
+            alert("Nenhum dado encontrado."); 
+        }
+      } catch (err) { 
+          alert("Erro: " + err.message); 
+      }
     };
     reader.readAsText(file);
   };
@@ -2687,27 +2724,31 @@ const renderReports = () => {
 
                     <div className="border-t border-gray-700 my-1"></div>
                     {/* 2. SALDO MÃE (Backup + Inventário) */}
+                    {/* 2. SALDO MÃE (AZUL ESCURO) */}
                     <div className="flex items-center gap-2">
-                        {/* Botão Modelo CSV */}
-                        <Button variant="info" onClick={() => { const csv = "Codigo;Peso Real\n10644;5200.50\n10591;2000"; const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'}); const l = document.createElement("a"); l.href = URL.createObjectURL(blob); l.download = "modelo_inventario_mae.csv"; l.click(); }} className="w-9 h-9 p-0" title="Modelo Inventário Mãe">
+                        {/* Botão Modelo CSV: ATUALIZADO COM LARGURA */}
+                        <Button variant="info" onClick={() => { 
+                            // Modelo Completo para Importação
+                            const csv = "Codigo;Largura;Peso;Material;NF\n10644;1200;5200.50;BOBINA 0,40;12345"; 
+                            const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'}); 
+                            const l = document.createElement("a"); 
+                            l.href = URL.createObjectURL(blob); 
+                            l.download = "modelo_importacao_mae.csv"; 
+                            l.click(); 
+                        }} className="w-9 h-9 p-0" title="Modelo: Cód; Larg; Peso; Mat; NF">
                             <FileInput size={16}/>
                         </Button>
                         
-                        {/* Grupo de Importação */}
                         <div className="relative flex-1 flex gap-1">
-                            {/* Input Escondido para Backup (Substituição Total) */}
+                            {/* ... (os inputs e outros botões continuam iguais) ... */}
                             <input type="file" accept=".csv" className="hidden" ref={importMotherStockRef} onChange={(e) => handleImportBackup(e, setMotherCoils, 'Estoque Mãe')} />
-                            
-                            {/* Input Escondido para Inventário (Ajuste Inteligente) */}
                             <input type="file" accept=".csv" className="hidden" ref={inventoryMotherRef} onChange={handleMotherInventory} />
 
-                            {/* Botão Backup (Substituir) */}
-                            <Button variant="secondary" onClick={() => importMotherStockRef.current.click()} className="text-xs flex-1 h-9 bg-gray-800 border-gray-600 hover:bg-gray-700 text-gray-400" title="Apaga tudo e substitui">
+                            <Button variant="secondary" onClick={() => importMotherStockRef.current.click()} className="text-xs flex-1 h-9 bg-gray-800 border-gray-600 hover:bg-gray-700 text-gray-400" title="Substituir Tudo (Backup)">
                                 <Database size={14} className="mr-1"/> Backup
                             </Button>
 
-                            {/* Botão Inventário (Ajustar) */}
-                            <Button variant="secondary" onClick={() => inventoryMotherRef.current.click()} className="text-xs flex-[2] h-9 bg-sky-900/20 text-sky-400 border-sky-900/50 hover:bg-sky-900/40 font-bold" title="Lê arquivo e faz ajustes de entrada/saída">
+                            <Button variant="secondary" onClick={() => inventoryMotherRef.current.click()} className="text-xs flex-[2] h-9 bg-sky-900/20 text-sky-400 border-sky-900/50 hover:bg-sky-900/40 font-bold" title="Ajustar por Código e Largura">
                                 <Scale size={14} className="mr-2"/> Ajustar Estoque
                             </Button>
                         </div>
