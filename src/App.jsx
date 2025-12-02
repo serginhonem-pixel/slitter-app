@@ -2248,6 +2248,7 @@ const renderReports = () => {
 
   // --- 1. IMPORTAÇÃO GENÉRICA (BACKUP / LOTE) ---
   // --- FUNÇÃO DE IMPORTAÇÃO (ATUALIZADA PARA SEU ARQUIVO) ---
+  // --- 1. IMPORTAÇÃO GENÉRICA (BACKUP / LISTA COMPLETA) ---
   const handleImportBackup = (e, setter, label) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -2256,84 +2257,69 @@ const renderReports = () => {
     reader.onload = (e) => {
       try {
         const text = e.target.result;
-        // Força detecção de vírgula se não achar ponto e vírgula
-        const delimiter = text.includes(';') ? ';' : ','; 
+        const delimiter = detectDelimiter(text);
         const rows = parseCSVLine(text, delimiter);
         
-        if (rows.length < 2) return alert("Arquivo inválido ou vazio.");
+        if (rows.length < 2) return alert("Arquivo vazio.");
         
-        // Normaliza cabeçalhos (remove acentos e põe minúsculo)
-        const headers = rows[0].map(h => h.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
-        
-        const data = [];
+        // Mapeamento de colunas
+        const headers = rows[0].map(h => h.toLowerCase().trim());
+        const data = []; // Usaremos um array novo para expandir as quantidades
 
         rows.slice(1).forEach(row => {
           const obj = {};
-          
           headers.forEach((header, index) => {
             let val = row[index];
             if (val === undefined) return;
 
-            // --- MAPEAMENTO DO SEU ARQUIVO ---
             let key = header;
+            // Mapeamentos
             if (header.includes('largura')) key = 'width';
             if (header.includes('peso')) key = 'weight';
-            if (header.includes('codigo') || header.includes('lote')) key = 'code';
-            if (header.includes('material') || header.includes('descricao')) key = 'material';
+            if (header.includes('código') || header.includes('codigo') || header.includes('lote')) key = 'code';
+            if (header.includes('material') || header.includes('descrição')) key = 'material';
             if (header.includes('nota') || header.includes('nf')) key = 'nf';
             if (header.includes('filial')) key = 'branch';
             if (header.includes('tipo')) key = 'type';
-            if (header.includes('espesura') || header.includes('espessura')) key = 'thickness'; // Lê sua coluna 'Espesura'
-            if (header.includes('quantidade')) key = 'qty_temp'; // Lê quantidade temporariamente
+            if (header.includes('espesura') || header.includes('espessura')) key = 'thickness';
+            if (header.includes('quantidade') || header.includes('qtd')) key = 'qty_temp'; // <--- LÊ QUANTIDADE
 
-            // Limpeza de Números
+            // Limpa números
             if (typeof val === 'string' && /^[0-9.,]+$/.test(val)) {
-               // Se tiver só dígitos e ponto, mantém. Se tiver vírgula, troca.
-               const cleanVal = val.replace(/\./g, '').replace(',', '.');
-               if (!isNaN(Number(cleanVal)) && cleanVal !== '') {
-                   val = Number(cleanVal);
-               } else if (!isNaN(Number(val))) {
-                   val = Number(val);
-               }
+               const clean = val.replace(/\./g, '').replace(',', '.');
+               if (!isNaN(Number(clean)) && clean !== '') val = Number(clean);
             }
             obj[key] = val;
           });
 
-          // Se não tiver Material/Descrição no CSV, cria um automático
-          if (!obj.material && obj.code) {
-              obj.material = `BOBINA ${obj.type || ''} ${obj.thickness ? obj.thickness + 'mm' : ''} (IMP)`;
-          }
-
-          // Ajustes Finais
+          // Ajustes padrão
           if (!obj.status) obj.status = 'stock';
-          if (!obj.branch) obj.branch = 'MATRIZ';
+          if (!obj.branch) obj.branch = 'MATRIZ'; 
           
-          // Tratamento para Bobina Mãe
           if (label.includes('Mãe')) {
               if (obj.weight && !obj.remainingWeight) obj.remainingWeight = obj.weight;
               if (obj.weight && !obj.originalWeight) obj.originalWeight = obj.weight;
               if (!obj.width) obj.width = 1200;
+              // Se não tiver material, cria um genérico para não ficar vazio
+              if (!obj.material) obj.material = `BOBINA ${obj.code}`;
           }
 
-          // Lógica de Quantidade (Se no CSV diz Qtd: 2, cria 2 linhas)
-          const qtd = obj.qty_temp ? parseInt(obj.qty_temp) : 1;
-          for(let i=0; i<qtd; i++) {
+          // LÓGICA DE QUANTIDADE: Se Qtd=2, cria 2 registros
+          const loops = obj.qty_temp ? parseInt(obj.qty_temp) : 1;
+          
+          for (let i = 0; i < loops; i++) {
               data.push({
                   ...obj,
-                  id: `IMP-${Date.now()}-${Math.floor(Math.random()*100000)}`, // Gera ID único para cada uma
+                  id: `IMP-${Date.now()}-${Math.floor(Math.random()*1000000)}`, // ID único para cada
               });
           }
         });
 
         if(data.length > 0){ 
             setter(data); 
-            alert(`${label} atualizado com ${data.length} registros! (Lido de ${file.name})`); 
-        } else { 
-            alert("Nenhum dado encontrado."); 
+            alert(`${label} atualizado!\nForam importados ${data.length} registros individuais.`); 
         }
-      } catch (err) { 
-          alert("Erro: " + err.message); 
-      }
+      } catch (err) { alert("Erro: " + err.message); }
     };
     reader.readAsText(file);
   };
@@ -2742,23 +2728,61 @@ const renderReports = () => {
         <Card className="border-gray-700">
           <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2"><Database className="text-blue-500"/> Backup e Restauração</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-blue-500/50 transition-colors"><h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Exportar Dados</h4><div className="flex flex-col gap-2"><Button variant="secondary" onClick={() => { 
-                    const data = motherCoils.map(m => ({ 
-                        "ID Rastreio": m.id, 
-                        "Lote": m.code, 
-                        "NF": m.nf||'-', 
-                        "Material": m.material, 
-                        "Largura": m.width,
-                        "Peso": m.remainingWeight,
-                        "Filial": m.branch || 'MATRIZ', // <--- NOVO
-                        "Tipo": m.type || '-',          // <--- NOVO
-                        "Status": m.status, 
-                        "Data": m.date 
-                    })); 
-                    exportToCSV(data, 'relatorio_mae_completo'); 
-                }} className="text-xs w-full h-9">
-                    <Download size={14}/> Bobinas Mãe
-                </Button></div></div>
+            {/* COLUNA DA ESQUERDA: EXPORTAR DADOS (LIMPA E CORRIGIDA) */}
+            <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-blue-500/50 transition-colors">
+                <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Exportar Dados</h4>
+                <div className="flex flex-col gap-2">
+                    
+                    {/* 1. BOBINAS MÃE (COM LARGURA, FILIAL E TIPO) */}
+                    <Button variant="secondary" onClick={() => { 
+                        const data = motherCoils.map(m => ({ 
+                            "ID Rastreio": m.id, 
+                            "Lote": m.code, 
+                            "NF": m.nf||'-', 
+                            "Material": m.material, 
+                            "Largura": m.width,             // <--- COLUNA NOVA
+                            "Peso": m.remainingWeight,
+                            "Filial": m.branch || 'MATRIZ', // <--- COLUNA NOVA
+                            "Tipo": m.type || '-',          // <--- COLUNA NOVA
+                            "Status": m.status, 
+                            "Data": m.date 
+                        })); 
+                        exportToCSV(data, 'relatorio_mae_completo'); 
+                    }} className="text-xs w-full h-9">
+                        <Download size={14}/> Bobinas Mãe
+                    </Button>
+
+                    {/* 2. BOBINAS 2 (MANTIDO) */}
+                    <Button variant="secondary" onClick={() => { 
+                        const data = childCoils.map(c => ({ 
+                            "ID": c.id, 
+                            "Cód": c.b2Code, 
+                            "Desc": c.b2Name, 
+                            "Peso": c.weight, 
+                            "Status": c.status, 
+                            "Mãe": c.motherCode 
+                        })); 
+                        exportToCSV(data, 'relatorio_b2'); 
+                    }} className="text-xs w-full h-9">
+                        <Download size={14}/> Bobinas 2
+                    </Button>
+
+                    {/* 3. HISTÓRICO DE PRODUÇÃO (MANTIDO) */}
+                    <Button variant="secondary" onClick={() => { 
+                        const data = productionLogs.map(l => ({ 
+                            "Lote": l.id, 
+                            "Prod": l.productName, 
+                            "Qtd": l.pieces, 
+                            "Data": l.date, 
+                            "Mãe": l.motherCode 
+                        })); 
+                        exportToCSV(data, 'relatorio_prod'); 
+                    }} className="text-xs w-full h-9">
+                        <Download size={14}/> Histórico Produção
+                    </Button>
+
+                </div>
+            </div>
             {/* COLUNA DA DIREITA: IMPORTAR BACKUP */}
             <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-amber-500/50 transition-colors">
                 <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Importar Backup</h4>
