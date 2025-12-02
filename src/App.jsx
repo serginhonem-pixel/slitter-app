@@ -646,130 +646,8 @@ const handleGeneratePDF = (title, data) => {
   printWindow.document.close();
 };
 // --- FUNÇÃO DE INVENTÁRIO (BOBINA MÃE) ---
-  const handleMotherInventory = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target.result;
-        const delimiter = text.includes(';') ? ';' : ',';
-        const rows = parseCSVLine(text, delimiter);
-        
-        // Pula cabeçalho se existir e filtra linhas inválidas
-        const dataRows = rows.slice(1).filter(r => r.length >= 2 && r[0]);
-
-        // 1. Agrupa o Inventário Físico (CSV)
-        const inventoryMap = {}; 
-        dataRows.forEach(row => {
-             const rawCode = String(row[0] || '').trim();
-             // Limpa peso (1.200,50 -> 1200.50)
-             let weightStr = String(row[1] || '').replace(/\./g, '').replace(',', '.');
-             const weight = parseFloat(weightStr);
-
-             if (rawCode && !isNaN(weight)) {
-                 inventoryMap[rawCode] = (inventoryMap[rawCode] || 0) + weight;
-             }
-        });
-
-        let newMotherCoils = [...motherCoils];
-        let newCuttingLogs = [...cuttingLogs];
-        const dateNow = new Date().toLocaleDateString(); // DD/MM/YYYY
-        
-        let adjustedCount = 0;
-        let diffTotal = 0;
-
-        // 2. Processa cada Código do CSV
-        Object.keys(inventoryMap).forEach(code => {
-            const realWeight = inventoryMap[code];
-
-            // Busca bobinas ativas desse código no sistema
-            const systemCoils = newMotherCoils.filter(m => String(m.code) === code && m.status === 'stock');
-            const systemWeight = systemCoils.reduce((acc, m) => acc + (parseFloat(m.remainingWeight) || 0), 0);
-
-            const diff = realWeight - systemWeight;
-
-            // Se a diferença for muito pequena (ex: gramas), ignora
-            if (Math.abs(diff) < 0.1) return;
-
-            // Busca metadados (Nome, Espessura) para criar registros novos se precisar
-            let meta = systemCoils[0] || motherCatalog.find(m => String(m.code) === code) || { material: 'AJUSTE INVENTÁRIO', thickness: '-', type: 'AJUSTE', width: 0 };
-
-            if (diff > 0) {
-                // --- SOBRA FÍSICA (ENTRADA DE AJUSTE) ---
-                newMotherCoils.push({
-                    id: `INV-ENT-${Date.now()}-${Math.floor(Math.random()*1000)}`,
-                    code: code,
-                    nf: 'INVENTARIO',
-                    material: meta.material,
-                    weight: diff,
-                    originalWeight: diff,
-                    remainingWeight: diff,
-                    width: meta.width || 0,
-                    thickness: meta.thickness,
-                    type: meta.type,
-                    status: 'stock',
-                    date: dateNow,
-                    isAdjustment: true
-                });
-            } else {
-                // --- FALTA FÍSICA (SAÍDA/CONSUMO DE AJUSTE) ---
-                let weightToDeduct = Math.abs(diff);
-                
-                // Consome das bobinas existentes (da mais antiga para a mais nova ou vice-versa)
-                // Aqui vamos iterar sobre as bobinas do sistema e baixar o saldo
-                for (let coil of systemCoils) {
-                    if (weightToDeduct <= 0) break;
-
-                    const current = parseFloat(coil.remainingWeight);
-                    let deduction = 0;
-
-                    if (current <= weightToDeduct) {
-                        // Consome a bobina toda
-                        deduction = current;
-                        coil.remainingWeight = 0;
-                        coil.status = 'consumed';
-                        coil.consumptionDetail = 'AJUSTE INVENTÁRIO';
-                        coil.consumedDate = dateNow;
-                    } else {
-                        // Consome parcial
-                        deduction = weightToDeduct;
-                        coil.remainingWeight = current - deduction;
-                    }
-                    
-                    weightToDeduct -= deduction;
-                }
-
-                // Gera log de corte/consumo para constar no relatório
-                newCuttingLogs.push({
-                    id: `INV-SAI-${Date.now()}-${Math.floor(Math.random()*1000)}`,
-                    date: dateNow,
-                    motherCode: code,
-                    motherMaterial: meta.material,
-                    inputWeight: Math.abs(diff), // O quanto sumiu
-                    outputCount: 0,
-                    scrap: Math.abs(diff), // Consideramos como perda/sucata para fechar a conta
-                    generatedItems: 'AJUSTE DE INVENTÁRIO',
-                    timestamp: new Date().toLocaleString()
-                });
-            }
-            adjustedCount++;
-            diffTotal += diff;
-        });
-
-        setMotherCoils(newMotherCoils);
-        setCuttingLogs(newCuttingLogs);
-        
-        alert(`Inventário Processado!\n\nItens Ajustados: ${adjustedCount}\nDiferença de Peso Total: ${diffTotal.toFixed(1)} kg`);
-        e.target.value = ''; // Limpa input
-
-      } catch (error) {
-        alert("Erro ao processar inventário: " + error.message);
-      }
-    };
-    reader.readAsText(file);
-  };
+  // --- FUNÇÃO DE INVENTÁRIO ATUALIZADA (LÊ TUDO) ---
+    
 export default function App() {
   const [viewingCutLog, setViewingCutLog] = useState(null); // Para abrir o modal de detalhes do corte
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -987,12 +865,6 @@ export default function App() {
       setMotherCoils(motherCoils.filter(m => m.id !== id));
     }
   };
-
-  const updateMotherCoil = (updatedCoil) => {
-    setMotherCoils(motherCoils.map(m => m.id === updatedCoil.id ? updatedCoil : m));
-    setEditingMotherCoil(null);
-  };
-
   const addTempChildCoil = () => {
     // Função auxiliar para limpar números (Aceita 2000,50 e 2000.50)
     const parseWeight = (val) => {
@@ -1435,28 +1307,6 @@ export default function App() {
     setProductionLogs(productionLogs.filter(l => l.id !== logId));
   };
 
-  const detectDelimiter = (text) => {
-    const firstLine = text.split('\n')[0];
-    return firstLine.includes(';') ? ';' : ',';
-  };
-
-  const parseCSVLine = (text, delimiter) => {
-    const rows = [];
-    let currentRow = [];
-    let currentCell = '';
-    let insideQuotes = false;
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
-      if (char === '"') { insideQuotes = !insideQuotes; }
-      else if (char === delimiter && !insideQuotes) { currentRow.push(currentCell.trim()); currentCell = ''; }
-      else if ((char === '\n' || char === '\r') && !insideQuotes) {
-        if (currentCell || currentRow.length > 0) { currentRow.push(currentCell.trim()); rows.push(currentRow); currentRow = []; currentCell = ''; }
-      } else { currentCell += char; }
-    }
-    if (currentCell || currentRow.length > 0) { currentRow.push(currentCell.trim()); rows.push(currentRow); }
-    return rows;
-  };
-
   const generateTrackingId = () => {
     const date = new Date();
     const ymd = date.toISOString().slice(0,10).replace(/-/g, '');
@@ -1523,76 +1373,8 @@ export default function App() {
   };
 
   // --- FUNÇÃO DE IMPORTAÇÃO GENÉRICA (ATUALIZADA COM LARGURA) ---
-  const handleImportBackup = (e, setter, label) => {
-    const file = e.target.files[0];
-    if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const text = e.target.result;
-        const delimiter = detectDelimiter(text);
-        const rows = parseCSVLine(text, delimiter);
-        
-        if (rows.length < 2) return alert("Arquivo inválido ou vazio.");
-        
-        const headers = rows[0].map(h => h.toLowerCase().trim()); // Cabeçalhos em minúsculo
-        
-        const data = rows.slice(1).map(row => {
-          const obj = {};
-          
-          headers.forEach((header, index) => {
-            let val = row[index];
-            if (val === undefined) return;
-
-            // --- MAPEAMENTO INTELIGENTE DE COLUNAS ---
-            let key = header;
-            if (header === 'largura') key = 'width';
-            if (header === 'peso' || header === 'peso (kg)') key = 'weight';
-            if (header === 'código' || header === 'codigo' || header === 'lote') key = 'code';
-            if (header === 'material' || header === 'descrição') key = 'material';
-            if (header === 'nota fiscal' || header === 'nf') key = 'nf';
-            // -----------------------------------------
-
-            // Limpeza de Números (1.200,50 -> 1200.5)
-            if (typeof val === 'string' && /^[0-9.,]+$/.test(val)) {
-               // Se parece número, tenta converter
-               const cleanVal = val.replace(/\./g, '').replace(',', '.');
-               if (!isNaN(Number(cleanVal)) && cleanVal !== '') {
-                   val = Number(cleanVal);
-               }
-            }
-            
-            obj[key] = val;
-          });
-
-          // Ajustes finais para garantir integridade
-          if (!obj.id) obj.id = `IMP-${Date.now()}-${Math.floor(Math.random()*1000)}`;
-          if (!obj.status) obj.status = 'stock';
-          
-          // Se for Mãe, garante que weight vá para remainingWeight também
-          if (label.includes('Mãe')) {
-              if (obj.weight && !obj.remainingWeight) obj.remainingWeight = obj.weight;
-              if (obj.weight && !obj.originalWeight) obj.originalWeight = obj.weight;
-              if (!obj.width) obj.width = 1200; // Padrão se não tiver largura
-          }
-
-          return obj;
-        });
-
-        if(data.length > 0){ 
-            setter(data); 
-            alert(`${label} atualizado com ${data.length} registros!`); 
-        } else { 
-            alert("Nenhum dado encontrado."); 
-        }
-      } catch (err) { 
-          alert("Erro: " + err.message); 
-      }
-    };
-    reader.readAsText(file);
-  };
-
+  
   const handleMotherCatalogUpload = (event) => { 
       const file = event.target.files[0];
     if (!file) return;
@@ -2460,13 +2242,270 @@ const renderReports = () => {
     }, 500);
   };
 
-  // --- FUNÇÃO DE RESTAURAR BACKUP (COM DATA) ---
-  const handleFullRestore = (e) => {
+  // ==================================================================
+  // COLE ISTO DENTRO DO APP, ANTES DE "const renderDashboard = ..."
+  // ==================================================================
+
+  // --- 1. IMPORTAÇÃO GENÉRICA (BACKUP / LOTE) ---
+  // --- FUNÇÃO DE IMPORTAÇÃO (ATUALIZADA PARA SEU ARQUIVO) ---
+  const handleImportBackup = (e, setter, label) => {
     const file = e.target.files[0];
     if (!file) return;
 
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target.result;
+        // Força detecção de vírgula se não achar ponto e vírgula
+        const delimiter = text.includes(';') ? ';' : ','; 
+        const rows = parseCSVLine(text, delimiter);
+        
+        if (rows.length < 2) return alert("Arquivo inválido ou vazio.");
+        
+        // Normaliza cabeçalhos (remove acentos e põe minúsculo)
+        const headers = rows[0].map(h => h.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+        
+        const data = [];
+
+        rows.slice(1).forEach(row => {
+          const obj = {};
+          
+          headers.forEach((header, index) => {
+            let val = row[index];
+            if (val === undefined) return;
+
+            // --- MAPEAMENTO DO SEU ARQUIVO ---
+            let key = header;
+            if (header.includes('largura')) key = 'width';
+            if (header.includes('peso')) key = 'weight';
+            if (header.includes('codigo') || header.includes('lote')) key = 'code';
+            if (header.includes('material') || header.includes('descricao')) key = 'material';
+            if (header.includes('nota') || header.includes('nf')) key = 'nf';
+            if (header.includes('filial')) key = 'branch';
+            if (header.includes('tipo')) key = 'type';
+            if (header.includes('espesura') || header.includes('espessura')) key = 'thickness'; // Lê sua coluna 'Espesura'
+            if (header.includes('quantidade')) key = 'qty_temp'; // Lê quantidade temporariamente
+
+            // Limpeza de Números
+            if (typeof val === 'string' && /^[0-9.,]+$/.test(val)) {
+               // Se tiver só dígitos e ponto, mantém. Se tiver vírgula, troca.
+               const cleanVal = val.replace(/\./g, '').replace(',', '.');
+               if (!isNaN(Number(cleanVal)) && cleanVal !== '') {
+                   val = Number(cleanVal);
+               } else if (!isNaN(Number(val))) {
+                   val = Number(val);
+               }
+            }
+            obj[key] = val;
+          });
+
+          // Se não tiver Material/Descrição no CSV, cria um automático
+          if (!obj.material && obj.code) {
+              obj.material = `BOBINA ${obj.type || ''} ${obj.thickness ? obj.thickness + 'mm' : ''} (IMP)`;
+          }
+
+          // Ajustes Finais
+          if (!obj.status) obj.status = 'stock';
+          if (!obj.branch) obj.branch = 'MATRIZ';
+          
+          // Tratamento para Bobina Mãe
+          if (label.includes('Mãe')) {
+              if (obj.weight && !obj.remainingWeight) obj.remainingWeight = obj.weight;
+              if (obj.weight && !obj.originalWeight) obj.originalWeight = obj.weight;
+              if (!obj.width) obj.width = 1200;
+          }
+
+          // Lógica de Quantidade (Se no CSV diz Qtd: 2, cria 2 linhas)
+          const qtd = obj.qty_temp ? parseInt(obj.qty_temp) : 1;
+          for(let i=0; i<qtd; i++) {
+              data.push({
+                  ...obj,
+                  id: `IMP-${Date.now()}-${Math.floor(Math.random()*100000)}`, // Gera ID único para cada uma
+              });
+          }
+        });
+
+        if(data.length > 0){ 
+            setter(data); 
+            alert(`${label} atualizado com ${data.length} registros! (Lido de ${file.name})`); 
+        } else { 
+            alert("Nenhum dado encontrado."); 
+        }
+      } catch (err) { 
+          alert("Erro: " + err.message); 
+      }
+    };
+    reader.readAsText(file);
+  };
+  // --- 2. INVENTÁRIO INTELIGENTE (BOBINA MÃE) ---
+  // --- VERSÃO INTELIGENTE: INVENTÁRIO (LÊ CABEÇALHOS) ---
+  // --- FUNÇÃO DE INVENTÁRIO INTELIGENTE (LÊ CABEÇALHOS DO EXCEL/CSV) ---
+  const handleMotherInventory = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target.result;
+        // Usa as funções auxiliares que estão no final do arquivo
+        const delimiter = detectDelimiter(text);
+        const rows = parseCSVLine(text, delimiter);
+        
+        if (rows.length < 2) return alert("Arquivo vazio ou sem cabeçalho.");
+
+        // 1. Identifica onde está cada coluna pelo nome (Header)
+        // Remove acentos e deixa minúsculo para facilitar a busca (Ex: "CÓDIGO" vira "codigo")
+        const headers = rows[0].map(h => h.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "")); 
+        
+        // Procura em qual coluna está cada informação
+        const idxCode = headers.findIndex(h => h.includes('codigo') || h.includes('lote'));
+        const idxWidth = headers.findIndex(h => h.includes('largura'));
+        const idxWeight = headers.findIndex(h => h.includes('peso'));
+        const idxBranch = headers.findIndex(h => h.includes('filial'));
+        const idxType = headers.findIndex(h => h.includes('tipo'));
+
+        // Validação básica: Precisa ter pelo menos Código e Peso
+        if (idxCode === -1 || idxWeight === -1) {
+            return alert(`Erro: Não encontrei as colunas 'Código' e 'Peso' no arquivo.\n\nColunas lidas: ${headers.join(', ')}`);
+        }
+
+        const inventoryMap = {}; 
+        
+        // 2. Processa as linhas usando os índices descobertos
+        const dataRows = rows.slice(1);
+        
+        dataRows.forEach(row => {
+             // Pega valor baseado no índice da coluna
+             const rawCode = String(row[idxCode] || '').trim();
+             
+             // Funçãozinha interna para limpar números (tira ponto de milhar, troca vírgula por ponto)
+             const parseNum = (val) => {
+                 if (!val) return 0;
+                 let clean = String(val).replace(/\./g, '').replace(',', '.');
+                 return parseFloat(clean) || 0;
+             };
+
+             const width = idxWidth !== -1 ? parseNum(row[idxWidth]) : 0; // Se não tiver coluna largura, assume 0
+             const weight = parseNum(row[idxWeight]);
+             const branch = idxBranch !== -1 ? (row[idxBranch] || 'MATRIZ') : 'MATRIZ';
+             const type = idxType !== -1 ? (row[idxType] || 'ND') : 'ND';
+
+             if (rawCode && weight > 0) {
+                 // Chave composta: Código + Largura (para diferenciar bobinas de larguras diferentes com mesmo lote)
+                 const key = `${rawCode}|${width}`;
+                 
+                 if (!inventoryMap[key]) inventoryMap[key] = { weight: 0, branch, type };
+                 inventoryMap[key].weight += weight;
+                 
+                 // Se no CSV tiver filial/tipo, atualiza (prevalece o último lido)
+                 if(branch !== 'MATRIZ') inventoryMap[key].branch = branch;
+                 if(type !== 'ND') inventoryMap[key].type = type;
+             }
+        });
+
+        // 3. Compara com o Sistema
+        let newMotherCoils = [...motherCoils];
+        let newCuttingLogs = [...cuttingLogs];
+        const dateNow = new Date().toLocaleDateString();
+        let adjustedCount = 0;
+        let diffTotal = 0;
+
+        Object.keys(inventoryMap).forEach(key => {
+            const [code, widthStr] = key.split('|');
+            const width = parseFloat(widthStr);
+            const { weight: realWeight, branch, type } = inventoryMap[key];
+
+            // Busca bobinas no sistema. Se largura for 0 no CSV, ignora filtro de largura.
+            const systemCoils = newMotherCoils.filter(m => 
+                String(m.code) === code && 
+                (width === 0 || Math.abs((parseFloat(m.width)||0) - width) < 5) && 
+                m.status === 'stock'
+            );
+            
+            const systemWeight = systemCoils.reduce((acc, m) => acc + (parseFloat(m.remainingWeight) || 0), 0);
+            const diff = realWeight - systemWeight;
+
+            // Ignora diferenças muito pequenas (menores que 0.5kg)
+            if (Math.abs(diff) < 0.5) return;
+
+            // Busca dados do catálogo para preencher lacunas se for criar novo
+            let meta = systemCoils[0] || motherCatalog.find(m => String(m.code) === code) || { material: 'AJUSTE INVENTÁRIO', thickness: '-', type: type };
+
+            if (diff > 0) {
+                // SOBRA FÍSICA -> ENTRADA
+                newMotherCoils.push({
+                    id: `INV-ENT-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+                    code: code,
+                    nf: 'INVENTARIO',
+                    material: meta.material || 'AJUSTE',
+                    weight: diff,
+                    originalWeight: diff,
+                    remainingWeight: diff,
+                    width: width > 0 ? width : (meta.width || 1200),
+                    thickness: meta.thickness,
+                    type: meta.type || type,
+                    branch: branch,
+                    status: 'stock',
+                    date: dateNow,
+                    isAdjustment: true
+                });
+            } else {
+                // FALTA FÍSICA -> SAÍDA (CONSUMO)
+                let weightToDeduct = Math.abs(diff);
+                for (let coil of systemCoils) {
+                    if (weightToDeduct <= 0) break;
+                    const current = parseFloat(coil.remainingWeight);
+                    
+                    if (current <= weightToDeduct) {
+                        // Consome total a bobina
+                        coil.remainingWeight = 0;
+                        coil.status = 'consumed';
+                        coil.consumptionDetail = 'AJUSTE INVENTÁRIO';
+                        coil.consumedDate = dateNow;
+                        weightToDeduct -= current;
+                    } else {
+                        // Consome parcial a bobina
+                        coil.remainingWeight = current - weightToDeduct;
+                        weightToDeduct = 0;
+                    }
+                }
+                
+                // Registra Log de Corte/Ajuste
+                newCuttingLogs.push({
+                    id: `INV-SAI-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+                    date: dateNow,
+                    motherCode: code,
+                    motherMaterial: meta.material || 'AJUSTE',
+                    inputWeight: Math.abs(diff),
+                    outputCount: 0,
+                    scrap: Math.abs(diff),
+                    generatedItems: `AJUSTE ${width > 0 ? `(Larg: ${width}mm)` : ''}`,
+                    timestamp: new Date().toLocaleString()
+                });
+            }
+            adjustedCount++;
+            diffTotal += diff;
+        });
+
+        setMotherCoils(newMotherCoils);
+        setCuttingLogs(newCuttingLogs);
+        
+        alert(`Inventário Processado com Sucesso!\n\nItens Ajustados: ${adjustedCount}\nDiferença Líquida de Peso: ${diffTotal.toFixed(1)} kg`);
+        e.target.value = ''; 
+
+      } catch (error) {
+        alert("Erro fatal ao processar: " + error.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // --- 3. RESTAURAR BACKUP COMPLETO ---
+  const handleFullRestore = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
     const fileName = file.name;
-    // Pega a data de modificação do arquivo para exibir
     const fileDate = file.lastModified ? new Date(file.lastModified).toLocaleString() : new Date().toLocaleString();
 
     const reader = new FileReader();
@@ -2480,16 +2519,14 @@ const renderReports = () => {
         if (data.productCatalog) setProductCatalog(data.productCatalog);
         if (data.motherCatalog) setMotherCatalog(data.motherCatalog);
         
-        // Atualiza o nome na barra superior
         setCurrentFileName(`📂 ${fileName} (Salvo em: ${fileDate})`);
-
-        alert(`Backup restaurado com sucesso!\n\nArquivo: ${fileName}\nData: ${fileDate}`);
-      } catch (err) {
-        alert("Erro ao ler arquivo de backup: " + err.message);
-      }
+        alert("Backup restaurado!");
+      } catch (err) { alert("Erro ao ler backup: " + err.message); }
     };
     reader.readAsText(file);
   };
+
+
   const renderDashboard = () => {
     // --- 1. PREPARAÇÃO DOS DADOS ---
     
@@ -2705,7 +2742,23 @@ const renderReports = () => {
         <Card className="border-gray-700">
           <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2"><Database className="text-blue-500"/> Backup e Restauração</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-blue-500/50 transition-colors"><h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Exportar Dados</h4><div className="flex flex-col gap-2"><Button variant="secondary" onClick={() => { const data = motherCoils.map(m => ({ "ID Rastreio": m.id, "Lote": m.code, "NF": m.nf||'-', "Material": m.material, "Peso": m.originalWeight, "Status": m.status, "Data": m.date })); exportToCSV(data, 'relatorio_mae'); }} className="text-xs w-full h-9"><Download size={14}/> Bobinas Mãe</Button><Button variant="secondary" onClick={() => { const data = childCoils.map(c => ({ "ID": c.id, "Cód": c.b2Code, "Desc": c.b2Name, "Peso": c.weight, "Status": c.status, "Mãe": c.motherCode })); exportToCSV(data, 'relatorio_b2'); }} className="text-xs w-full h-9"><Download size={14}/> Bobinas 2</Button><Button variant="secondary" onClick={() => { const data = productionLogs.map(l => ({ "Lote": l.id, "Prod": l.productName, "Qtd": l.pieces, "Data": l.date, "Mãe": l.motherCode })); exportToCSV(data, 'relatorio_prod'); }} className="text-xs w-full h-9"><Download size={14}/> Histórico Produção</Button></div></div>
+            <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-blue-500/50 transition-colors"><h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Exportar Dados</h4><div className="flex flex-col gap-2"><Button variant="secondary" onClick={() => { 
+                    const data = motherCoils.map(m => ({ 
+                        "ID Rastreio": m.id, 
+                        "Lote": m.code, 
+                        "NF": m.nf||'-', 
+                        "Material": m.material, 
+                        "Largura": m.width,
+                        "Peso": m.remainingWeight,
+                        "Filial": m.branch || 'MATRIZ', // <--- NOVO
+                        "Tipo": m.type || '-',          // <--- NOVO
+                        "Status": m.status, 
+                        "Data": m.date 
+                    })); 
+                    exportToCSV(data, 'relatorio_mae_completo'); 
+                }} className="text-xs w-full h-9">
+                    <Download size={14}/> Bobinas Mãe
+                </Button></div></div>
             {/* COLUNA DA DIREITA: IMPORTAR BACKUP */}
             <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-amber-500/50 transition-colors">
                 <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Importar Backup</h4>
@@ -2725,32 +2778,34 @@ const renderReports = () => {
                     <div className="border-t border-gray-700 my-1"></div>
                     {/* 2. SALDO MÃE (Backup + Inventário) */}
                     {/* 2. SALDO MÃE (AZUL ESCURO) */}
+                    {/* 2. SALDO MÃE */}
                     <div className="flex items-center gap-2">
-                        {/* Botão Modelo CSV: ATUALIZADO COM LARGURA */}
+                        {/* Modelo ATUALIZADO */}
                         <Button variant="info" onClick={() => { 
-                            // Modelo Completo para Importação
-                            const csv = "Codigo;Largura;Peso;Material;NF\n10644;1200;5200.50;BOBINA 0,40;12345"; 
+                            // Adicionei Filial e Tipo no CSV de exemplo
+                            const csv = "Codigo;Largura;Peso;Filial;Tipo\n10644;1200;5000;MATRIZ;BEG\n10591;1000;2000;FILIAL1;ZINC"; 
                             const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'}); 
                             const l = document.createElement("a"); 
                             l.href = URL.createObjectURL(blob); 
-                            l.download = "modelo_importacao_mae.csv"; 
+                            l.download = "modelo_inventario_mae_completo.csv"; 
                             l.click(); 
-                        }} className="w-9 h-9 p-0" title="Modelo: Cód; Larg; Peso; Mat; NF">
+                        }} className="w-9 h-9 p-0" title="Modelo: Cód; Larg; Peso; Filial; Tipo">
                             <FileInput size={16}/>
                         </Button>
                         
                         <div className="relative flex-1 flex gap-1">
-                            {/* ... (os inputs e outros botões continuam iguais) ... */}
-                            <input type="file" accept=".csv" className="hidden" ref={importMotherStockRef} onChange={(e) => handleImportBackup(e, setMotherCoils, 'Estoque Mãe')} />
-                            <input type="file" accept=".csv" className="hidden" ref={inventoryMotherRef} onChange={handleMotherInventory} />
+                             {/* ... Inputs e outros botões iguais ... */}
+                             {/* (Mantenha o resto como estava) */}
+                             <input type="file" accept=".csv" className="hidden" ref={importMotherStockRef} onChange={(e) => handleImportBackup(e, setMotherCoils, 'Estoque Mãe')} />
+                             <input type="file" accept=".csv" className="hidden" ref={inventoryMotherRef} onChange={handleMotherInventory} />
 
-                            <Button variant="secondary" onClick={() => importMotherStockRef.current.click()} className="text-xs flex-1 h-9 bg-gray-800 border-gray-600 hover:bg-gray-700 text-gray-400" title="Substituir Tudo (Backup)">
+                             <Button variant="secondary" onClick={() => importMotherStockRef.current.click()} className="text-xs flex-1 h-9 bg-gray-800 border-gray-600 hover:bg-gray-700 text-gray-400" title="Substituir Tudo">
                                 <Database size={14} className="mr-1"/> Backup
-                            </Button>
+                             </Button>
 
-                            <Button variant="secondary" onClick={() => inventoryMotherRef.current.click()} className="text-xs flex-[2] h-9 bg-sky-900/20 text-sky-400 border-sky-900/50 hover:bg-sky-900/40 font-bold" title="Ajustar por Código e Largura">
+                             <Button variant="secondary" onClick={() => inventoryMotherRef.current.click()} className="text-xs flex-[2] h-9 bg-sky-900/20 text-sky-400 border-sky-900/50 hover:bg-sky-900/40 font-bold" title="Ajustar Estoque">
                                 <Scale size={14} className="mr-2"/> Ajustar Estoque
-                            </Button>
+                             </Button>
                         </div>
                     </div>
 
@@ -2955,4 +3010,55 @@ const renderReports = () => {
       )}
     </div>    
   );
+};
+// ==========================================================
+// COLE ISTO NO FINAL ABSOLUTO DO ARQUIVO (FORA DA FUNÇÃO APP)
+// ==========================================================
+
+// --- FUNÇÕES AUXILIARES (FICA NO FINAL DO ARQUIVO, FORA DO APP) ---
+
+// ==================================================================
+// COLE ISTO NO FINAL ABSOLUTO DO ARQUIVO (FORA DA FUNÇÃO APP)
+// ==================================================================
+
+// ==================================================================
+// COLE ISTO NO FINAL ABSOLUTO DO ARQUIVO (FORA DA FUNÇÃO APP)
+// ==================================================================
+
+const detectDelimiter = (text) => {
+  const firstLine = text.split('\n')[0];
+  return firstLine.includes(';') ? ';' : ',';
+};
+
+const parseCSVLine = (text, delimiter) => {
+  const rows = [];
+  let currentRow = [];
+  let currentCell = '';
+  let insideQuotes = false;
+  
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === '"') { 
+        insideQuotes = !insideQuotes; 
+    } else if (char === delimiter && !insideQuotes) { 
+        currentRow.push(currentCell.trim()); 
+        currentCell = ''; 
+    } else if ((char === '\n' || char === '\r') && !insideQuotes) {
+      if (currentCell || currentRow.length > 0) { 
+          currentRow.push(currentCell.trim()); 
+          rows.push(currentRow); 
+          currentRow = []; 
+          currentCell = ''; 
+      }
+    } else { 
+        currentCell += char; 
+    }
+  }
+  
+  if (currentCell || currentRow.length > 0) { 
+      currentRow.push(currentCell.trim()); 
+      rows.push(currentRow); 
+  }
+  
+  return rows;
 };
