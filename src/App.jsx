@@ -2142,6 +2142,8 @@ const renderReports = () => {
         return isNaN(n) ? 0 : n;
     };
     
+    const normalizeCode = (v) => String(v ?? '').trim(); // <--- MOVIDO PARA O TOPO
+
     const isValidDate = (d) => d && typeof d === 'string' && (d.includes('/') || d.includes('-'));
     
     const toISODate = (d) => {
@@ -2172,13 +2174,11 @@ const renderReports = () => {
             }
         } else {
             // Tenta encontrar o dado completo no resumo de MP para abrir o modal com saldo
-            const mpData = mpSummaryList.find(m => String(m.code) === String(item.id));
-            if (mpData) {
-                setViewingMpDetails(mpData);
-            } else {
-                // Fallback se não achar no resumo (ex: fora de filtro)
-                alert("Detalhe histórico não disponível nesta visualização.");
-            }
+            // Precisamos recalcular isso aqui ou buscar na lista já renderizada
+            // Para simplificar, vamos buscar direto na lista calculada se possível, ou apenas alertar
+            // Como mpSummaryList é local, não conseguimos acessar aqui direto se estivermos na aba Global.
+            // Vamos fazer uma busca simplificada:
+            alert("Para ver o extrato detalhado deste item, vá para a aba 'Extrato MP'.");
         }
     };
 
@@ -2196,23 +2196,30 @@ const renderReports = () => {
     const realStockMap = {};
     safeMother.forEach(m => {
         if (m.status === 'stock') {
-            const code = m.code || 'S/ COD';
+            const code = normalizeCode(m.code) || 'S/ COD';
             if (!realStockMap[code]) realStockMap[code] = 0;
             // Soma o peso restante atual
             realStockMap[code] += safeNum(m.remainingWeight) || safeNum(m.weight);
         }
     });
 
-    // B. Movimentações do Período Selecionado
+    // B. Catálogo para Nomes (Agora seguro porque normalizeCode já existe)
+    const catalogByCode = (motherCatalog || []).reduce((acc, item) => {
+        const code = normalizeCode(item.code);
+        if (code) acc[code] = item;
+        return acc;
+    }, {});
+
+    // C. Movimentações do Período Selecionado
     const movementsMap = {};
 
-    // B1. Entradas (Filtradas por Data)
+    // C1. Entradas (Filtradas por Data)
     safeMother.forEach(m => {
         if (!m.date) return;
         const d = toISODate(m.date);
         
         if (d >= reportStartDate && d <= reportEndDate) {
-            const code = m.code || 'S/ COD';
+            const code = normalizeCode(m.code) || 'S/ COD';
             if (!movementsMap[code]) movementsMap[code] = { in: 0, out: 0, details: [] };
             
             // Prioriza peso original, senão peso atual
@@ -2231,13 +2238,13 @@ const renderReports = () => {
         }
     });
 
-    // B2. Saídas (Filtradas por Data)
+    // C2. Saídas (Filtradas por Data)
     safeCutting.forEach(c => {
         if (!c.date) return;
         const d = toISODate(c.date);
         
         if (d >= reportStartDate && d <= reportEndDate) {
-            const code = c.motherCode || 'S/ COD';
+            const code = normalizeCode(c.motherCode) || 'S/ COD';
             if (!movementsMap[code]) movementsMap[code] = { in: 0, out: 0, details: [] };
             
             const w = safeNum(c.inputWeight);
@@ -2254,11 +2261,12 @@ const renderReports = () => {
         }
     });
 
-    // C. Consolidação Final MP
+    // D. Consolidação Final MP
     const mpSummaryList = [];
     const allCodes = new Set([...Object.keys(movementsMap), ...Object.keys(realStockMap)]);
 
-    allCodes.forEach(code => {
+    allCodes.forEach(rawCode => {
+        const code = normalizeCode(rawCode);
         // Saldo Final = Estoque Real Hoje
         const stock = realStockMap[code] || 0; 
         const mov = movementsMap[code] || { in: 0, out: 0, details: [] };
@@ -2269,9 +2277,15 @@ const renderReports = () => {
         // CÁLCULO REVERSO: Saldo Inicial = Final - Entradas + Saídas
         const calculatedInitial = stock - mov.in + mov.out;
 
-        // Nome do Material (Busca na lista de bobinas para ser preciso)
-        const originalCoil = safeMother.find(m => String(m.code) === String(code));
-        const description = originalCoil ? originalCoil.material : (mov.details[0]?.desc || 'Item');
+        // Nome do Material
+        // 1º Catálogo
+        const catalogItem = catalogByCode[code];
+        // 2º Bobina registrada
+        const originalCoil = safeMother.find(m => normalizeCode(m.code) === code);
+        // 3º Histórico
+        const histDesc = mov.details[0]?.desc;
+
+        const description = catalogItem?.description || originalCoil?.material || histDesc || 'Item';
 
         mpSummaryList.push({
             code,
@@ -2436,12 +2450,7 @@ const renderReports = () => {
                     <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700"><h3 className="font-bold text-gray-200">Linha do Tempo Global</h3><Button variant="secondary" onClick={() => { const data = globalTimeline.map(e => ({ "Data": e.rawDate, "Tipo": e.type, "Código": e.id, "Descrição": e.desc, "Qtd": e.qty, "Peso": e.weight })); exportToCSV(data, `relatorio_global`); }} className="h-8 text-xs"><Download size={14}/> Excel</Button></div>
                     <div className="flex-1 overflow-auto custom-scrollbar-dark">
                         <table className="w-full text-sm text-left text-gray-300">
-                            <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10">
-                                <tr>
-                                    <th className="p-3">Data</th><th className="p-3 text-center">Tipo</th><th className="p-3">Descrição</th><th className="p-3 text-right">Qtd</th><th className="p-3 text-right">Peso</th>
-                                    <th className="p-3 text-center">Ver</th>
-                                </tr>
-                            </thead>
+                            <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10"><tr><th className="p-3">Data</th><th className="p-3 text-center">Tipo</th><th className="p-3">Descrição</th><th className="p-3 text-right">Qtd</th><th className="p-3 text-right">Peso</th><th className="p-3 text-center">Ver</th></tr></thead>
                             <tbody className="divide-y divide-gray-700">
                                 {globalTimeline.length === 0 ? <tr><td colSpan="6" className="p-8 text-center text-gray-500">Nenhum registro no período.</td></tr> : globalTimeline.map((e, idx) => (
                                     <tr key={idx} className="hover:bg-gray-700/50">
@@ -2470,6 +2479,12 @@ const renderReports = () => {
                     
                     {/* GRUPO DE BOTÕES DE EXPORTAÇÃO (ANALÍTICO + RESUMO) */}
                     <div className="flex gap-2">
+                        {/* BOTÃO PDF NOVO - VERMELHO */}
+                        <Button onClick={() => handleGenerateMPReportPDF(mpSummaryList, reportStartDate, reportEndDate)} className="h-9 bg-rose-600 text-white hover:bg-rose-500" title="Gerar Relatório PDF Formatado">
+                            <FileText size={14}/> PDF
+                        </Button>
+
+                        {/* BOTÃO EXCEL ANALÍTICO - AZUL */}
                         <Button onClick={() => { 
                             const analyticalData = [];
                             mpSummaryList.forEach(item => {
@@ -2484,9 +2499,10 @@ const renderReports = () => {
                             });
                             exportToCSV(analyticalData, `relatorio_analitico_mp`); 
                         }} className="h-9 bg-blue-600 text-white hover:bg-blue-500" title="Baixar Linha a Linha">
-                            <FileText size={14}/> Detalhado
+                            <Download size={14}/> Detalhado
                         </Button>
 
+                        {/* BOTÃO EXCEL RESUMO - VERDE */}
                         <Button onClick={() => { 
                             const data = mpSummaryList.map(i => ({ 
                                 "Código": i.code, "Descrição": i.desc,
