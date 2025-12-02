@@ -2134,436 +2134,811 @@ export default function App() {
   };
 
 const renderReports = () => {
-    // =================================================================================
-    // 1. UTILITÁRIOS E SEGURANÇA (Para não travar a tela)
-    // =================================================================================
-    const safeNum = (val) => {
-        const n = parseFloat(val);
-        return isNaN(n) ? 0 : n;
-    };
-    
-    const normalizeCode = (v) => String(v ?? '').trim(); // <--- MOVIDO PARA O TOPO
-
-    const isValidDate = (d) => d && typeof d === 'string' && (d.includes('/') || d.includes('-'));
-    
-    const toISODate = (d) => {
-        if (!isValidDate(d)) return '0000-00-00';
-        if (d.includes('/')) return d.split('/').reverse().join('-');
-        return d;
-    };
-
-    const getTimestamp = (d) => {
-        if (!isValidDate(d)) return 0;
-        const iso = d.includes('/') ? d.split('/').reverse().join('-') : d;
-        return new Date(`${iso}T12:00:00`).getTime();
-    };
-
-    const getTypeColor = (type) => {
-        if(type === 'ENTRADA MP') return 'text-blue-400';
-        if(type === 'CORTE') return 'text-purple-400';
-        if(type === 'PRODUÇÃO') return 'text-emerald-400';
-        return 'text-amber-400';
-    };
-
-    // Helper para abrir detalhes da Visão Geral
-    const handleGlobalDetail = (item) => {
-        if (item.type === 'PRODUÇÃO' || item.type === 'EXPEDIÇÃO') {
-            if(typeof setSelectedGroupData === 'function') {
-                setSelectedGroupData({ code: item.id, name: item.desc });
-                setShowHistoryModal(true);
-            }
-        } else {
-            // Tenta encontrar o dado completo no resumo de MP para abrir o modal com saldo
-            // Precisamos recalcular isso aqui ou buscar na lista já renderizada
-            // Para simplificar, vamos buscar direto na lista calculada se possível, ou apenas alertar
-            // Como mpSummaryList é local, não conseguimos acessar aqui direto se estivermos na aba Global.
-            // Vamos fazer uma busca simplificada:
-            alert("Para ver o extrato detalhado deste item, vá para a aba 'Extrato MP'.");
-        }
-    };
-
-    // Arrays Seguros
-    const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
-    const safeCutting = Array.isArray(cuttingLogs) ? cuttingLogs : [];
-    const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
-    const safeShipping = Array.isArray(shippingLogs) ? shippingLogs : [];
-
-    // =================================================================================
-    // 2. LÓGICA DO EXTRATO MP (CÁLCULO REVERSO / AUDITORIA)
-    // =================================================================================
-    
-    // A. Mapa do Estoque Real (O que existe fisicamente HOJE)
-    const realStockMap = {};
-    safeMother.forEach(m => {
-        if (m.status === 'stock') {
-            const code = normalizeCode(m.code) || 'S/ COD';
-            if (!realStockMap[code]) realStockMap[code] = 0;
-            // Soma o peso restante atual
-            realStockMap[code] += safeNum(m.remainingWeight) || safeNum(m.weight);
-        }
-    });
-
-    // B. Catálogo para Nomes (Agora seguro porque normalizeCode já existe)
-    const catalogByCode = (motherCatalog || []).reduce((acc, item) => {
-        const code = normalizeCode(item.code);
-        if (code) acc[code] = item;
-        return acc;
-    }, {});
-
-    // C. Movimentações do Período Selecionado
-    const movementsMap = {};
-
-    // C1. Entradas (Filtradas por Data)
-    safeMother.forEach(m => {
-        if (!m.date) return;
-        const d = toISODate(m.date);
-        
-        if (d >= reportStartDate && d <= reportEndDate) {
-            const code = normalizeCode(m.code) || 'S/ COD';
-            if (!movementsMap[code]) movementsMap[code] = { in: 0, out: 0, details: [] };
-            
-            // Prioriza peso original, senão peso atual
-            let w = safeNum(m.originalWeight);
-            if (w === 0) w = safeNum(m.weight);
-            
-            movementsMap[code].in += w;
-            movementsMap[code].details.push({
-                date: m.date, 
-                timestamp: getTimestamp(m.date), 
-                type: 'ENTRADA', 
-                weightChange: w, 
-                desc: m.material, 
-                detail: `NF: ${m.nf||'-'}`
-            });
-        }
-    });
-
-    // C2. Saídas (Filtradas por Data)
-    safeCutting.forEach(c => {
-        if (!c.date) return;
-        const d = toISODate(c.date);
-        
-        if (d >= reportStartDate && d <= reportEndDate) {
-            const code = normalizeCode(c.motherCode) || 'S/ COD';
-            if (!movementsMap[code]) movementsMap[code] = { in: 0, out: 0, details: [] };
-            
-            const w = safeNum(c.inputWeight);
-            
-            movementsMap[code].out += w;
-            movementsMap[code].details.push({
-                date: c.date, 
-                timestamp: getTimestamp(c.date), 
-                type: 'SAIDA', 
-                weightChange: -w, 
-                desc: c.motherMaterial, 
-                detail: c.generatedItems
-            });
-        }
-    });
-
-    // D. Consolidação Final MP
-    const mpSummaryList = [];
-    const allCodes = new Set([...Object.keys(movementsMap), ...Object.keys(realStockMap)]);
-
-    allCodes.forEach(rawCode => {
-        const code = normalizeCode(rawCode);
-        // Saldo Final = Estoque Real Hoje
-        const stock = realStockMap[code] || 0; 
-        const mov = movementsMap[code] || { in: 0, out: 0, details: [] };
-        
-        // Filtro: Esconde se tudo estiver zerado
-        if (stock === 0 && mov.in === 0 && mov.out === 0) return; 
-
-        // CÁLCULO REVERSO: Saldo Inicial = Final - Entradas + Saídas
-        const calculatedInitial = stock - mov.in + mov.out;
-
-        // Nome do Material
-        // 1º Catálogo
-        const catalogItem = catalogByCode[code];
-        // 2º Bobina registrada
-        const originalCoil = safeMother.find(m => normalizeCode(m.code) === code);
-        // 3º Histórico
-        const histDesc = mov.details[0]?.desc;
-
-        const description = catalogItem?.description || originalCoil?.material || histDesc || 'Item';
-
-        mpSummaryList.push({
-            code,
-            desc: description,
-            initialBalance: calculatedInitial,
-            periodIn: mov.in,
-            periodOut: mov.out,
-            finalBalance: stock,
-            movements: mov.details.sort((a,b) => a.timestamp - b.timestamp)
-        });
-    });
-    // Ordena lista MP
-    mpSummaryList.sort((a, b) => String(a.code).localeCompare(String(b.code)));
-
-
-    // =================================================================================
-    // 3. LÓGICA VISÃO GERAL (GLOBAL) & KPIs
-    // =================================================================================
-    
-    // Cria lista unificada de eventos para o gráfico e KPIs
-    const rawGlobalEvents = [];
-    
-    // Adiciona Entradas MP
-    safeMother.forEach(m => rawGlobalEvents.push({ 
-        rawDate: m.date, 
-        type: 'ENTRADA MP', 
-        id: m.code || '?', 
-        desc: m.material || '-', 
-        qty: 1, 
-        weight: safeNum(m.originalWeight)||safeNum(m.weight) 
-    }));
-    
-    // Adiciona Cortes
-    safeCutting.forEach(c => rawGlobalEvents.push({ 
-        rawDate: c.date, 
-        type: 'CORTE', 
-        id: c.motherCode || '?', 
-        desc: 'Corte Slitter', 
-        qty: safeNum(c.outputCount), 
-        weight: safeNum(c.inputWeight) 
-    }));
-    
-    // Adiciona Produção
-    safeProd.forEach(p => rawGlobalEvents.push({ 
-        rawDate: p.date, 
-        type: 'PRODUÇÃO', 
-        id: p.productCode || '?', 
-        desc: p.productName || '-', 
-        qty: safeNum(p.pieces), 
-        weight: safeNum(p.weight) 
-    }));
-    
-    // Adiciona Expedição
-    safeShipping.forEach(s => rawGlobalEvents.push({ 
-        rawDate: s.date, 
-        type: 'EXPEDIÇÃO', 
-        id: s.productCode || '?', 
-        desc: s.productName || '-', 
-        qty: safeNum(s.quantity), 
-        weight: 0 
-    }));
-
-    const globalTimeline = [];
-    const stats = { entradaKg: 0, corteKg: 0, prodPcs: 0, expPcs: 0 };
-
-    // Filtra e Soma
-    rawGlobalEvents.forEach(e => {
-        if(!e.rawDate) return;
-        const d = toISODate(e.rawDate);
-        
-        // Verifica se está no período selecionado
-        if(d >= reportStartDate && d <= reportEndDate) {
-            
-            // Filtro de Busca por Texto
-            if (reportSearch) {
-                const term = reportSearch.toLowerCase();
-                const text = (String(e.id) + String(e.desc) + String(e.type)).toLowerCase();
-                if (!text.includes(term)) return;
-            }
-            
-            globalTimeline.push(e);
-            
-            // Atualiza KPIs
-            if(e.type === 'ENTRADA MP') stats.entradaKg += e.weight;
-            if(e.type === 'CORTE') stats.corteKg += e.weight;
-            if(e.type === 'PRODUÇÃO') stats.prodPcs += e.qty;
-            if(e.type === 'EXPEDIÇÃO') stats.expPcs += e.qty;
-        }
-    });
-    // Ordena timeline do mais recente para o mais antigo
-    globalTimeline.sort((a,b) => getTimestamp(b.rawDate) - getTimestamp(a.rawDate));
-
-
-    // =================================================================================
-    // 4. LÓGICA RESUMO PRODUÇÃO
-    // =================================================================================
-    const prodByProductMap = {};
-    
-    safeProd.forEach(lot => {
-        if (!lot.date) return;
-        const d = toISODate(lot.date);
-        
-        if (d >= reportStartDate && d <= reportEndDate) {
-            if (reportSearch) {
-                const term = reportSearch.toLowerCase();
-                const text = (String(lot.productCode) + String(lot.productName)).toLowerCase();
-                if (!text.includes(term)) return;
-            }
-
-            const code = lot.productCode || 'S/ COD';
-            if (!prodByProductMap[code]) { 
-                prodByProductMap[code] = { 
-                    code, 
-                    name: lot.productName, 
-                    totalQty: 0, 
-                    totalWeight: 0, 
-                    totalScrap: 0 
-                }; 
-            }
-            prodByProductMap[code].totalQty += safeNum(lot.pieces);
-            prodByProductMap[code].totalWeight += safeNum(lot.weight);
-            prodByProductMap[code].totalScrap += safeNum(lot.scrap);
-        }
-    });
-    const prodSummaryList = Object.values(prodByProductMap).sort((a, b) => String(a.name).localeCompare(String(b.name)));
-
-
-    // =================================================================================
-    // 5. RENDERIZAÇÃO FINAL (HTML)
-    // =================================================================================
-    return (
-      <div className="space-y-6 h-full flex flex-col">
-        
-        {/* MENU DE ABAS DE NAVEGAÇÃO */}
-        <div className="flex gap-2 border-b border-gray-700 pb-2 overflow-x-auto">
-            <button onClick={() => setReportViewMode('GLOBAL')} className={`px-4 py-3 font-bold text-xs md:text-sm rounded-t-lg transition-colors ${reportViewMode === 'GLOBAL' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Visão Geral</button>
-            <button onClick={() => setReportViewMode('MP_KARDEX')} className={`px-4 py-3 font-bold text-xs md:text-sm rounded-t-lg transition-colors ${reportViewMode === 'MP_KARDEX' ? 'bg-emerald-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Extrato MP</button>
-            <button onClick={() => setReportViewMode('PROD_SUMMARY')} className={`px-4 py-3 font-bold text-xs md:text-sm rounded-t-lg transition-colors ${reportViewMode === 'PROD_SUMMARY' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Resumo Produção</button>
-        </div>
-
-        {/* FILTROS DE DATA E BUSCA */}
-        <Card>
-            <div className="flex flex-col md:flex-row gap-4 items-end">
-                <div className="flex gap-2 flex-1">
-                    <div className="flex-1"><label className="block text-xs text-gray-500 mb-1">Início</label><input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-blue-500"/></div>
-                    <div className="flex-1"><label className="block text-xs text-gray-500 mb-1">Fim</label><input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-blue-500"/></div>
-                </div>
-                <div className="w-full md:w-1/3"><input type="text" placeholder="Buscar..." value={reportSearch} onChange={e => setReportSearch(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-blue-500"/></div>
-            </div>
-        </Card>
-
-        {/* --- CONTEÚDO DA ABA 1: VISÃO GERAL --- */}
-        {reportViewMode === 'GLOBAL' && (
-            <>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0">
-                    <Card className="border-l-4 border-blue-500 bg-gray-800 p-4"><p className="text-gray-400 text-[10px] font-bold uppercase">Entrada MP</p><div className="flex items-end gap-1 mt-1"><span className="text-xl font-bold text-white">{stats.entradaKg.toLocaleString('pt-BR')}</span><span className="text-xs text-blue-400 mb-1">kg</span></div></Card>
-                    <Card className="border-l-4 border-purple-500 bg-gray-800 p-4"><p className="text-gray-400 text-[10px] font-bold uppercase">Consumo Slitter</p><div className="flex items-end gap-1 mt-1"><span className="text-xl font-bold text-white">{stats.corteKg.toLocaleString('pt-BR')}</span><span className="text-xs text-purple-400 mb-1">kg</span></div></Card>
-                    <Card className="border-l-4 border-emerald-500 bg-gray-800 p-4"><p className="text-gray-400 text-[10px] font-bold uppercase">Produção PA</p><div className="flex items-end gap-1 mt-1"><span className="text-xl font-bold text-white">{stats.prodPcs.toLocaleString('pt-BR')}</span><span className="text-xs text-emerald-400 mb-1">pçs</span></div></Card>
-                    <Card className="border-l-4 border-amber-500 bg-gray-800 p-4"><p className="text-gray-400 text-[10px] font-bold uppercase">Expedição PA</p><div className="flex items-end gap-1 mt-1"><span className="text-xl font-bold text-white">{stats.expPcs.toLocaleString('pt-BR')}</span><span className="text-xs text-amber-400 mb-1">pçs</span></div></Card>
-                </div>
-                <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                    <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700"><h3 className="font-bold text-gray-200">Linha do Tempo Global</h3><Button variant="secondary" onClick={() => { const data = globalTimeline.map(e => ({ "Data": e.rawDate, "Tipo": e.type, "Código": e.id, "Descrição": e.desc, "Qtd": e.qty, "Peso": e.weight })); exportToCSV(data, `relatorio_global`); }} className="h-8 text-xs"><Download size={14}/> Excel</Button></div>
-                    <div className="flex-1 overflow-auto custom-scrollbar-dark">
-                        <table className="w-full text-sm text-left text-gray-300">
-                            <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10"><tr><th className="p-3">Data</th><th className="p-3 text-center">Tipo</th><th className="p-3">Descrição</th><th className="p-3 text-right">Qtd</th><th className="p-3 text-right">Peso</th><th className="p-3 text-center">Ver</th></tr></thead>
-                            <tbody className="divide-y divide-gray-700">
-                                {globalTimeline.length === 0 ? <tr><td colSpan="6" className="p-8 text-center text-gray-500">Nenhum registro no período.</td></tr> : globalTimeline.map((e, idx) => (
-                                    <tr key={idx} className="hover:bg-gray-700/50">
-                                        <td className="p-3 text-xs text-gray-400 font-mono">{e.rawDate}</td>
-                                        <td className={`p-3 font-bold text-xs ${getTypeColor(e.type)}`}>{e.type}</td>
-                                        <td className="p-3 text-white">{e.desc}</td>
-                                        <td className="p-3 text-right text-gray-300">{e.qty}</td>
-                                        <td className="p-3 text-right font-mono text-gray-300">{e.weight.toFixed(1)}</td>
-                                        <td className="p-3 text-center">
-                                            <button onClick={() => handleGlobalDetail(e)} className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs transition-colors flex items-center gap-2 mx-auto"><Eye size={14}/></button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </Card>
-            </>
-        )}
-
-        {/* --- CONTEÚDO DA ABA 2: EXTRATO MP --- */}
-        {reportViewMode === 'MP_KARDEX' && (
-            <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-t-4 border-emerald-600">
-                <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700 p-4 bg-emerald-900/10 -mt-6 -mx-6">
-                    <div><h3 className="font-bold text-xl text-emerald-100">Extrato MP</h3><p className="text-sm text-emerald-300/70">Auditoria de Estoque</p></div>
-                    
-                    {/* GRUPO DE BOTÕES DE EXPORTAÇÃO (ANALÍTICO + RESUMO) */}
-                    <div className="flex gap-2">
-                        {/* BOTÃO PDF NOVO - VERMELHO */}
-                        <Button onClick={() => handleGenerateMPReportPDF(mpSummaryList, reportStartDate, reportEndDate)} className="h-9 bg-rose-600 text-white hover:bg-rose-500" title="Gerar Relatório PDF Formatado">
-                            <FileText size={14}/> PDF
-                        </Button>
-
-                        {/* BOTÃO EXCEL ANALÍTICO - AZUL */}
-                        <Button onClick={() => { 
-                            const analyticalData = [];
-                            mpSummaryList.forEach(item => {
-                                item.movements.forEach(mov => {
-                                    analyticalData.push({
-                                        "Código": item.code, "Descrição": item.desc,
-                                        "Data": mov.date, "Tipo": mov.type, "Detalhe/NF": mov.detail,
-                                        "Entrada (kg)": mov.type === 'ENTRADA' ? mov.weight : 0,
-                                        "Saída (kg)": mov.type !== 'ENTRADA' ? Math.abs(mov.weight) : 0
-                                    });
-                                });
-                            });
-                            exportToCSV(analyticalData, `relatorio_analitico_mp`); 
-                        }} className="h-9 bg-blue-600 text-white hover:bg-blue-500" title="Baixar Linha a Linha">
-                            <Download size={14}/> Detalhado
-                        </Button>
-
-                        {/* BOTÃO EXCEL RESUMO - VERDE */}
-                        <Button onClick={() => { 
-                            const data = mpSummaryList.map(i => ({ 
-                                "Código": i.code, "Descrição": i.desc,
-                                "Saldo Anterior (kg)": i.initialBalance,
-                                "Entradas (kg)": i.periodIn, "Saídas (kg)": i.periodOut, 
-                                "Saldo Atual (kg)": i.finalBalance
-                            })); 
-                            exportToCSV(data, `extrato_mp_saldos`); 
-                        }} className="h-9 bg-emerald-600 text-white"><Download size={14}/> Saldos</Button>
-                    </div>
-                </div>
-                
-                <div className="flex-1 overflow-auto custom-scrollbar-dark px-4 pb-4">
-                    <table className="w-full text-sm text-left text-gray-300">
-                        <thead className="bg-gray-800 text-gray-400 sticky top-0">
-                            <tr>
-                                <th className="p-3">Código</th><th className="p-3">Descrição</th>
-                                <th className="p-3 text-right text-gray-400 bg-gray-900/50">Saldo Ant.</th>
-                                <th className="p-3 text-right text-emerald-400">Entradas</th>
-                                <th className="p-3 text-right text-red-400">Saídas</th>
-                                <th className="p-3 text-right text-white font-bold bg-blue-900/40 border-l border-blue-700">Saldo Atual</th>
-                                <th className="p-3 text-center">Ação</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-700">
-                            {mpSummaryList.filter(i => !reportSearch || i.code.includes(reportSearch)).map((row, idx) => (
-                                <tr key={idx} className="hover:bg-gray-700/50">
-                                    <td className="p-3 font-bold text-white">{row.code}</td>
-                                    <td className="p-3 text-gray-400 truncate max-w-[200px]">{row.desc}</td>
-                                    <td className="p-3 text-right text-gray-300 font-mono bg-gray-900/30">{row.initialBalance.toLocaleString('pt-BR')}</td>
-                                    <td className="p-3 text-right text-emerald-400 font-mono">{row.periodIn.toLocaleString('pt-BR')}</td>
-                                    <td className="p-3 text-right text-red-400 font-mono">{row.periodOut.toLocaleString('pt-BR')}</td>
-                                    <td className="p-3 text-right font-bold text-white font-mono bg-blue-900/20 border-l border-gray-700">{row.finalBalance.toLocaleString('pt-BR')}</td>
-                                    <td className="p-3 text-center"><button onClick={() => setViewingMpDetails({...row, initialBalance: row.initialBalance})} className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs"><Eye size={14}/></button></td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </Card>
-        )}
-
-        {/* --- CONTEÚDO DA ABA 3: RESUMO PRODUÇÃO --- */}
-        {reportViewMode === 'PROD_SUMMARY' && (
-            <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-t-4 border-purple-600">
-                <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700 p-4 bg-purple-900/10 -mt-6 -mx-6">
-                    <div><h3 className="font-bold text-xl text-purple-100">Resumo Produção</h3><p className="text-sm text-purple-300/70">Por Produto</p></div>
-                    <Button onClick={() => { const data = prodSummaryList.map(i => ({ "Produto": i.name, "Código": i.code, "Qtd": i.totalQty, "Peso": i.totalWeight })); exportToCSV(data, `resumo_producao`); }} className="h-9 bg-purple-600 text-white"><Download size={14}/> Excel</Button>
-                </div>
-                <div className="flex-1 overflow-auto custom-scrollbar-dark px-4 pb-4">
-                    <table className="w-full text-sm text-left text-gray-300">
-                        <thead className="bg-gray-800 text-gray-400 sticky top-0"><tr><th className="p-3">Produto</th><th className="p-3">Código</th><th className="p-3 text-right text-emerald-400">Qtd</th><th className="p-3 text-right text-blue-400">Peso</th><th className="p-3 text-right text-red-400">Sucata</th><th className="p-3 text-center">Ação</th></tr></thead>
-                        <tbody className="divide-y divide-gray-700">{prodSummaryList.map((row, idx) => (<tr key={idx} className="hover:bg-gray-700/50"><td className="p-3 font-bold text-white text-sm">{row.name}</td><td className="p-3 text-gray-400 text-xs font-mono">{row.code}</td><td className="p-3 text-right text-emerald-400 font-bold text-lg">{row.totalQty}</td><td className="p-3 text-right text-blue-400 font-mono">{row.totalWeight.toFixed(1)} kg</td><td className="p-3 text-right text-red-400 font-mono">{row.totalScrap.toFixed(1)} kg</td><td className="p-3 text-center"><button onClick={() => setViewingProdDetails(row)} className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs transition-colors flex items-center gap-2 mx-auto"><Eye size={14}/> Detalhes</button></td></tr>))}</tbody>
-                    </table>
-                </div>
-            </Card>
-        )}
-
-      </div>
-    );
+  // =================================================================================
+  // 1. UTILITÁRIOS E SEGURANÇA
+  // =================================================================================
+  const safeNum = (val) => {
+    const n = parseFloat(val);
+    return isNaN(n) ? 0 : n;
   };
+
+  const normalizeCode = (v) => String(v ?? '').trim();
+
+  const isValidDate = (d) =>
+    d && typeof d === 'string' && (d.includes('/') || d.includes('-'));
+
+  const toISODate = (d) => {
+    if (!isValidDate(d)) return '0000-00-00';
+    if (d.includes('/')) return d.split('/').reverse().join('-');
+    return d;
+  };
+
+  const getTimestamp = (d) => {
+    if (!isValidDate(d)) return 0;
+    const iso = d.includes('/') ? d.split('/').reverse().join('-') : d;
+    return new Date(`${iso}T12:00:00`).getTime();
+  };
+
+  const getTypeColor = (type) => {
+    if (type === 'ENTRADA MP') return 'text-blue-400';
+    if (type === 'CORTE') return 'text-purple-400';
+    if (type === 'PRODUÇÃO') return 'text-emerald-400';
+    return 'text-amber-400';
+  };
+
+  // chave padrão de MP: código + largura (quando não usamos id)
+  // 🔹 SEM ID: 1 chave = 1 (código + largura)
+const makeKeyFromMother = (m) => {
+  const code = normalizeCode(m?.code) || 'S/ COD';
+  const w = safeNum(m?.width);
+  return `${code}|${w || 0}`;
+};
+
+const makeKeyFromCut = (c, safeMother) => {
+  const code = normalizeCode(c?.motherCode) || 'S/ COD';
+  const inputWeight = safeNum(c?.inputWeight); // peso consumido no corte
+
+  const candidates = safeMother.filter(
+    (m) => normalizeCode(m.code) === code
+  );
+
+  // 1) tenta usar a largura que veio no log de corte
+  let width = safeNum(c?.motherWidth) || safeNum(c?.width) || 0;
+
+  const hasMotherWithThisWidth =
+    width > 0 &&
+    candidates.some((m) => safeNum(m.width) === width);
+
+  // Se a largura que veio NO CORTE não existir em nenhuma bobina,
+  // considera que ela é inválida e vamos tentar outro critério.
+  if (!hasMotherWithThisWidth) {
+    width = 0;
+  }
+
+  // 2) Se ainda não temos largura válida, tenta casar pelo PESO DO LOTE
+  if (!width && inputWeight > 0) {
+    // compara com peso original ou peso cheio da bobina
+    const byExactWeight = candidates.filter((m) => {
+      const wMother =
+        safeNum(m.originalWeight) || safeNum(m.weight);
+      // tolerância pequena pra evitar problema de casa decimal
+      return Math.abs(wMother - inputWeight) < 0.001;
+    });
+
+    if (byExactWeight.length === 1) {
+      width = safeNum(byExactWeight[0].width);
+    }
+  }
+
+  // 3) Se mesmo assim ainda não rolou, volta pro fallback antigo:
+  //    se só tiver UMA largura possível nesse código, usa ela.
+  if (!width) {
+    const uniqueWidths = [
+      ...new Set(
+        candidates.map((m) => safeNum(m.width)).filter((w) => w > 0)
+      ),
+    ];
+    if (uniqueWidths.length === 1) {
+      width = uniqueWidths[0];
+    } else {
+      // aqui não tem jeito: ambíguo mesmo
+      width = 0;
+    }
+  }
+
+  return `${code}|${width || 0}`;
+};
+
+
+
+  // Helper para abrir detalhes da Visão Geral
+  const handleGlobalDetail = (item) => {
+    if (item.type === 'PRODUÇÃO' || item.type === 'EXPEDIÇÃO') {
+      if (typeof setSelectedGroupData === 'function') {
+        setSelectedGroupData({ code: item.id, name: item.desc });
+        setShowHistoryModal(true);
+      }
+    } else {
+      alert("Para ver o extrato detalhado deste item, vá para a aba 'Extrato MP'.");
+    }
+  };
+
+  // Arrays seguros
+  const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
+  const safeCutting = Array.isArray(cuttingLogs) ? cuttingLogs : [];
+  const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
+  const safeShipping = Array.isArray(shippingLogs) ? shippingLogs : [];
+
+  // =================================================================================
+  // 2. EXTRATO MP (KARDEX)
+  // =================================================================================
+
+  // A. Estoque real (saldo físico hoje)
+  const realStockMap = {};
+  safeMother.forEach((m) => {
+    if (m.status !== 'stock') return;
+    const key = makeKeyFromMother(m);
+    if (!realStockMap[key]) realStockMap[key] = 0;
+    realStockMap[key] += safeNum(m.remainingWeight) || safeNum(m.weight);
+  });
+
+  // B. Catálogo por código
+  const catalogByCode = (motherCatalog || []).reduce((acc, item) => {
+    const code = normalizeCode(item.code);
+    if (code) acc[code] = item;
+    return acc;
+  }, {});
+
+  // C. Movimentações por chave
+  const movementsMap = {};
+
+  // C1. Entradas
+  safeMother.forEach((m) => {
+    if (!m.date) return;
+    const d = toISODate(m.date);
+    if (d < reportStartDate || d > reportEndDate) return;
+
+    const key = makeKeyFromMother(m);
+    if (!movementsMap[key]) movementsMap[key] = { in: 0, out: 0, details: [] };
+
+    let w = safeNum(m.originalWeight);
+    if (w === 0) w = safeNum(m.weight);
+
+    const width = safeNum(m.width);
+
+    movementsMap[key].in += w;
+    movementsMap[key].details.push({
+      date: m.date,
+      timestamp: getTimestamp(m.date),
+      type: 'ENTRADA',
+      weightChange: w,
+      width, // guarda largura no movimento
+      desc: m.material,
+      detail: `NF: ${m.nf || '-'}`,
+    });
+  });
+
+  // C2. Saídas (corte slitter)
+  safeCutting.forEach((c) => {
+    if (!c.date) return;
+    const d = toISODate(c.date);
+    if (d < reportStartDate || d > reportEndDate) return;
+
+    const key = makeKeyFromCut(c, safeMother);
+    if (!movementsMap[key]) movementsMap[key] = { in: 0, out: 0, details: [] };
+
+    const w = safeNum(c.inputWeight);
+
+    // largura usada na chave
+    let width =
+      safeNum(c?.motherWidth) ||
+      safeNum(c?.width) ||
+      0; // se veio 0 é porque não temos certeza
+
+    movementsMap[key].out += w;
+    movementsMap[key].details.push({
+      date: c.date,
+      timestamp: getTimestamp(c.date),
+      type: 'SAÍDA',
+      weightChange: -w,
+      width,
+      desc: c.motherMaterial,
+      detail: c.generatedItems,
+    });
+  });
+
+  // D. Consolidação
+  const mpSummaryList = [];
+  const allKeys = new Set([
+    ...Object.keys(movementsMap),
+    ...Object.keys(realStockMap),
+  ]);
+
+  allKeys.forEach((key) => {
+  const stock = realStockMap[key] || 0;
+  const mov = movementsMap[key] || { in: 0, out: 0, details: [] };
+
+  if (stock === 0 && mov.in === 0 && mov.out === 0) return;
+
+  const calculatedInitial = stock - mov.in + mov.out;
+
+  // key = "CODIGO|LARGURA"
+  const [rawCode, rawWidth = '0'] = key.split('|');
+  const code = normalizeCode(rawCode) || 'S/ COD';
+  let width = safeNum(rawWidth) || 0;
+
+  // 🔹 FALLBACK: se width veio 0, tenta achar em movimentos ou bobinas
+  if (!width || width === 0) {
+    const movWidth = mov.details.find((d) => safeNum(d.width) > 0);
+    if (movWidth) {
+      width = safeNum(movWidth.width);
+    } else {
+      const anyCoil = safeMother.find(
+        (m) => normalizeCode(m.code) === code && safeNum(m.width) > 0
+      );
+      if (anyCoil) width = safeNum(anyCoil.width);
+    }
+  }
+
+  const catalogItem = catalogByCode[code];
+  const originalCoil = safeMother.find(
+    (m) =>
+      normalizeCode(m.code) === code &&
+      (!width || safeNum(m.width) === width)
+  );
+  const histDesc = mov.details[0]?.desc;
+
+  const description =
+    catalogItem?.description ||
+    originalCoil?.material ||
+    histDesc ||
+    'Item';
+
+  mpSummaryList.push({
+    key,
+    code,
+    width: width || null,
+    desc: description,
+    initialBalance: calculatedInitial,
+    periodIn: mov.in,
+    periodOut: mov.out,
+    finalBalance: stock,
+    movements: mov.details.sort((a, b) => a.timestamp - b.timestamp),
+  });
+});
+
+  mpSummaryList.sort((a, b) => {
+  const c = String(a.code).localeCompare(String(b.code));
+  if (c !== 0) return c;
+  return (a.width || 0) - (b.width || 0);
+});
+
+
+  // =================================================================================
+  // 3. VISÃO GERAL (GLOBAL)
+  // =================================================================================
+  const rawGlobalEvents = [];
+
+  safeMother.forEach((m) =>
+    rawGlobalEvents.push({
+      rawDate: m.date,
+      type: 'ENTRADA MP',
+      id: m.code || '?',
+      desc: m.material || '-',
+      qty: 1,
+      weight: safeNum(m.originalWeight) || safeNum(m.weight),
+    })
+  );
+
+  safeCutting.forEach((c) =>
+    rawGlobalEvents.push({
+      rawDate: c.date,
+      type: 'CORTE',
+      id: c.motherCode || '?',
+      desc: 'Corte Slitter',
+      qty: safeNum(c.outputCount),
+      weight: safeNum(c.inputWeight),
+    })
+  );
+
+  safeProd.forEach((p) =>
+    rawGlobalEvents.push({
+      rawDate: p.date,
+      type: 'PRODUÇÃO',
+      id: p.productCode || '?',
+      desc: p.productName || '-',
+      qty: safeNum(p.pieces),
+      weight: safeNum(p.weight),
+    })
+  );
+
+  safeShipping.forEach((s) =>
+    rawGlobalEvents.push({
+      rawDate: s.date,
+      type: 'EXPEDIÇÃO',
+      id: s.productCode || '?',
+      desc: s.productName || '-',
+      qty: safeNum(s.quantity),
+      weight: 0,
+    })
+  );
+
+  const globalTimeline = [];
+  const stats = { entradaKg: 0, corteKg: 0, prodPcs: 0, expPcs: 0 };
+
+  rawGlobalEvents.forEach((e) => {
+    if (!e.rawDate) return;
+    const d = toISODate(e.rawDate);
+    if (d < reportStartDate || d > reportEndDate) return;
+
+    if (reportSearch) {
+      const term = reportSearch.toLowerCase();
+      const text = (
+        String(e.id) +
+        String(e.desc) +
+        String(e.type)
+      ).toLowerCase();
+      if (!text.includes(term)) return;
+    }
+
+    globalTimeline.push(e);
+
+    if (e.type === 'ENTRADA MP') stats.entradaKg += e.weight;
+    if (e.type === 'CORTE') stats.corteKg += e.weight;
+    if (e.type === 'PRODUÇÃO') stats.prodPcs += e.qty;
+    if (e.type === 'EXPEDIÇÃO') stats.expPcs += e.qty;
+  });
+
+  globalTimeline.sort(
+    (a, b) => getTimestamp(b.rawDate) - getTimestamp(a.rawDate)
+  );
+
+  // =================================================================================
+  // 4. RESUMO PRODUÇÃO
+  // =================================================================================
+  const prodByProductMap = {};
+
+  safeProd.forEach((lot) => {
+    if (!lot.date) return;
+    const d = toISODate(lot.date);
+    if (d < reportStartDate || d > reportEndDate) return;
+
+    if (reportSearch) {
+      const term = reportSearch.toLowerCase();
+      const text = (
+        String(lot.productCode) + String(lot.productName)
+      ).toLowerCase();
+      if (!text.includes(term)) return;
+    }
+
+    const code = lot.productCode || 'S/ COD';
+    if (!prodByProductMap[code]) {
+      prodByProductMap[code] = {
+        code,
+        name: lot.productName,
+        totalQty: 0,
+        totalWeight: 0,
+        totalScrap: 0,
+      };
+    }
+    prodByProductMap[code].totalQty += safeNum(lot.pieces);
+    prodByProductMap[code].totalWeight += safeNum(lot.weight);
+    prodByProductMap[code].totalScrap += safeNum(lot.scrap);
+  });
+
+  const prodSummaryList = Object.values(prodByProductMap).sort((a, b) =>
+    String(a.name).localeCompare(String(b.name))
+  );
+
+  // =================================================================================
+  // 5. RENDERIZAÇÃO
+  // =================================================================================
+  return (
+    <div className="space-y-6 h-full flex flex-col">
+      {/* ABAS */}
+      <div className="flex gap-2 border-b border-gray-700 pb-2 overflow-x-auto">
+        <button
+          onClick={() => setReportViewMode('GLOBAL')}
+          className={`px-4 py-3 font-bold text-xs md:text-sm rounded-t-lg transition-colors ${
+            reportViewMode === 'GLOBAL'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-800 text-gray-400 hover:text-white'
+          }`}
+        >
+          Visão Geral
+        </button>
+        <button
+          onClick={() => setReportViewMode('MP_KARDEX')}
+          className={`px-4 py-3 font-bold text-xs md:text-sm rounded-t-lg transition-colors ${
+            reportViewMode === 'MP_KARDEX'
+              ? 'bg-emerald-600 text-white'
+              : 'bg-gray-800 text-gray-400 hover:text-white'
+          }`}
+        >
+          Extrato MP
+        </button>
+        <button
+          onClick={() => setReportViewMode('PROD_SUMMARY')}
+          className={`px-4 py-3 font-bold text-xs md:text-sm rounded-t-lg transition-colors ${
+            reportViewMode === 'PROD_SUMMARY'
+              ? 'bg-purple-600 text-white'
+              : 'bg-gray-800 text-gray-400 hover:text-white'
+          }`}
+        >
+          Resumo Produção
+        </button>
+      </div>
+
+      {/* FILTROS */}
+      <Card>
+        <div className="flex flex-col md:flex-row gap-4 items-end">
+          <div className="flex gap-2 flex-1">
+            <div className="flex-1">
+              <label className="block text-xs text-gray-500 mb-1">Início</label>
+              <input
+                type="date"
+                value={reportStartDate}
+                onChange={(e) => setReportStartDate(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-blue-500"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs text-gray-500 mb-1">Fim</label>
+              <input
+                type="date"
+                value={reportEndDate}
+                onChange={(e) => setReportEndDate(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-blue-500"
+              />
+            </div>
+          </div>
+          <div className="w-full md:w-1/3">
+            <input
+              type="text"
+              placeholder="Buscar..."
+              value={reportSearch}
+              onChange={(e) => setReportSearch(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-blue-500"
+            />
+          </div>
+        </div>
+      </Card>
+
+      {/* ABA 1: GLOBAL */}
+      {reportViewMode === 'GLOBAL' && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0">
+            <Card className="border-l-4 border-blue-500 bg-gray-800 p-4">
+              <p className="text-gray-400 text-[10px] font-bold uppercase">
+                Entrada MP
+              </p>
+              <div className="flex items-end gap-1 mt-1">
+                <span className="text-xl font-bold text-white">
+                  {stats.entradaKg.toLocaleString('pt-BR')}
+                </span>
+                <span className="text-xs text-blue-400 mb-1">kg</span>
+              </div>
+            </Card>
+            <Card className="border-l-4 border-purple-500 bg-gray-800 p-4">
+              <p className="text-gray-400 text-[10px] font-bold uppercase">
+                Consumo Slitter
+              </p>
+              <div className="flex items-end gap-1 mt-1">
+                <span className="text-xl font-bold text-white">
+                  {stats.corteKg.toLocaleString('pt-BR')}
+                </span>
+                <span className="text-xs text-purple-400 mb-1">kg</span>
+              </div>
+            </Card>
+            <Card className="border-l-4 border-emerald-500 bg-gray-800 p-4">
+              <p className="text-gray-400 text-[10px] font-bold uppercase">
+                Produção PA
+              </p>
+              <div className="flex items-end gap-1 mt-1">
+                <span className="text-xl font-bold text-white">
+                  {stats.prodPcs.toLocaleString('pt-BR')}
+                </span>
+                <span className="text-xs text-emerald-400 mb-1">pçs</span>
+              </div>
+            </Card>
+            <Card className="border-l-4 border-amber-500 bg-gray-800 p-4">
+              <p className="text-gray-400 text-[10px] font-bold uppercase">
+                Expedição PA
+              </p>
+              <div className="flex items-end gap-1 mt-1">
+                <span className="text-xl font-bold text-white">
+                  {stats.expPcs.toLocaleString('pt-BR')}
+                </span>
+                <span className="text-xs text-amber-400 mb-1">pçs</span>
+              </div>
+            </Card>
+          </div>
+
+          <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700">
+              <h3 className="font-bold text-gray-200">
+                Linha do Tempo Global
+              </h3>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  const data = globalTimeline.map((e) => ({
+                    Data: e.rawDate,
+                    Tipo: e.type,
+                    Código: e.id,
+                    Descrição: e.desc,
+                    Qtd: e.qty,
+                    Peso: e.weight,
+                  }));
+                  exportToCSV(data, `relatorio_global`);
+                }}
+                className="h-8 text-xs"
+              >
+                <Download size={14} /> Excel
+              </Button>
+            </div>
+            <div className="flex-1 overflow-auto custom-scrollbar-dark">
+              <table className="w-full text-sm text-left text-gray-300">
+                <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10">
+                  <tr>
+                    <th className="p-3">Data</th>
+                    <th className="p-3 text-center">Tipo</th>
+                    <th className="p-3">Descrição</th>
+                    <th className="p-3 text-right">Qtd</th>
+                    <th className="p-3 text-right">Peso</th>
+                    <th className="p-3 text-center">Ver</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {globalTimeline.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan="6"
+                        className="p-8 text-center text-gray-500"
+                      >
+                        Nenhum registro no período.
+                      </td>
+                    </tr>
+                  ) : (
+                    globalTimeline.map((e, idx) => (
+                      <tr
+                        key={idx}
+                        className="hover:bg-gray-700/50 transition-colors"
+                      >
+                        <td className="p-3 text-xs text-gray-400 font-mono">
+                          {e.rawDate}
+                        </td>
+                        <td
+                          className={`p-3 font-bold text-xs ${getTypeColor(
+                            e.type
+                          )}`}
+                        >
+                          {e.type}
+                        </td>
+                        <td className="p-3 text-white">{e.desc}</td>
+                        <td className="p-3 text-right text-gray-300">
+                          {e.qty}
+                        </td>
+                        <td className="p-3 text-right font-mono text-gray-300">
+                          {e.weight.toFixed(1)}
+                        </td>
+                        <td className="p-3 text-center">
+                          <button
+                            onClick={() => handleGlobalDetail(e)}
+                            className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs transition-colors flex items-center gap-2 mx-auto"
+                          >
+                            <Eye size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {/* ABA 2: EXTRATO MP */}
+      {reportViewMode === 'MP_KARDEX' && (
+        <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-t-4 border-emerald-600">
+          <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700 p-4 bg-emerald-900/10 -mt-6 -mx-6">
+            <div>
+              <h3 className="font-bold text-xl text-emerald-100">
+                Extrato MP
+              </h3>
+              <p className="text-sm text-emerald-300/70">Auditoria de Estoque</p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() =>
+                  handleGenerateMPReportPDF(
+                    mpSummaryList,
+                    reportStartDate,
+                    reportEndDate
+                  )
+                }
+                className="h-9 bg-rose-600 text-white hover:bg-rose-500"
+              >
+                <FileText size={14} /> PDF
+              </Button>
+              <Button
+                onClick={() => {
+                  const analyticalData = [];
+                  mpSummaryList.forEach((item) => {
+                    item.movements.forEach((mov) => {
+                      analyticalData.push({
+                        Código: item.code,
+                        Descrição: item.desc,
+                        'Largura (mm)': item.width ?? '',
+                        Data: mov.date,
+                        Tipo: mov.type,
+                        'Detalhe/NF': mov.detail,
+                        'Entrada (kg)':
+                          mov.type === 'ENTRADA' ? mov.weightChange : 0,
+                        'Saída (kg)':
+                          mov.type !== 'ENTRADA'
+                            ? Math.abs(mov.weightChange)
+                            : 0,
+                      });
+                    });
+                  });
+                  exportToCSV(analyticalData, `relatorio_analitico_mp`);
+                }}
+                className="h-9 bg-blue-600 text-white hover:bg-blue-500"
+              >
+                <Download size={14} /> Detalhado
+              </Button>
+              <Button
+                onClick={() => {
+                  const data = mpSummaryList.map((i) => ({
+                    Código: i.code,
+                    Descrição: i.desc,
+                    'Largura (mm)': i.width ?? '',
+                    'Saldo Anterior (kg)': i.initialBalance,
+                    'Entradas (kg)': i.periodIn,
+                    'Saídas (kg)': i.periodOut,
+                    'Saldo Atual (kg)': i.finalBalance,
+                  }));
+                  exportToCSV(data, `extrato_mp_saldos`);
+                }}
+                className="h-9 bg-emerald-600 text-white"
+              >
+                <Download size={14} /> Saldos
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-auto custom-scrollbar-dark px-4 pb-4">
+            <table className="w-full text-sm text-left text-gray-300">
+              <thead className="bg-gray-800 text-gray-400 sticky top-0">
+                <tr>
+                  <th className="p-3">Código</th>
+                  <th className="p-3">Descrição</th>
+                  <th className="p-3 text-right">Largura (mm)</th>
+                  <th className="p-3 text-right text-gray-400 bg-gray-900/50">
+                    Saldo Ant.
+                  </th>
+                  <th className="p-3 text-right text-emerald-400">Entradas</th>
+                  <th className="p-3 text-right text-red-400">Saídas</th>
+                  <th className="p-3 text-right text-white font-bold bg-blue-900/40 border-l border-blue-700">
+                    Saldo Atual
+                  </th>
+                  <th className="p-3 text-center">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-700">
+                {mpSummaryList
+                  .filter((i) => {
+                    if (!reportSearch) return true;
+                    const term = reportSearch.toLowerCase();
+                    return (
+                      i.code.toLowerCase().includes(term) ||
+                      String(i.desc || '')
+                        .toLowerCase()
+                        .includes(term) ||
+                      (i.width != null &&
+                        String(i.width).toLowerCase().includes(term))
+                    );
+                  })
+                  .map((row, idx) => (
+                    <tr key={idx} className="hover:bg-gray-700/50">
+                      <td className="p-3 font-bold text-white">{row.code}</td>
+                      <td className="p-3 text-gray-400 truncate max-w-[220px]">
+                        {row.desc}
+                      </td>
+                      <td className="p-3 text-right text-gray-300 font-mono">
+                        {row.width != null ? row.width : '-'}
+                      </td>
+                      <td className="p-3 text-right text-gray-300 font-mono bg-gray-900/30">
+                        {row.initialBalance.toLocaleString('pt-BR')}
+                      </td>
+                      <td className="p-3 text-right text-emerald-400 font-mono">
+                        {row.periodIn.toLocaleString('pt-BR')}
+                      </td>
+                      <td className="p-3 text-right text-red-400 font-mono">
+                        {row.periodOut.toLocaleString('pt-BR')}
+                      </td>
+                      <td className="p-3 text-right font-bold text-white font-mono bg-blue-900/20 border-l border-gray-700">
+                        {row.finalBalance.toLocaleString('pt-BR')}
+                      </td>
+                      <td className="p-3 text-center">
+                        <button
+                          onClick={() =>
+                            setViewingMpDetails({
+                              ...row,
+                              initialBalance: row.initialBalance,
+                            })
+                          }
+                          className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs"
+                        >
+                          <Eye size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* ABA 3: RESUMO PRODUÇÃO */}
+      {reportViewMode === 'PROD_SUMMARY' && (
+        <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-t-4 border-purple-600">
+          <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700 p-4 bg-purple-900/10 -mt-6 -mx-6">
+            <div>
+              <h3 className="font-bold text-xl text-purple-100">
+                Resumo Produção
+              </h3>
+              <p className="text-sm text-purple-300/70">Por Produto</p>
+            </div>
+            <Button
+              onClick={() => {
+                const data = prodSummaryList.map((i) => ({
+                  Produto: i.name,
+                  Código: i.code,
+                  Qtd: i.totalQty,
+                  Peso: i.totalWeight,
+                  Sucata: i.totalScrap,
+                }));
+                exportToCSV(data, `resumo_producao`);
+              }}
+              className="h-9 bg-purple-600 text-white"
+            >
+              <Download size={14} /> Excel
+            </Button>
+          </div>
+          <div className="flex-1 overflow-auto custom-scrollbar-dark px-4 pb-4">
+            <table className="w-full text-sm text-left text-gray-300">
+              <thead className="bg-gray-800 text-gray-400 sticky top-0">
+                <tr>
+                  <th className="p-3">Produto</th>
+                  <th className="p-3">Código</th>
+                  <th className="p-3 text-right text-emerald-400">Qtd</th>
+                  <th className="p-3 text-right text-blue-400">Peso</th>
+                  <th className="p-3 text-right text-red-400">Sucata</th>
+                  <th className="p-3 text-center">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-700">
+                {prodSummaryList.map((row, idx) => (
+                  <tr key={idx} className="hover:bg-gray-700/50">
+                    <td className="p-3 font-bold text-white text-sm">
+                      {row.name}
+                    </td>
+                    <td className="p-3 text-gray-400 text-xs font-mono">
+                      {row.code}
+                    </td>
+                    <td className="p-3 text-right text-emerald-400 font-bold text-lg">
+                      {row.totalQty}
+                    </td>
+                    <td className="p-3 text-right text-blue-400 font-mono">
+                      {row.totalWeight.toFixed(1)} kg
+                    </td>
+                    <td className="p-3 text-right text-red-400 font-mono">
+                      {row.totalScrap.toFixed(1)} kg
+                    </td>
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => setViewingProdDetails(row)}
+                        className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs transition-colors flex items-center gap-2 mx-auto"
+                      >
+                        <Eye size={14} /> Detalhes
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+};
+
   const handleGeneratePDF = (title, data) => {
     // Cria uma janela popup invisível
     const printWindow = window.open('', '', 'height=600,width=800');
@@ -2916,368 +3291,263 @@ const handleFullRestore = (e) => {
 
 
   const renderDashboard = () => {
-    // --- 1. PREPARAÇÃO DOS DADOS ---
-    
-    // Agrupa Estoque Mãe
-    const motherStockByCode = motherCoils.reduce((acc, item) => {
-      if(item.status === 'stock') {
-        const key = `${item.code}-${item.width}`;
-        if(!acc[key]) { 
-            acc[key] = { code: item.code, material: item.material, width: item.width, weight: 0, count: 0, type: item.type }; 
-        }
-        acc[key].weight += item.weight;
-        acc[key].count += 1; 
-      }
-      return acc;
-    }, {});
-
-    // Agrupa Estoque B2
-    const childStockByCode = childCoils.reduce((acc, item) => {
-      if(item.status === 'stock') {
-        if(!acc[item.b2Code]) acc[item.b2Code] = { code: item.b2Code, name: item.b2Name, weight: 0, count: 0, type: item.type };
-        acc[item.b2Code].weight += item.weight;
-        acc[item.b2Code].count += 1; 
-      }
-      return acc;
-    }, {});
-
-    // Agrupa Estoque Acabado
-    const stockBalances = getFinishedStock();
-    const finishedStockList = Object.values(stockBalances).filter(item => item.count > 0);
-
-    // --- 2. FILTROS DE PESQUISA ---
-    
-    const filteredMotherList = Object.values(motherStockByCode).filter(item => {
-        if (!dashSearchMother) return true;
-        const query = dashSearchMother.toLowerCase();
-        return String(item.code).toLowerCase().includes(query) || 
-               String(item.material).toLowerCase().includes(query) ||
-               String(item.width).toLowerCase().includes(query);
-    });
-
-    const filteredB2List = Object.values(childStockByCode).filter(item => {
-        if (!dashSearchB2) return true;
-        const query = dashSearchB2.toLowerCase();
-        return String(item.code).toLowerCase().includes(query) || String(item.name).toLowerCase().includes(query);
-    });
-
-    const filteredFinishedList = finishedStockList.filter(item => {
-        if (!dashSearchFinished) return true;
-        const query = dashSearchFinished.toLowerCase();
-        return String(item.code).toLowerCase().includes(query) || String(item.name).toLowerCase().includes(query);
-    });
-
-    // --- 3. PAGINAÇÃO ---
-    const paginatedMotherStock = filteredMotherList.slice((motherPage - 1) * ITEMS_PER_PAGE, motherPage * ITEMS_PER_PAGE);
-    const paginatedChildStock = filteredB2List.slice((childPage - 1) * ITEMS_PER_PAGE, childPage * ITEMS_PER_PAGE);
-    const paginatedFinishedStock = filteredFinishedList.slice((finishedPage - 1) * ITEMS_PER_PAGE, finishedPage * ITEMS_PER_PAGE);
-
-    // --- 4. TOTAIS ---
-    const totalMotherWeight = motherCoils.filter(m => m.status === 'stock').reduce((acc, m) => acc + m.weight, 0);
-    const totalB2Weight = childCoils.filter(c => c.status === 'stock').reduce((acc, c) => acc + c.weight, 0);
-    const totalFinishedCount = finishedStockList.reduce((acc, item) => acc + item.count, 0);
-    const tileStockCount = motherCoils.filter(m => m.status === 'stock' && String(m.code) === '10236').length;
-    const tileStockWeight = motherCoils.filter(m => m.status === 'stock' && String(m.code) === '10236').reduce((acc, m) => acc + m.weight, 0);
-    const totalScrapAll = productionLogs.reduce((acc, l) => acc + (parseFloat(l.scrap)||0), 0) + motherCoils.reduce((acc, m) => acc + (parseFloat(m.cutWaste)||0), 0);
-
-    return (
-      <div className="space-y-6">
-        {/* --- KPI CARDS --- */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
-          <Card className="border-l-4 border-blue-500 bg-gray-800 transform transition-transform hover:-translate-y-1">
-            <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Estoque Mãe</h3>
-            <div className="flex flex-col"><div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{motherCoils.filter(m => m.status === 'stock').length}</p><span className="text-sm text-gray-500 mb-1">bobinas</span></div><p className="text-sm text-blue-400 font-bold mt-1">{totalMotherWeight.toLocaleString('pt-BR')} kg</p></div>
-          </Card>
-          <Card className="border-l-4 border-indigo-500 bg-gray-800 transform transition-transform hover:-translate-y-1">
-            <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Estoque B2</h3>
-            <div className="flex flex-col"><div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{childCoils.filter(c => c.status === 'stock').length}</p><span className="text-sm text-gray-500 mb-1">bobinas</span></div><p className="text-sm text-indigo-400 font-bold mt-1">{totalB2Weight.toLocaleString('pt-BR')} kg</p></div>
-          </Card>
-          <Card className="border-l-4 border-emerald-500 bg-gray-800 transform transition-transform hover:-translate-y-1">
-            <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Estoque Acabado</h3>
-            <div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{totalFinishedCount}</p><span className="text-sm text-gray-500 mb-1">peças</span></div>
-          </Card>
-          <Card className="border-l-4 border-purple-500 bg-gray-800 transform transition-transform hover:-translate-y-1">
-            <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Estoque Telhas (10236)</h3>
-            <div className="flex flex-col"><div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{tileStockCount}</p><span className="text-sm text-gray-500 mb-1">bobinas</span></div><p className="text-sm text-purple-400 font-bold mt-1">{tileStockWeight.toLocaleString('pt-BR')} kg</p></div>
-          </Card>
-          <Card className="border-l-4 border-amber-500 bg-gray-800 transform transition-transform hover:-translate-y-1">
-            <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Sucata Total</h3>
-            <div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{totalScrapAll.toFixed(1)}</p><span className="text-sm text-gray-500 mb-1">kg</span></div>
-          </Card>
-        </div>
-
-        {/* --- TABELAS --- */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-           
-           {/* TABELA 1: MÃE (COM CSV E PDF) */}
-           <Card className="h-[500px] flex flex-col overflow-hidden col-span-1 lg:col-span-1">
-             <div className="mb-4">
-                 <div className="flex justify-between items-center mb-2">
-                     <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-blue-500"/> Estoque Mãe</h3>
-                     <div className="flex gap-2">
-                        {/* PDF */}
-                        <Button variant="secondary" onClick={() => {
-                            const data = filteredMotherList.map(i => ({ code: i.code, name: `${i.material} (${i.width}mm)`, count: `${i.count} bob (${i.weight}kg)` }));
-                            handleGeneratePDF('Estoque Bobina Mãe', data);
-                        }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button>
-                        
-                        {/* CSV */}
-                        <Button variant="secondary" onClick={() => {
-                            const data = filteredMotherList.map(i => ({ "Código": i.code, "Material": i.material, "Largura": i.width, "Qtd Bobinas": i.count, "Peso Total (kg)": i.weight }));
-                            exportToCSV(data, 'saldo_estoque_mae');
-                        }} className="h-8 text-xs bg-blue-900/20 text-blue-400 border-blue-900/50 hover:bg-blue-900/40"><Download size={14}/> CSV</Button>
-                     </div>
-                 </div>
-                 <div className="relative">
-                    <Search className="absolute left-2 top-2 text-gray-500" size={14}/>
-                    <input type="text" placeholder="Buscar..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-blue-500 outline-none" value={dashSearchMother} onChange={e => setDashSearchMother(e.target.value)} />
-                 </div>
-             </div>
-             <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
-               <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
-                 <thead className="bg-gray-900/50 text-gray-500 sticky top-0"><tr><th className="p-2 rounded-l-lg">Bobina / Material</th><th className="p-2 text-center">Larg.</th><th className="p-2 text-center">Qtd</th><th className="p-2 text-right rounded-r-lg">Peso</th><th className="p-2 text-center">Ver</th></tr></thead>
-                 <tbody className="divide-y divide-gray-700/50">
-                    {paginatedMotherStock.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-gray-700/30 transition-colors">
-                        <td className="p-3 align-top"><div className="font-bold text-white text-base">{row.code}</div><div className="text-[10px] text-gray-400 leading-tight mt-0.5 max-w-[180px]" title={row.material}>{row.material}</div><div className="text-[9px] text-blue-500 font-bold mt-1 inline-block border border-blue-900/50 px-1 rounded bg-blue-900/20">{row.type}</div></td>
-                        <td className="p-3 text-center text-white align-top font-bold pt-4">{row.width}</td><td className="p-3 text-center font-bold text-white align-top pt-4">{row.count}</td><td className="p-3 text-right font-mono text-gray-300 align-top pt-4">{(Number(row.weight) || 0).toLocaleString('pt-BR')}</td>
-                        <td className="p-3 text-center align-top pt-3"><button onClick={() => handleViewStockDetails(row.code, 'mother')} className="p-2 hover:text-blue-400 text-gray-400 transition-colors"><Eye size={18}/></button></td>
-                      </tr>
-                    ))}
-                    {paginatedMotherStock.length === 0 && <tr><td colSpan="5" className="text-center p-4 text-gray-500 text-xs">Nada encontrado.</td></tr>}
-                 </tbody>
-               </table>
-             </div>
-             <PaginationControls currentPage={motherPage} totalItems={filteredMotherList.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setMotherPage} />
-           </Card>
-           
-           {/* TABELA 2: B2 (COM CSV E PDF) */}
-           <Card className="h-[500px] flex flex-col overflow-hidden">
-             <div className="mb-4">
-                 <div className="flex justify-between items-center mb-2">
-                    <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-indigo-500"/> Estoque B2</h3>
-                    <div className="flex gap-2">
-                        {/* PDF */}
-                        <Button variant="secondary" onClick={() => {
-                            const data = filteredB2List.map(i => ({ code: i.code, name: i.name, count: `${i.count} bob (${i.weight}kg)` }));
-                            handleGeneratePDF('Estoque Bobina 2 (Slitter)', data);
-                        }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button>
-
-                        {/* CSV */}
-                        <Button variant="secondary" onClick={() => {
-                            const data = filteredB2List.map(i => ({ "Código": i.code, "Descrição": i.name, "Tipo": i.type, "Qtd Bobinas": i.count, "Peso Total (kg)": i.weight }));
-                            exportToCSV(data, 'saldo_estoque_b2');
-                        }} className="h-8 text-xs bg-indigo-900/20 text-indigo-400 border-indigo-900/50 hover:bg-indigo-900/40"><Download size={14}/> CSV</Button>
-                    </div>
-                 </div>
-                 <div className="relative"><Search className="absolute left-2 top-2 text-gray-500" size={14}/><input type="text" placeholder="Buscar..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-indigo-500 outline-none" value={dashSearchB2} onChange={e => setDashSearchB2(e.target.value)} /></div>
-             </div>
-             <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
-               <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
-                 <thead className="bg-gray-900/50 text-gray-500 sticky top-0"><tr><th className="p-3 rounded-l-lg">Código</th><th className="p-3 text-center">Qtd</th><th className="p-3 text-right">Peso</th><th className="p-3 text-center rounded-r-lg">Ver</th></tr></thead>
-                 <tbody className="divide-y divide-gray-700/50">
-                    {paginatedChildStock.map(row => (
-                      <tr key={row.code} className="hover:bg-gray-700/30 transition-colors">
-                        <td className="p-3 font-medium text-white" title={row.name}>{row.code}</td><td className="p-3 text-center font-bold text-white">{row.count}</td><td className="p-3 text-right font-mono text-gray-300">{(Number(row.weight) || 0).toFixed(0)}</td><td className="p-3 text-center"><button onClick={() => handleViewStockDetails(row.code, 'b2')} className="p-2 hover:text-white text-gray-400"><Eye size={18}/></button></td>
-                      </tr>
-                    ))}
-                    {paginatedChildStock.length === 0 && <tr><td colSpan="4" className="text-center p-4 text-gray-500 text-xs">Nada encontrado.</td></tr>}
-                 </tbody>
-               </table>
-             </div>
-             <PaginationControls currentPage={childPage} totalItems={filteredB2List.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setChildPage} />
-           </Card>
-
-           {/* TABELA 3: ACABADO (COM CSV E PDF) */}
-           <Card className="h-[500px] flex flex-col border-l-4 border-emerald-500/50 overflow-hidden">
-             <div className="mb-4">
-                 <div className="flex justify-between items-center mb-2">
-                     <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg"><Package className="text-emerald-500"/> Produto Acabado</h3>
-                     <div className="flex gap-2">
-                        <Button variant="secondary" onClick={() => {
-                            const data = filteredFinishedList.map(i => ({ code: i.code, name: i.name, count: i.count }));
-                            handleGeneratePDF('Produto Acabado', data);
-                        }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button>
-                        <Button variant="secondary" onClick={() => {
-                            const data = filteredFinishedList.map(i => ({ "Código": i.code, "Produto": i.name, "Saldo Atual": i.count }));
-                            exportToCSV(data, 'saldo_produto_acabado');
-                        }} className="h-8 text-xs bg-emerald-900/20 text-emerald-400 border-emerald-900/50 hover:bg-emerald-900/40" title="Baixar CSV"><Download size={14}/> CSV</Button>
-                     </div>
-                 </div>
-                 <div className="relative"><Search className="absolute left-2 top-2 text-gray-500" size={14}/><input type="text" placeholder="Buscar produto..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-emerald-500 outline-none" value={dashSearchFinished} onChange={e => setDashSearchFinished(e.target.value)} /></div>
-             </div>
-             <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
-               <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
-                 <thead className="bg-gray-900/50 text-gray-500 sticky top-0"><tr><th className="p-3 rounded-l-lg">Produto</th><th className="p-3 text-right">Total</th><th className="p-3 text-center rounded-r-lg">Etiq.</th></tr></thead>
-                 <tbody className="divide-y divide-gray-700/50">
-                    {paginatedFinishedStock.length === 0 && <tr><td colSpan="3" className="p-4 text-center text-gray-600 italic">Nada encontrado.</td></tr>}
-                    {paginatedFinishedStock.map(row => (
-                      <tr key={row.code} className="hover:bg-gray-700/30 transition-colors">
-                        <td className="p-3"><div className="font-bold text-white">{row.code}</div><div className="text-[10px] text-gray-400 truncate max-w-[150px]" title={row.name}>{row.name}</div></td>
-                        <td className="p-3 text-right font-mono text-emerald-400 font-bold text-lg">{row.count}</td>
-                         <td className="p-3 text-center"><button onClick={() => setSelectedProductForHistory(row)} className="p-2 hover:text-blue-400 text-gray-400 transition-colors" title="Visualizar Lotes"><Printer size={18}/></button></td>
-                      </tr>
-                    ))}
-                 </tbody>
-               </table>
-             </div>
-             <PaginationControls currentPage={finishedPage} totalItems={filteredFinishedList.length} itemsPerPage={ITEMS_PER_PAGE} onPageChange={setFinishedPage} />
-           </Card>
-        </div>
+    try {
+        const ITEMS_LIMIT = 50; 
         
-        {/* --- CARD DE BACKUP E RESTAURAÇÃO (MANTIDO) --- */}
-        {/* ... (A parte do backup continua igual, não precisa mexer) ... */}
-        <Card className="border-gray-700">
-          <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2"><Database className="text-blue-500"/> Backup e Restauração</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* COLUNA DA ESQUERDA: EXPORTAR DADOS (LIMPA E CORRIGIDA) */}
-            <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-blue-500/50 transition-colors">
-                <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Exportar Dados</h4>
-                <div className="flex flex-col gap-2">
-                    
-                    {/* 1. BOBINAS MÃE (COM LARGURA, FILIAL E TIPO) */}
-                    <Button variant="secondary" onClick={() => { 
-                        const data = motherCoils.map(m => ({ 
-                            "ID Rastreio": m.id, 
-                            "Lote": m.code, 
-                            "NF": m.nf||'-', 
-                            "Material": m.material, 
-                            "Largura": m.width,             // <--- COLUNA NOVA
-                            "Peso": m.remainingWeight,
-                            "Filial": m.branch || 'MATRIZ', // <--- COLUNA NOVA
-                            "Tipo": m.type || '-',          // <--- COLUNA NOVA
-                            "Status": m.status, 
-                            "Data": m.date 
-                        })); 
-                        exportToCSV(data, 'relatorio_mae_completo'); 
-                    }} className="text-xs w-full h-9">
-                        <Download size={14}/> Bobinas Mãe
-                    </Button>
+        // =================================================================================
+        // 1. FUNÇÕES DE EXPORTAÇÃO (DENTRO DA DASHBOARD PARA NÃO FALHAR)
+        // =================================================================================
+        const exportToCSV = (data, filename) => {
+            if (!data || data.length === 0) return alert("Nada para exportar.");
+            const headers = Object.keys(data[0]).join(';');
+            const csvContent = [headers, ...data.map(row => Object.values(row).map(val => `"${String(val).replace(/"/g, '""')}"`).join(';'))].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `${filename}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
 
-                    {/* 2. BOBINAS 2 (MANTIDO) */}
-                    <Button variant="secondary" onClick={() => { 
-                        const data = childCoils.map(c => ({ 
-                            "ID": c.id, 
-                            "Cód": c.b2Code, 
-                            "Desc": c.b2Name, 
-                            "Peso": c.weight, 
-                            "Status": c.status, 
-                            "Mãe": c.motherCode 
-                        })); 
-                        exportToCSV(data, 'relatorio_b2'); 
-                    }} className="text-xs w-full h-9">
-                        <Download size={14}/> Bobinas 2
-                    </Button>
+        const handleGeneratePDF = (title, data) => {
+            const printWindow = window.open('', '', 'height=600,width=800');
+            if (!printWindow) return alert("Pop-up bloqueado! Permita pop-ups.");
+            const htmlContent = `<html><head><title>${title}</title><style>body{font-family:Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f2f2f2}.right{text-align:right}</style></head><body><h2>${title}</h2><p>Emissão: ${new Date().toLocaleString()}</p><table><thead><tr><th>Código</th><th>Descrição</th><th class="right">Qtd/Detalhe</th></tr></thead><tbody>${data.map(i => `<tr><td>${i.code}</td><td>${i.name}</td><td class="right">${i.count}</td></tr>`).join('')}</tbody></table></body></html>`;
+            printWindow.document.write(htmlContent);
+            printWindow.document.close();
+            setTimeout(() => { printWindow.print(); printWindow.close(); }, 500);
+        };
+        
+        // --- 2. SEGURANÇA E UTILITÁRIOS ---
+        const safeNum = (val) => { const n = parseFloat(val); return isNaN(n) ? 0 : n; };
+        const normalizeCode = (v) => String(v ?? '').trim();
 
-                    {/* 3. HISTÓRICO DE PRODUÇÃO (MANTIDO) */}
-                    <Button variant="secondary" onClick={() => { 
-                        const data = productionLogs.map(l => ({ 
-                            "Lote": l.id, 
-                            "Prod": l.productName, 
-                            "Qtd": l.pieces, 
-                            "Data": l.date, 
-                            "Mãe": l.motherCode 
-                        })); 
-                        exportToCSV(data, 'relatorio_prod'); 
-                    }} className="text-xs w-full h-9">
-                        <Download size={14}/> Histórico Produção
-                    </Button>
+        const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
+        const safeChild = Array.isArray(childCoils) ? childCoils : [];
+        const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
+        const safeShip = Array.isArray(shippingLogs) ? shippingLogs : [];
+        
+        // --- 3. PREPARAÇÃO DOS DADOS ---
 
-                </div>
+        const catalogByCode = (motherCatalog || []).reduce((acc, item) => {
+            const code = normalizeCode(item.code);
+            if (code) acc[code] = item;
+            return acc;
+        }, {});
+        
+        const motherStockByCode = safeMother.reduce((acc, item) => {
+          if(item.status === 'stock') {
+            const codeRaw = normalizeCode(item.code);
+            const width = safeNum(item.width);
+            const key = `${codeRaw}-${width}`;
+            
+            if(!acc[key]) { 
+                const catalogItem = catalogByCode[codeRaw];
+                const materialName = catalogItem?.description || item.material || `BOBINA ${item.code}`;
+
+                acc[key] = { 
+                    code: item.code, 
+                    material: materialName, 
+                    width: item.width, 
+                    weight: 0, 
+                    count: 0, 
+                    type: item.type 
+                }; 
+            }
+            acc[key].weight += safeNum(item.remainingWeight) || safeNum(item.weight);
+            acc[key].count += 1; 
+          }
+          return acc;
+        }, {});
+
+        const childStockByCode = safeChild.reduce((acc, item) => {
+          if(item.status === 'stock') {
+            if(!acc[item.b2Code]) acc[item.b2Code] = { code: item.b2Code, name: item.b2Name, weight: 0, count: 0, type: item.type };
+            acc[item.b2Code].weight += safeNum(item.weight);
+            acc[item.b2Code].count += 1; 
+          }
+          return acc;
+        }, {});
+
+        const stock = {};
+        safeProd.forEach(log => {
+            if (!stock[log.productCode]) stock[log.productCode] = { code: log.productCode, name: log.productName, count: 0 };
+            stock[log.productCode].count += (parseInt(log.pieces) || 0);
+        });
+        safeShip.forEach(log => {
+            if (stock[log.productCode]) {
+                stock[log.productCode].count -= (parseInt(log.quantity) || 0);
+            }
+        });
+        const finishedStockList = Object.values(stock).filter(item => item.count > 0);
+
+        // --- 4. FILTROS ---
+        const filteredMotherList = Object.values(motherStockByCode).filter(item => {
+            if (!dashSearchMother) return true;
+            const query = dashSearchMother.toLowerCase();
+            return String(item.code || '').toLowerCase().includes(query) || String(item.material || '').toLowerCase().includes(query);
+        });
+
+        const filteredB2List = Object.values(childStockByCode).filter(item => {
+            if (!dashSearchB2) return true;
+            const query = dashSearchB2.toLowerCase();
+            return String(item.code || '').toLowerCase().includes(query) || String(item.name || '').toLowerCase().includes(query);
+        });
+
+        const filteredFinishedList = finishedStockList.filter(item => {
+            if (!dashSearchFinished) return true;
+            const query = dashSearchFinished.toLowerCase();
+            return String(item.code || '').toLowerCase().includes(query) || String(item.name || '').toLowerCase().includes(query);
+        });
+
+        // --- 5. PAGINAÇÃO ---
+        const paginatedMotherStock = filteredMotherList.slice((motherPage - 1) * ITEMS_LIMIT, motherPage * ITEMS_LIMIT);
+        const paginatedChildStock = filteredB2List.slice((childPage - 1) * ITEMS_LIMIT, childPage * ITEMS_LIMIT);
+        const paginatedFinishedStock = filteredFinishedList.slice((finishedPage - 1) * ITEMS_LIMIT, finishedPage * ITEMS_LIMIT);
+
+        // --- 6. TOTAIS ---
+        const totalMotherWeight = safeMother.filter(m => m.status === 'stock').reduce((acc, m) => acc + safeNum(m.remainingWeight || m.weight), 0);
+        const totalB2Weight = safeChild.filter(c => c.status === 'stock').reduce((acc, c) => acc + safeNum(c.weight), 0);
+        const totalFinishedCount = finishedStockList.reduce((acc, item) => acc + (item.count || 0), 0);
+        const tileStockCount = safeMother.filter(m => m.status === 'stock' && String(m.code) === '10236').length;
+        const tileStockWeight = safeMother.filter(m => m.status === 'stock' && String(m.code) === '10236').reduce((acc, m) => acc + safeNum(m.remainingWeight || m.weight), 0);
+        const totalScrapAll = safeProd.reduce((acc, l) => acc + safeNum(l.scrap), 0) + safeMother.reduce((acc, m) => acc + safeNum(m.cutWaste), 0);
+
+        return (
+          <div className="space-y-6">
+            {/* KPI CARDS */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
+              <Card className="border-l-4 border-blue-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Estoque Mãe</h3><div className="flex flex-col"><p className="text-3xl font-bold text-white">{safeMother.filter(m => m.status === 'stock').length} <span className="text-sm text-gray-500 font-normal">bobinas</span></p><p className="text-sm text-blue-400 font-bold">{totalMotherWeight.toLocaleString('pt-BR')} kg</p></div></Card>
+              <Card className="border-l-4 border-indigo-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Estoque B2</h3><div className="flex flex-col"><p className="text-3xl font-bold text-white">{safeChild.filter(c => c.status === 'stock').length} <span className="text-sm text-gray-500 font-normal">bobinas</span></p><p className="text-sm text-indigo-400 font-bold">{totalB2Weight.toLocaleString('pt-BR')} kg</p></div></Card>
+              <Card className="border-l-4 border-emerald-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Estoque Acabado</h3><div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{totalFinishedCount}</p><span className="text-sm text-gray-500 mb-1">peças</span></div></Card>
+              <Card className="border-l-4 border-purple-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Estoque Telhas (10236)</h3><div className="flex flex-col"><p className="text-3xl font-bold text-white">{tileStockCount} <span className="text-sm text-gray-500 font-normal">bobinas</span></p><p className="text-sm text-purple-400 font-bold">{tileStockWeight.toLocaleString('pt-BR')} kg</p></div></Card>
+              <Card className="border-l-4 border-amber-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Sucata Total</h3><div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{totalScrapAll.toFixed(1)}</p><span className="text-sm text-gray-500 mb-1">kg</span></div></Card>
             </div>
-            {/* COLUNA DA DIREITA: IMPORTAR BACKUP */}
-            <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-amber-500/50 transition-colors">
-                <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Importar Backup</h4>
-                
-                <div className="flex flex-col gap-4">
-                    
-                    {/* 1. RESTAURAÇÃO COMPLETA (AZUL) */}
-                    <div className="flex items-center gap-2">
-                        <div className="relative flex-1">
-                            <input type="file" accept=".json" className="hidden" ref={importFullBackupRef} onChange={handleFullRestore} />
-                            <Button variant="primary" onClick={() => importFullBackupRef.current.click()} className="text-xs w-full h-9 bg-blue-600 hover:bg-blue-500 font-bold">
-                                <Upload size={14} className="mr-2"/> Restaurar Completo
-                            </Button>
-                        </div>
-                    </div>
 
-                    <div className="border-t border-gray-700 my-1"></div>
-                    {/* 2. SALDO MÃE (Backup + Inventário) */}
-                    {/* 2. SALDO MÃE (AZUL ESCURO) */}
-                    {/* 2. SALDO MÃE */}
-                    <div className="flex items-center gap-2">
-                        {/* Modelo ATUALIZADO */}
-                        <Button variant="info" onClick={() => { 
-                            // Adicionei Filial e Tipo no CSV de exemplo
-                            const csv = "Codigo;Largura;Peso;Filial;Tipo\n10644;1200;5000;MATRIZ;BEG\n10591;1000;2000;FILIAL1;ZINC"; 
-                            const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'}); 
-                            const l = document.createElement("a"); 
-                            l.href = URL.createObjectURL(blob); 
-                            l.download = "modelo_inventario_mae_completo.csv"; 
-                            l.click(); 
-                        }} className="w-9 h-9 p-0" title="Modelo: Cód; Larg; Peso; Filial; Tipo">
-                            <FileInput size={16}/>
-                        </Button>
-                        
-                        <div className="relative flex-1 flex gap-1">
-                             {/* ... Inputs e outros botões iguais ... */}
-                             {/* (Mantenha o resto como estava) */}
-                             <input type="file" accept=".csv" className="hidden" ref={importMotherStockRef} onChange={(e) => handleImportBackup(e, setMotherCoils, 'Estoque Mãe')} />
-                             <input type="file" accept=".csv" className="hidden" ref={inventoryMotherRef} onChange={handleMotherInventory} />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+               {/* TABELA 1: MÃE */}
+               <Card className="h-[500px] flex flex-col overflow-hidden col-span-1 lg:col-span-1">
+                 <div className="mb-4">
+                     <div className="flex justify-between items-center mb-2">
+                         <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-blue-500"/> Estoque Mãe</h3>
+                         <div className="flex gap-2">
+                            <Button variant="secondary" onClick={() => { const data = filteredMotherList.map(i => ({ code: i.code, name: `${i.material} (${i.width}mm)`, count: `${i.count} bob (${i.weight}kg)` })); handleGeneratePDF('Estoque Bobina Mãe', data); }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button>
+                            <Button variant="secondary" onClick={() => { const data = filteredMotherList.map(i => ({ "Código": i.code, "Material": i.material, "Largura": i.width, "Qtd Bobinas": i.count, "Peso Total (kg)": i.weight })); exportToCSV(data, 'saldo_estoque_mae'); }} className="h-8 text-xs bg-blue-900/20 text-blue-400 border-blue-900/50 hover:bg-blue-900/40"><Download size={14}/> CSV</Button>
+                         </div>
+                     </div>
+                     <div className="relative"><Search className="absolute left-2 top-2 text-gray-500" size={14}/><input type="text" placeholder="Buscar..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-blue-500 outline-none" value={dashSearchMother} onChange={e => setDashSearchMother(e.target.value)} /></div>
+                 </div>
+                 <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
+                   <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
+                     <thead className="bg-gray-900/50 text-gray-500 sticky top-0"><tr><th className="p-2 rounded-l-lg">Bobina / Material</th><th className="p-2 text-center">Larg.</th><th className="p-2 text-center">Qtd</th><th className="p-2 text-right rounded-r-lg">Peso</th><th className="p-2 text-center">Ver</th></tr></thead>
+                     <tbody className="divide-y divide-gray-700/50">
+                        {paginatedMotherStock.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-gray-700/30 transition-colors">
+                            <td className="p-3 align-top"><div className="font-bold text-white text-base">{row.code}</div><div className="text-[10px] text-gray-400 leading-tight mt-0.5 max-w-[180px]" title={row.material}>{row.material}</div><div className="text-[9px] text-blue-500 font-bold mt-1 inline-block border border-blue-900/50 px-1 rounded bg-blue-900/20">{row.type}</div></td>
+                            <td className="p-3 text-center text-white align-top font-bold pt-4">{row.width}</td><td className="p-3 text-center font-bold text-white align-top pt-4">{row.count}</td><td className="p-3 text-right font-mono text-gray-300 align-top pt-4">{(Number(row.weight)||0).toLocaleString('pt-BR')}</td>
+                            <td className="p-3 text-center align-top pt-3"><button onClick={() => handleViewStockDetails(row.code, 'mother')} className="p-2 hover:text-blue-400 text-gray-400 transition-colors"><Eye size={18}/></button></td>
+                          </tr>
+                        ))}
+                     </tbody>
+                   </table>
+                 </div>
+                 <PaginationControls currentPage={motherPage} totalItems={filteredMotherList.length} itemsPerPage={ITEMS_LIMIT} onPageChange={setMotherPage} />
+               </Card>
+               
+               {/* TABELA 2: B2 */}
+               <Card className="h-[500px] flex flex-col overflow-hidden">
+                 <div className="mb-4">
+                     <div className="flex justify-between items-center mb-2"><h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-indigo-500"/> Estoque B2</h3><div className="flex gap-2"><Button variant="secondary" onClick={() => { const data = filteredB2List.map(i => ({ code: i.code, name: i.name, count: `${i.count} bob (${i.weight}kg)` })); handleGeneratePDF('Estoque Bobina 2 (Slitter)', data); }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button><Button variant="secondary" onClick={() => { const data = filteredB2List.map(i => ({ "Código": i.code, "Descrição": i.name, "Tipo": i.type, "Qtd Bobinas": i.count, "Peso Total (kg)": i.weight })); exportToCSV(data, 'saldo_estoque_b2'); }} className="h-8 text-xs bg-indigo-900/20 text-indigo-400 border-indigo-900/50 hover:bg-indigo-900/40"><Download size={14}/> CSV</Button></div></div>
+                     <div className="relative"><Search className="absolute left-2 top-2 text-gray-500" size={14}/><input type="text" placeholder="Buscar..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-indigo-500 outline-none" value={dashSearchB2} onChange={e => setDashSearchB2(e.target.value)} /></div>
+                 </div>
+                 <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
+                   <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
+                     <thead className="bg-gray-900/50 text-gray-500 sticky top-0"><tr><th className="p-3 rounded-l-lg">Código</th><th className="p-3 text-center">Qtd</th><th className="p-3 text-right">Peso</th><th className="p-3 text-center rounded-r-lg">Ver</th></tr></thead>
+                     <tbody className="divide-y divide-gray-700/50">
+                        {paginatedChildStock.map(row => (
+                          <tr key={row.code} className="hover:bg-gray-700/30 transition-colors">
+                            <td className="p-3 font-medium text-white" title={row.name}>{row.code}</td><td className="p-3 text-center font-bold text-white">{row.count}</td><td className="p-3 text-right font-mono text-gray-300">{(Number(row.weight)||0).toFixed(0)}</td><td className="p-3 text-center"><button onClick={() => handleViewStockDetails(row.code, 'b2')} className="p-2 hover:text-white text-gray-400"><Eye size={18}/></button></td>
+                          </tr>
+                        ))}
+                     </tbody>
+                   </table>
+                 </div>
+                 <PaginationControls currentPage={childPage} totalItems={filteredB2List.length} itemsPerPage={ITEMS_LIMIT} onPageChange={setChildPage} />
+               </Card>
 
-                             <Button variant="secondary" onClick={() => importMotherStockRef.current.click()} className="text-xs flex-1 h-9 bg-gray-800 border-gray-600 hover:bg-gray-700 text-gray-400" title="Substituir Tudo">
-                                <Database size={14} className="mr-1"/> Backup
-                             </Button>
-
-                             <Button variant="secondary" onClick={() => inventoryMotherRef.current.click()} className="text-xs flex-[2] h-9 bg-sky-900/20 text-sky-400 border-sky-900/50 hover:bg-sky-900/40 font-bold" title="Ajustar Estoque">
-                                <Scale size={14} className="mr-2"/> Ajustar Estoque
-                             </Button>
-                        </div>
-                    </div>
-
-                    {/* 2. SALDO ACABADO (ROXO - JÁ EXISTIA) */}
-                    <div className="flex items-center gap-2">
-                        <Button variant="info" onClick={() => { const csv = "Codigo;Quantidade Real\n00652B;500"; const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'}); const l = document.createElement("a"); l.href = URL.createObjectURL(blob); l.download = "modelo_inventario.csv"; l.click(); }} className="w-9 h-9 p-0" title="Modelo Inventário">
-                            <FileInput size={16}/>
-                        </Button>
-                        <div className="relative flex-1">
-                            <input type="file" accept=".csv" className="hidden" ref={importFinishedStockRef} onChange={handleImportFinishedStock} />
-                            <Button variant="warning" onClick={() => importFinishedStockRef.current.click()} className="text-xs w-full h-9 bg-purple-900/20 text-purple-400 border-purple-900/50 hover:bg-purple-900/40">
-                                <Upload size={14}/> Atualizar Saldo Acabado
-                            </Button>
-                        </div>
-                    </div>
-
-                    {/* 3. SALDO B2 / SLITTER (NOVO - INSIRA AQUI) */}
-                    <div className="flex items-center gap-2">
-                        <Button variant="info" onClick={() => handleDownloadTemplate('b2')} className="w-9 h-9 p-0" title="Modelo CSV Bobina 2">
-                            <FileJson size={16}/>
-                        </Button>
-                        
-                        <div className="relative flex-1">
-                            <input 
-                                type="file" 
-                                accept=".csv" 
-                                className="hidden" 
-                                ref={importChildStockRef} 
-                                onChange={(e) => handleImportBackup(e, setChildCoils, 'Estoque B2')} 
-                            />
-                            <Button 
-                                variant="secondary" 
-                                onClick={() => importChildStockRef.current.click()} 
-                                className="text-xs w-full h-9 bg-indigo-900/20 text-indigo-400 border-indigo-900/50 hover:bg-indigo-900/40"
-                            >
-                                <Upload size={14}/> Saldo B2 (Slitter)
-                            </Button>
-                        </div>
-                    </div>
-
-                </div>
+               {/* TABELA 3: ACABADO */}
+               <Card className="h-[500px] flex flex-col border-l-4 border-emerald-500/50 overflow-hidden">
+                 <div className="mb-4">
+                     <div className="flex justify-between items-center mb-2"><h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg"><Package className="text-emerald-500"/> Produto Acabado</h3><div className="flex gap-2"><Button variant="secondary" onClick={() => { const data = filteredFinishedList.map(i => ({ code: i.code, name: i.name, count: i.count })); handleGeneratePDF('Produto Acabado', data); }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button><Button variant="secondary" onClick={() => { const data = filteredFinishedList.map(i => ({ "Código": i.code, "Produto": i.name, "Saldo Atual": i.count })); exportToCSV(data, 'saldo_produto_acabado'); }} className="h-8 text-xs bg-emerald-900/20 text-emerald-400 border-emerald-900/50 hover:bg-emerald-900/40" title="Baixar CSV"><Download size={14}/> CSV</Button></div></div>
+                     <div className="relative"><Search className="absolute left-2 top-2 text-gray-500" size={14}/><input type="text" placeholder="Buscar produto..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-emerald-500 outline-none" value={dashSearchFinished} onChange={e => setDashSearchFinished(e.target.value)} /></div>
+                 </div>
+                 <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
+                   <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
+                     <thead className="bg-gray-900/50 text-gray-500 sticky top-0"><tr><th className="p-3 rounded-l-lg">Produto</th><th className="p-3 text-right">Total</th><th className="p-3 text-center rounded-r-lg">Ações</th></tr></thead>
+                     <tbody className="divide-y divide-gray-700/50">
+                        {paginatedFinishedStock.length === 0 && <tr><td colSpan="3" className="p-4 text-center text-gray-600 italic">Nada encontrado.</td></tr>}
+                        {paginatedFinishedStock.map(row => (
+                          <tr key={row.code} className="hover:bg-gray-700/30 transition-colors">
+                            <td className="p-3"><div className="font-bold text-white">{row.code}</div><div className="text-[10px] text-gray-400 truncate max-w-[150px]" title={row.name}>{row.name}</div></td>
+                            <td className="p-3 text-right font-mono text-emerald-400 font-bold text-lg">{row.count}</td>
+                             <td className="p-3 text-center">
+                                <div className="flex justify-center gap-2">
+                                    <button onClick={() => { setSelectedGroupData({code: row.code, name: row.name}); setShowHistoryModal(true); }} className="p-1.5 bg-gray-700 text-gray-300 rounded hover:bg-blue-600 hover:text-white transition-colors" title="Ver Lotes"><List size={16}/></button>
+                                    <button onClick={() => { setSelectedProductForHistory(row); }} className="p-1.5 bg-gray-700 text-gray-300 rounded hover:bg-emerald-600 hover:text-white transition-colors" title="Imprimir"><Printer size={16}/></button>
+                                </div>
+                             </td>
+                          </tr>
+                        ))}
+                     </tbody>
+                   </table>
+                 </div>
+                 <PaginationControls currentPage={finishedPage} totalItems={filteredFinishedList.length} itemsPerPage={ITEMS_LIMIT} onPageChange={setFinishedPage} />
+               </Card>
             </div>
+            
+            {/* --- CARD DE BACKUP E RESTAURAÇÃO --- */}
+            <Card className="border-gray-700">
+              <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2"><Database className="text-blue-500"/> Backup e Restauração</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* COLUNA 1: EXPORTAR DADOS */}
+                <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-blue-500/50 transition-colors">
+                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Exportar Dados</h4>
+                    <div className="flex flex-col gap-2">
+                        {/* BOBINAS MÃE (USANDO EXPORT LOCAL) */}
+                        <Button variant="secondary" onClick={() => { const data = filteredMotherList.map(m => ({ "ID Rastreio": m.id, "Lote": m.code, "NF": m.nf||'-', "Material": m.material, "Largura": m.width, "Peso": m.weight, "Filial": m.branch||'MATRIZ', "Tipo": m.type||'-', "Status": m.status, "Data": m.date })); exportToCSV(data, 'relatorio_mae_completo'); }} className="text-xs w-full h-9"><Download size={14}/> Bobinas Mãe</Button>
+                        {/* BOBINAS 2 */}
+                        <Button variant="secondary" onClick={() => { const data = filteredB2List.map(c => ({ "ID": c.id, "Cód": c.b2Code, "Desc": c.b2Name, "Peso": c.weight, "Status": c.status, "Mãe": c.motherCode })); exportToCSV(data, 'relatorio_b2'); }} className="text-xs w-full h-9"><Download size={14}/> Bobinas 2</Button>
+                        {/* PRODUÇÃO */}
+                        <Button variant="secondary" onClick={() => { const data = safeProd.map(l => ({ "Lote": l.id, "Prod": l.productName, "Qtd": l.pieces, "Data": l.date, "Mãe": l.motherCode })); exportToCSV(data, 'relatorio_prod'); }} className="text-xs w-full h-9"><Download size={14}/> Histórico Produção</Button>
+                    </div>
+                </div>
+
+                {/* COLUNA 2: IMPORTAR BACKUP */}
+                <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-amber-500/50 transition-colors">
+                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Importar Backup</h4>
+                    <div className="flex flex-col gap-4">
+                        {/* RESTORE JSON */}
+                        <div className="flex items-center gap-2"><div className="relative flex-1"><input type="file" accept=".json" className="hidden" ref={importFullBackupRef} onChange={handleFullRestore} /><Button variant="primary" onClick={() => importFullBackupRef.current.click()} className="text-xs w-full h-9 bg-blue-600 hover:bg-blue-500 font-bold"><Upload size={14} className="mr-2"/> Restaurar Completo</Button></div></div>
+                        <div className="border-t border-gray-700 my-1"></div>
+                        
+                        {/* SALDO MÃE */}
+                        <div className="flex items-center gap-2"><Button variant="info" onClick={() => { const csv = "Codigo;Largura;Peso;Filial;Tipo\n10644;1200;5000;MATRIZ;BEG"; const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'}); const l = document.createElement("a"); l.href = URL.createObjectURL(blob); l.download = "modelo_mae.csv"; l.click(); }} className="w-9 h-9 p-0"><FileInput size={16}/></Button><div className="relative flex-1 flex gap-1"><input type="file" accept=".csv" className="hidden" ref={importMotherStockRef} onChange={(e) => handleImportBackup(e, setMotherCoils, 'Estoque Mãe')} /><input type="file" accept=".csv" className="hidden" ref={inventoryMotherRef} onChange={handleMotherInventory} /><Button variant="secondary" onClick={() => importMotherStockRef.current.click()} className="text-xs flex-1 h-9 bg-gray-800 border-gray-600 hover:bg-gray-700 text-gray-400">Backup</Button><Button variant="secondary" onClick={() => inventoryMotherRef.current.click()} className="text-xs flex-[2] h-9 bg-sky-900/20 text-sky-400 border-sky-900/50 hover:bg-sky-900/40 font-bold">Ajustar</Button></div></div>
+                        
+                        {/* SALDO ACABADO */}
+                        <div className="flex items-center gap-2"><Button variant="info" onClick={() => { const csv = "Codigo;Qtd\n00652B;500"; const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'}); const l = document.createElement("a"); l.href = URL.createObjectURL(blob); l.download = "modelo_prod.csv"; l.click(); }} className="w-9 h-9 p-0"><FileInput size={16}/></Button><div className="relative flex-1"><input type="file" accept=".csv" className="hidden" ref={importFinishedStockRef} onChange={handleImportFinishedStock} /><Button variant="warning" onClick={() => importFinishedStockRef.current.click()} className="text-xs w-full h-9 bg-purple-900/20 text-purple-400 border-purple-900/50 hover:bg-purple-900/40"><Upload size={14}/> Saldo Acabado</Button></div></div>
+
+                        {/* SALDO B2 */}
+                        <div className="flex items-center gap-2"><Button variant="info" onClick={() => handleDownloadTemplate('b2')} className="w-9 h-9 p-0"><FileJson size={16}/></Button><div className="relative flex-1"><input type="file" accept=".csv" className="hidden" ref={importChildStockRef} onChange={(e) => handleImportBackup(e, setChildCoils, 'Estoque B2')} /><Button variant="secondary" onClick={() => importChildStockRef.current.click()} className="text-xs w-full h-9 bg-indigo-900/20 text-indigo-400 border-indigo-900/50 hover:bg-indigo-900/40"><Upload size={14}/> Saldo B2</Button></div></div>
+                    </div>
+                </div>
+              </div>
+            </Card>
           </div>
-        </Card>
-      </div>
-    );
+        );
+    } catch (err) {
+        return <div className="p-10 text-center text-red-500">Erro no Dashboard: {err.message}</div>;
+    }
   };
   // --- RETURN FINAL ---
   return (
