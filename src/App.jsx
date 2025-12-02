@@ -1237,22 +1237,26 @@ export default function App() {
     alert("Baixa de expedição realizada com sucesso!");
   };
 
+  // --- 1. BACKUP COMPLETO (SALVA TUDO) ---
+  // --- 1. BACKUP COMPLETO (SALVA TUDO) ---
   const handleFullBackup = () => {
     try {
+      // Reúne TODOS os dados do sistema
       const data = { 
         motherCoils: motherCoils || [], 
         childCoils: childCoils || [], 
         productionLogs: productionLogs || [], 
         shippingLogs: shippingLogs || [], 
         productCatalog: productCatalog || [], 
-        motherCatalog: motherCatalog || [] 
+        motherCatalog: motherCatalog || [],
+        cuttingLogs: cuttingLogs || [] // <--- GARANTINDO O HISTÓRICO DE CORTES
       };
       
-      // Formata nome do arquivo
+      // Formata nome do arquivo com Data
       const dateStr = new Date().toISOString().split('T')[0];
       const fileName = `backup_metalosa_${dateStr}.json`;
       
-      // Pega Data e Hora de AGORA para mostrar na tela
+      // Pega Data e Hora de AGORA para mostrar na barra azul
       const now = new Date().toLocaleString();
 
       const jsonString = JSON.stringify(data, null, 2);
@@ -1266,27 +1270,27 @@ export default function App() {
       link.click();
       document.body.removeChild(link);
 
-      // --- ATUALIZA O NOME COM A DATA ATUAL ---
+      // Atualiza a barra azul no topo
       setCurrentFileName(`💾 ${fileName} (Gerado em: ${now})`);
-      // ----------------------------------------
 
-      // Lógica do Gmail (Mantida)
-      const recipients = "pcp@metalosa.com.br,pcp5@metalosa.com.br,pcp3@metalosa.com.br";
-      const subject = `Backup Sistema Metalosa - ${new Date().toLocaleDateString()}`;
-      const body = `Backup realizado com sucesso.\nArquivo: ${fileName}`;
-      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${recipients}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-
+      // Feedback para o usuário
       setTimeout(() => {
-          if (window.confirm("Backup baixado!\n\nClique em OK para abrir o Gmail.")) {
+          const recipients = "pcp@metalosa.com.br,pcp5@metalosa.com.br,pcp3@metalosa.com.br";
+          const subject = `Backup Sistema Metalosa - ${new Date().toLocaleDateString()}`;
+          const body = `Backup realizado com sucesso.\nArquivo: ${fileName}`;
+          const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${recipients}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+          if (window.confirm("Backup Completo baixado com sucesso!\n(Inclui Cortes, Estoques, Produção e Cadastros)\n\nDeseja abrir o Gmail para enviar?")) {
               window.open(gmailUrl, '_blank');
           }
       }, 500);
 
     } catch (error) {
-      alert("Erro ao gerar backup: " + error.message);
+      alert("Erro crítico ao gerar backup: " + error.message);
     }
   };
 
+  // --- 2. RESTAURAR COMPLETO (CARREGA TUDO) --
   const handleEditLog = (log) => {
     setEditingLogId(log.id);
     setSelectedChildForProd(log.childId);
@@ -2570,9 +2574,10 @@ const renderReports = () => {
   };
 
   // --- 3. RESTAURAR BACKUP COMPLETO ---
-  const handleFullRestore = (e) => {
+const handleFullRestore = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
     const fileName = file.name;
     const fileDate = file.lastModified ? new Date(file.lastModified).toLocaleString() : new Date().toLocaleString();
 
@@ -2580,6 +2585,8 @@ const renderReports = () => {
     reader.onload = (event) => {
       try {
         const data = JSON.parse(event.target.result);
+        
+        // Recupera os dados
         if (data.motherCoils) setMotherCoils(data.motherCoils);
         if (data.childCoils) setChildCoils(data.childCoils);
         if (data.productionLogs) setProductionLogs(data.productionLogs);
@@ -2587,9 +2594,19 @@ const renderReports = () => {
         if (data.productCatalog) setProductCatalog(data.productCatalog);
         if (data.motherCatalog) setMotherCatalog(data.motherCatalog);
         
+        // 👇 ESSA LINHA É FUNDAMENTAL PARA O CORTES SLITTER 👇
+        if (data.cuttingLogs) setCuttingLogs(data.cuttingLogs); 
+        // 👆 SEM ELA, O HISTÓRICO DE CORTES SOME 👆
+        
         setCurrentFileName(`📂 ${fileName} (Salvo em: ${fileDate})`);
-        alert("Backup restaurado!");
-      } catch (err) { alert("Erro ao ler backup: " + err.message); }
+        
+        // Calcula total de registros para confirmar visualmente
+        const totalRegs = (data.motherCoils?.length||0) + (data.childCoils?.length||0) + (data.productionLogs?.length||0);
+
+        alert(`Backup restaurado com sucesso!\n\nArquivo: ${fileName}\nData Original: ${fileDate}\nRegistros Carregados: ~${totalRegs}`);
+      } catch (err) {
+        alert("Erro ao ler backup: " + err.message);
+      }
     };
     reader.readAsText(file);
   };
