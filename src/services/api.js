@@ -1,5 +1,6 @@
 // src/services/api.js
-import { db } from "../firebaseConfig"; // Você já importa aqui
+// 1. Importe db E auth do seu arquivo de configuração
+import { db, auth } from "../firebaseConfig"; 
 import { 
   collection, 
   getDocs, 
@@ -9,12 +10,40 @@ import {
   updateDoc 
 } from "firebase/firestore";
 
-// --- ADICIONE ESTA LINHA AQUI ---
-// Isso permite que o App.jsx use a conexão para o Tempo Real
-export { db }; 
-// --------------------------------
+// 2. Importe as funções de login
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 
-// --- FUNÇÃO PARA BUSCAR (LÊ TUDO DE UMA COLEÇÃO) ---
+// --- EXPORTAÇÕES ESSENCIAIS PARA O APP.JSX ---
+export { db, auth }; 
+
+// ============================================================
+// FUNÇÕES DE AUTENTICAÇÃO (LOGIN / LOGOUT)
+// ============================================================
+
+export const loginUser = async (email, password) => {
+  try {
+    // Tenta logar no Firebase
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    return userCredential.user;
+  } catch (error) {
+    console.error("Erro no login:", error.code);
+    throw error; // Joga o erro pra tela (pra aparecer "Senha inválida")
+  }
+};
+
+export const logoutUser = async () => {
+  try {
+    await signOut(auth);
+  } catch (error) {
+    console.error("Erro ao sair:", error);
+  }
+};
+
+// ============================================================
+// FUNÇÕES DE BANCO DE DADOS (CRUD)
+// ============================================================
+
+// --- BUSCAR (LÊ TUDO) ---
 export const loadFromDb = async (collectionName) => {
   try {
     const snapshot = await getDocs(collection(db, collectionName));
@@ -25,7 +54,7 @@ export const loadFromDb = async (collectionName) => {
   }
 };
 
-// ... (O resto das suas funções saveToDb, deleteFromDb, updateInDb continuam iguais)
+// --- ADICIONAR ---
 export const saveToDb = async (collectionName, data) => {
   try {
     const docRef = await addDoc(collection(db, collectionName), data);
@@ -36,6 +65,7 @@ export const saveToDb = async (collectionName, data) => {
   }
 };
 
+// --- DELETAR ---
 export const deleteFromDb = async (collectionName, id) => {
   try {
     await deleteDoc(doc(db, collectionName, id));
@@ -45,6 +75,7 @@ export const deleteFromDb = async (collectionName, id) => {
   }
 };
 
+// --- ATUALIZAR ---
 export const updateInDb = async (collectionName, id, data) => {
   try {
     const docRef = doc(db, collectionName, id);

@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { 
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
+  ResponsiveContainer, AreaChart, Area, ComposedChart, 
+  PieChart as RechartsPie, // <--- O GRÁFICO AGORA SE CHAMA 'RechartsPie'
+  Pie, Cell 
+} from 'recharts'
+
+
+import { 
   collection, 
   onSnapshot, 
   query, 
@@ -19,8 +27,8 @@ import {
   Filter, CheckSquare, Tag, Search, Layers, CheckCircle, Info, RefreshCw,
   List, X, Barcode, Link as LinkIcon, Edit, RotateCcw, FlaskConical, FileText,
   Database, Scale, Download, Upload, HardDrive, 
-  PieChart,
-  Menu, LogOut, User,
+  PieChart, // <--- Este é o ÍCONE
+  Menu, LogOut, User, Activity, // <--- ADICIONEI O ACTIVITY AQUI
   Home, Moon, FileInput, ChevronLeft, Printer, Eye, Truck, Archive, PenSquare,
   FileJson
 } from 'lucide-react';
@@ -802,6 +810,11 @@ const handleGeneratePDF = (title, data) => {
 export default function App() {
   const [viewingCutLog, setViewingCutLog] = useState(null); // Para abrir o modal de detalhes do corte
   const [activeTab, setActiveTab] = useState('dashboard');
+  // --- ESTADOS PARA O RELATÓRIO DINÂMICO B2 ---
+  const [b2ReportSearch, setB2ReportSearch] = useState('');
+  const [b2ReportStatus, setB2ReportStatus] = useState('ALL'); // 'ALL', 'STOCK', 'CONSUMED'
+  const [expandedGroupCode, setExpandedGroupCode] = useState(null);; // Qual linha está aberta
+
   const [motherCoils, setMotherCoils] = useState([]);
   const [childCoils, setChildCoils] = useState([]);
   const [productionLogs, setProductionLogs] = useState([]);
@@ -1059,13 +1072,24 @@ export default function App() {
 
 
       const updateMotherCoil = async (updatedCoil) => {
+    // 1. Calcula quanto já foi consumido dessa bobina antes de editar
+    // (Peso Original Antigo - Saldo Atual Antigo = O que já gastou)
+    const consumed = (updatedCoil.originalWeight || 0) - (updatedCoil.remainingWeight || 0);
+    
+    // 2. Pega o NOVO peso total que você digitou no formulário
+    const newTotalWeight = parseFloat(updatedCoil.weight) || 0;
+
     const safeCoil = {
       ...updatedCoil,
-      weight: parseFloat(updatedCoil.weight) || 0,
-      remainingWeight: parseFloat(updatedCoil.weight) || 0, // Atualiza o saldo também se mudar o peso
-      originalWeight: parseFloat(updatedCoil.weight) || 0,
+      weight: newTotalWeight,
+      originalWeight: newTotalWeight, // Atualiza o peso de referência
+      // 3. O novo saldo é o Novo Total menos o que já tinha sido gasto
+      // (Math.max garante que não fique negativo)
+      remainingWeight: Math.max(0, newTotalWeight - consumed), 
       width: parseFloat(updatedCoil.width) || 0,
     };
+
+    // ... (o resto da função updateMotherCoil continua igual: setMotherCoils e updateInDb) 
 
     // Atualiza otimista no estado
     setMotherCoils(prev =>
@@ -1873,19 +1897,6 @@ export default function App() {
               <Button onClick={addMotherCoil} className="w-full py-3 text-lg shadow-md mt-4">Confirmar Entrada</Button>
               
               {/* Rodapé de Importação (Mantido igual) */}
-              <div className="pt-6 border-t border-gray-700 mt-2">
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-3 text-center">Importação em Lote</label>
-                  <div className="grid grid-cols-2 gap-2">
-                     <div className="relative">
-                       <input type="file" accept=".csv,.txt" className="hidden" ref={fileInputMotherCatalogRef} onChange={handleMotherCatalogUpload} />
-                       <Button variant="secondary" onClick={() => fileInputMotherCatalogRef.current.click()} className="text-xs w-full h-10 bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700" title="Atualiza base de códigos"><Database size={14} /> Base Códigos</Button>
-                     </div>
-                     <div className="relative">
-                       <input type="file" accept=".csv,.txt" className="hidden" ref={fileInputMotherRef} onChange={handleMotherCoilUpload} />
-                       <Button variant="secondary" onClick={() => fileInputMotherRef.current.click()} className="text-xs w-full h-10 bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700" title="Importa saldo de estoque"><FileText size={14} /> Saldo Estoque</Button>
-                     </div>
-                  </div>
-              </div>
            </div>
         </Card>
       </div>
@@ -1907,33 +1918,61 @@ export default function App() {
          <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2"><List size={20} className="text-gray-400"/> Entradas Recentes</h3>
             <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar-dark space-y-3 max-h-[calc(100vh-260px)]">
-               {[...motherCoils].reverse().slice(0, 50).map(coil => (
-                 <div key={coil.id} className={`p-4 rounded-xl border flex justify-between items-center transition-all hover:bg-gray-700/50 ${coil.status === 'stock' ? 'bg-gray-900 border-gray-700' : 'bg-gray-800 border-gray-700 opacity-50'}`}>
-                   <div>
-                     <div className="font-bold text-gray-200 flex items-center gap-2">
-                       {coil.code} 
-                       <span className={`text-[10px] px-2 py-0.5 rounded-full ${coil.status === 'stock' ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-900' : 'bg-gray-800 text-gray-500'}`}>{coil.status === 'stock' ? 'EM ESTOQUE' : 'CONSUMIDA'}</span>
-                     </div>
-                     <div className="text-sm text-gray-500 mt-1">{coil.type} | {coil.thickness} | {coil.material}</div>
-                     {/* MOSTRANDO A NF NA LISTA TAMBÉM */}
-                     <div className="text-[10px] text-blue-400 mt-1 font-bold">
+              {[...motherCoils]
+                .sort((a, b) => {
+                    // Função Robusta de Data
+                    const getDateValue = (item) => {
+                        // Tenta formato ISO (YYYY-MM-DD) -> É o mais confiável
+                        if (item.entryDate && item.entryDate.length === 10) {
+                            return new Date(item.entryDate).getTime();
+                        }
+                        // Tenta formato BR (DD/MM/YYYY)
+                        if (item.date && item.date.includes('/')) {
+                            const [dia, mes, ano] = item.date.split('/');
+                            return new Date(`${ano}-${mes}-${dia}`).getTime();
+                        }
+                        return 0; // Se não tiver data, vale 0 (vai pro final)
+                    };
+
+                    const timeA = getDateValue(a);
+                    const timeB = getDateValue(b);
+
+                    // Se as datas forem diferentes, ordena por data
+                    if (timeA !== timeB) {
+                        return timeB - timeA; // Mais novo primeiro
+                    }
+
+                    // SE EMPATAR NA DATA (Vários hoje), DESEMPATA PELO CÓDIGO (LOTE)
+                    // Isso garante que o lote 10500 venha antes do 10499
+                    return String(b.code).localeCompare(String(a.code), undefined, { numeric: true });
+                })
+                .slice(0, 50)
+                .map(coil => (
+                  <div key={coil.id} className={`p-4 rounded-xl border flex justify-between items-center transition-all hover:bg-gray-700/50 ${coil.status === 'stock' ? 'bg-gray-900 border-gray-700' : 'bg-gray-800 border-gray-700 opacity-50'}`}>
+                    <div>
+                      <div className="font-bold text-gray-200 flex items-center gap-2">
+                        {coil.code} 
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${coil.status === 'stock' ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-900' : 'bg-gray-800 text-gray-500'}`}>{coil.status === 'stock' ? 'EM ESTOQUE' : 'CONSUMIDA'}</span>
+                      </div>
+                      <div className="text-sm text-gray-500 mt-1">{coil.type} | {coil.thickness} | {coil.material}</div>
+                      <div className="text-[10px] text-blue-400 mt-1 font-bold">
                         NF: {coil.nf || '-'} | Entrada: {coil.date}
-                     </div>
-                   </div>
-                   <div className="flex items-center gap-4">
-                     <div className="text-right">
-                       <div className="font-bold text-xl text-white">{(Number(coil.weight) || 0).toFixed(0)} <span className="text-sm text-gray-500 font-normal">kg</span></div>
-                       <div className="text-xs text-gray-500">{coil.width}mm</div>
-                     </div>
-                     {coil.status === 'stock' && (
-                       <div className="flex gap-2">
-                         <button onClick={() => setEditingMotherCoil(coil)} className="p-2 bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600 hover:text-white"><Edit size={16}/></button>
-                         <button onClick={() => deleteMotherCoil(coil.id)} className="p-2 bg-red-600/20 text-red-400 rounded hover:bg-red-600 hover:text-white"><Trash2 size={16}/></button>
-                       </div>
-                     )}
-                   </div>
-                 </div>
-               ))}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <div className="font-bold text-xl text-white">{(Number(coil.weight) || 0).toFixed(0)} <span className="text-sm text-gray-500 font-normal">kg</span></div>
+                        <div className="text-xs text-gray-500">{coil.width}mm</div>
+                      </div>
+                      {coil.status === 'stock' && (
+                        <div className="flex gap-2">
+                          <button onClick={() => setEditingMotherCoil(coil)} className="p-2 bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600 hover:text-white"><Edit size={16}/></button>
+                          <button onClick={() => deleteMotherCoil(coil.id)} className="p-2 bg-red-600/20 text-red-400 rounded hover:bg-red-600 hover:text-white"><Trash2 size={16}/></button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
             </div>
          </Card>
       </div>
@@ -3942,6 +3981,427 @@ const handleFullRestore = (e) => {
         return <div className="p-10 text-center text-red-500">Erro no Dashboard: {err.message}</div>;
     }
   };
+
+  const renderIndicators = () => {
+    // --- 1. PREPARAÇÃO DOS DADOS ---
+
+    // A) FLUXO DE AÇO (15 DIAS)
+    const getLast15Days = () => {
+        const dates = [];
+        for (let i = 14; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            dates.push(d.toLocaleDateString('pt-BR'));
+        }
+        return dates;
+    };
+
+    const groupByDate = (list, dateField, valueField) => {
+        const map = {};
+        list.forEach(item => {
+            if (!item[dateField]) return;
+            let d = item[dateField];
+            if (d.includes('-')) { const p = d.split('-'); d = `${p[2]}/${p[1]}/${p[0]}`; }
+            if (!map[d]) map[d] = 0;
+            map[d] += (parseFloat(item[valueField]) || 0);
+        });
+        return map;
+    };
+
+    const dateLabels = getLast15Days();
+    const entryMap = groupByDate(motherCoils, 'date', 'weight');
+    const cutMap = groupByDate(cuttingLogs, 'date', 'inputWeight');
+
+    const flowData = dateLabels.map(date => ({
+        name: date.slice(0, 5),
+        entrada: entryMap[date] || 0,
+        consumo: cutMap[date] || 0,
+    }));
+
+    // B) AGING SIMPLIFICADO (O CLÁSSICO VERDE -> VERMELHO)
+    const calculateSimpleAging = (list, dateField, weightField) => {
+        const buckets = { '0-30': 0, '30-60': 0, '60-90': 0, '+90': 0 };
+        list.forEach(item => {
+            if (item.status !== 'stock') return;
+            let dateStr = item[dateField] || item.date || item.createdAt;
+            if (!dateStr) return;
+            
+            let entryDate = new Date();
+            if (dateStr.includes('-')) { const p = dateStr.split('-'); entryDate = new Date(p[0], p[1]-1, p[2]); }
+            else if (dateStr.includes('/')) { const p = dateStr.split('/'); entryDate = new Date(p[2], p[1]-1, p[0]); }
+
+            const diffDays = Math.ceil(Math.abs(new Date() - entryDate) / (1000 * 60 * 60 * 24)); 
+            const weight = parseFloat(item[weightField] || item.weight) || 0;
+
+            if (diffDays <= 30) buckets['0-30'] += weight;
+            else if (diffDays <= 60) buckets['30-60'] += weight;
+            else if (diffDays <= 90) buckets['60-90'] += weight;
+            else buckets['+90'] += weight;
+        });
+        
+        // Retorna com as cores de alerta
+        return [
+            { name: '0-30 dias', peso: buckets['0-30'], fill: '#10b981' }, // Verde
+            { name: '30-60 dias', peso: buckets['30-60'], fill: '#3b82f6' }, // Azul
+            { name: '60-90 dias', peso: buckets['60-90'], fill: '#f59e0b' }, // Laranja
+            { name: '+90 dias', peso: buckets['+90'], fill: '#ef4444' }, // Vermelho
+        ];
+    };
+
+    const agingMother = calculateSimpleAging(motherCoils, 'entryDate', 'remainingWeight');
+    const agingB2 = calculateSimpleAging(childCoils, 'createdAt', 'weight');
+
+    // C) DADOS GERAIS (ESTOQUE E EXPEDIÇÃO)
+    const stockByType = {};
+    motherCoils.forEach(c => { if(c.status==='stock') { const t = c.type||'OUTROS'; stockByType[t] = (stockByType[t]||0) + (c.remainingWeight||c.weight); }});
+    const typeData = Object.keys(stockByType).map(k=>({name:k, value:stockByType[k]})).sort((a,b)=>b.value-a.value);
+
+    const shippingDestMap = {};
+    shippingLogs.forEach(l => { const d=(l.destination||'ND').toUpperCase(); if(!d.includes('AJUSTE')) shippingDestMap[d] = (shippingDestMap[d]||0) + (parseInt(l.quantity)||0); });
+    const shippingData = Object.keys(shippingDestMap).map(k=>({name:k, value:shippingDestMap[k]}));
+
+    const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+
+    return (
+      <div className="space-y-6 pb-20 animate-fade-in">
+        <div className="flex justify-between items-center mb-6">
+            <div>
+                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                    <RechartsPie size={28} className="text-cyan-500"/> Dashboard Metalosa
+                </h2>
+                <p className="text-gray-400 text-sm">Visão tática baseada em {motherCoils.length + childCoils.length + productionLogs.length} registros</p>
+            </div>
+        </div>
+
+        {/* 1. FLUXO DE AÇO (ÁREA) */}
+        <Card className="h-[400px] flex flex-col">
+            <h3 className="font-bold text-gray-200 mb-4 pl-2 border-l-4 border-blue-500">Fluxo de Aço: Entrada vs Consumo (15d)</h3>
+            <div className="flex-1 w-full min-h-0">
+                <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={flowData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                        <defs>
+                            <linearGradient id="colorEntrada" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                            </linearGradient>
+                            <linearGradient id="colorConsumo" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8}/>
+                                <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                            </linearGradient>
+                        </defs>
+                        <XAxis dataKey="name" stroke="#6b7280" tick={{fill: '#9ca3af', fontSize: 12}} />
+                        <YAxis stroke="#6b7280" tick={{fill: '#9ca3af', fontSize: 12}} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                        <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }} />
+                        <Legend verticalAlign="top" height={36}/>
+                        <Area type="monotone" dataKey="entrada" name="Entrada (kg)" stroke="#3b82f6" fillOpacity={1} fill="url(#colorEntrada)" />
+                        <Area type="monotone" dataKey="consumo" name="Consumo (kg)" stroke="#ef4444" fillOpacity={1} fill="url(#colorConsumo)" />
+                    </AreaChart>
+                </ResponsiveContainer>
+            </div>
+        </Card>
+
+        {/* 2. AGING SIMPLIFICADO (LADO A LADO) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* AGING MP */}
+            <Card className="h-[300px] flex flex-col">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-gray-200 pl-2 border-l-4 border-purple-500">Aging: Bobinas Mãe</h3>
+                    <span className="text-xs text-purple-400 bg-purple-900/20 px-2 py-1 rounded">Matéria Prima</span>
+                </div>
+                <div className="flex-1 w-full min-h-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={agingMother} layout="vertical" margin={{ left: 20 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false}/>
+                            <XAxis type="number" stroke="#9ca3af" tickFormatter={(val) => `${(val/1000).toFixed(0)}t`} />
+                            <YAxis dataKey="name" type="category" stroke="#fff" width={80} tick={{fontSize: 11}} />
+                            <Tooltip 
+                                cursor={{fill: '#ffffff10'}} 
+                                contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
+                                formatter={(value) => [`${value.toLocaleString('pt-BR')} kg`, 'Peso']}
+                            />
+                            {/* A MÁGICA DA COR ESTÁ AQUI: Usa a cor definida no dado (entry.fill) */}
+                            <Bar dataKey="peso" radius={[0, 4, 4, 0]} barSize={40}>
+                                {agingMother.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.fill} />)}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            </Card>
+
+            {/* AGING B2 */}
+            <Card className="h-[300px] flex flex-col">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-gray-200 pl-2 border-l-4 border-indigo-500">Aging: Bobinas Slitter (B2)</h3>
+                    <span className="text-xs text-indigo-400 bg-indigo-900/20 px-2 py-1 rounded">Em Processo</span>
+                </div>
+                <div className="flex-1 w-full min-h-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={agingB2} layout="vertical" margin={{ left: 20 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false}/>
+                            <XAxis type="number" stroke="#9ca3af" tickFormatter={(val) => `${(val/1000).toFixed(0)}t`} />
+                            <YAxis dataKey="name" type="category" stroke="#fff" width={80} tick={{fontSize: 11}} />
+                            <Tooltip 
+                                cursor={{fill: '#ffffff10'}} 
+                                contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
+                                formatter={(value) => [`${value.toLocaleString('pt-BR')} kg`, 'Peso']}
+                            />
+                            <Bar dataKey="peso" radius={[0, 4, 4, 0]} barSize={40}>
+                                {agingB2.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.fill} />)}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            </Card>
+        </div>
+
+        {/* 3. TOTAIS E EXPEDIÇÃO */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* ESTOQUE TOTAL POR TIPO */}
+            <Card className="h-[300px] flex flex-col">
+                <h3 className="font-bold text-gray-200 mb-4 pl-2 border-l-4 border-blue-500">Estoque MP por Tipo (kg)</h3>
+                <div className="flex-1 w-full min-h-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={typeData} layout="vertical" margin={{ left: 20, right: 30 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
+                            <XAxis type="number" stroke="#9ca3af" tickFormatter={(val) => `${(val/1000).toFixed(0)}t`} />
+                            <YAxis dataKey="name" type="category" stroke="#fff" width={60} tick={{fontSize: 12, fontWeight: 'bold'}} />
+                            <Tooltip cursor={{fill: '#ffffff10'}} contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }} formatter={(value) => [`${value.toLocaleString('pt-BR')} kg`, 'Peso']}/>
+                            <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={25}>
+                                {typeData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            </Card>
+
+            {/* EXPEDIÇÃO */}
+            <Card className="h-[300px] flex flex-col">
+                <h3 className="font-bold text-gray-200 mb-4 pl-2 border-l-4 border-amber-500">Expedição (Cometa vs Serra)</h3>
+                <div className="flex-1 w-full min-h-0 flex items-center justify-center">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <RechartsPie>
+                            <Pie data={shippingData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                                {shippingData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                ))}
+                            </Pie>
+                            <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }} />
+                            <Legend verticalAlign="bottom" height={36}/>
+                        </RechartsPie>
+                    </ResponsiveContainer>
+                </div>
+            </Card>
+        </div>
+      </div>
+    );
+  };
+
+const renderB2DynamicReport = () => {
+    // 1. PREPARAÇÃO DOS DADOS (JOIN DAS TABELAS)
+    const enrichedData = childCoils.map(b2 => {
+        const mother = motherCoils.find(m => m.code === b2.motherCode) || { material: 'Desconhecido', entryDate: '-' };
+        const prodLog = productionLogs.find(log => log.childIds && log.childIds.includes(b2.id));
+
+        return {
+            ...b2,
+            motherMaterial: mother.material,
+            motherEntryDate: mother.entryDate || mother.date,
+            consumptionDate: prodLog ? prodLog.date : null,
+            productFinal: prodLog ? `${prodLog.productCode} - ${prodLog.productName}` : null,
+            productionBatchId: prodLog ? prodLog.id : null
+        };
+    });
+
+    // 2. FILTRAGEM PRÉVIA (Busca Global)
+    const search = b2ReportSearch.toLowerCase();
+    const filteredRaw = enrichedData.filter(item => 
+        item.b2Code.toLowerCase().includes(search) || 
+        item.b2Name.toLowerCase().includes(search) ||
+        String(item.motherCode).includes(search)
+    );
+
+    // 3. AGRUPAMENTO POR CÓDIGO (A MÁGICA ACONTECE AQUI)
+    const groupedData = filteredRaw.reduce((acc, item) => {
+        const code = item.b2Code;
+        if (!acc[code]) {
+            acc[code] = {
+                code: code,
+                name: item.b2Name,
+                totalItems: 0,
+                stockCount: 0,
+                stockWeight: 0,
+                consumedCount: 0,
+                consumedWeight: 0,
+                items: [] // Guarda os itens individuais aqui dentro
+            };
+        }
+        
+        acc[code].items.push(item);
+        acc[code].totalItems++;
+        
+        if (item.status === 'stock') {
+            acc[code].stockCount++;
+            acc[code].stockWeight += item.weight;
+        } else {
+            acc[code].consumedCount++;
+            acc[code].consumedWeight += item.weight;
+        }
+        
+        return acc;
+    }, {});
+
+    // Transforma objeto em array para exibir
+    const groupsList = Object.values(groupedData).sort((a, b) => a.code.localeCompare(b.code));
+
+    // Totais Gerais para o Cabeçalho
+    const totalStockWeight = groupsList.reduce((acc, g) => acc + g.stockWeight, 0);
+    const totalConsumedWeight = groupsList.reduce((acc, g) => acc + g.consumedWeight, 0);
+
+    return (
+      <div className="space-y-6 pb-20 animate-fade-in">
+         
+         {/* CABEÇALHO */}
+         <div className="flex flex-col md:flex-row justify-between items-end gap-4 bg-gray-800 p-4 rounded-xl border border-gray-700">
+            <div>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <List size={24} className="text-indigo-500"/> Relatório Consolidado B2
+                </h2>
+                <p className="text-sm text-gray-400">Visão agrupada por código. Clique para detalhar.</p>
+            </div>
+            
+            <div className="relative w-full md:w-64">
+                <Search className="absolute left-3 top-2.5 text-gray-500" size={16}/>
+                <input 
+                    type="text" 
+                    placeholder="Buscar código..." 
+                    value={b2ReportSearch}
+                    onChange={e => setB2ReportSearch(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-600 rounded-lg pl-9 py-2 text-sm text-white outline-none focus:border-indigo-500"
+                />
+            </div>
+         </div>
+
+         {/* CARDS DE RESUMO */}
+         <div className="grid grid-cols-2 gap-4">
+             <Card className="bg-emerald-900/20 border-emerald-500/30 py-3 px-4">
+                 <span className="text-xs text-emerald-400 font-bold uppercase">Saldo em Estoque</span>
+                 <div className="text-2xl font-bold text-white">{totalStockWeight.toLocaleString('pt-BR')} <span className="text-sm font-normal text-gray-400">kg</span></div>
+             </Card>
+             <Card className="bg-gray-700/20 border-gray-600/30 py-3 px-4">
+                 <span className="text-xs text-gray-400 font-bold uppercase">Total Consumido (Filtrado)</span>
+                 <div className="text-2xl font-bold text-gray-300">{totalConsumedWeight.toLocaleString('pt-BR')} <span className="text-sm font-normal text-gray-500">kg</span></div>
+             </Card>
+         </div>
+
+         {/* LISTA AGRUPADA */}
+         <Card className="flex-1 overflow-hidden p-0">
+            <div className="overflow-x-auto max-h-[600px] custom-scrollbar-dark">
+                <table className="w-full text-sm text-left text-gray-300">
+                    <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10 uppercase text-xs">
+                        <tr>
+                            <th className="p-4">Código</th>
+                            <th className="p-4">Descrição</th>
+                            <th className="p-4 text-center">Bobinas</th>
+                            <th className="p-4 text-right text-emerald-400">Peso Estoque</th>
+                            <th className="p-4 text-right text-gray-500">Peso Baixado</th>
+                            <th className="p-4 text-center">Ver</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-700">
+                        {groupsList.map(group => {
+                            const isExpanded = expandedGroupCode === group.code;
+                            return (
+                                <React.Fragment key={group.code}>
+                                    {/* LINHA MESTRA (GRUPO) */}
+                                    <tr 
+                                        className={`hover:bg-gray-700/50 cursor-pointer transition-colors ${isExpanded ? 'bg-indigo-900/20 border-l-4 border-indigo-500' : ''}`}
+                                        onClick={() => setExpandedGroupCode(isExpanded ? null : group.code)}
+                                    >
+                                        <td className="p-4 font-bold text-white font-mono text-base">{group.code}</td>
+                                        <td className="p-4 text-gray-300 font-medium">{group.name}</td>
+                                        <td className="p-4 text-center">
+                                            <span className="bg-gray-800 px-2 py-1 rounded text-xs font-bold border border-gray-600">
+                                                {group.stockCount} / {group.totalItems}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-right font-bold text-emerald-400 text-lg">
+                                            {group.stockWeight > 0 ? group.stockWeight.toLocaleString('pt-BR') : '-'}
+                                        </td>
+                                        <td className="p-4 text-right text-gray-500 font-mono">
+                                            {group.consumedWeight > 0 ? group.consumedWeight.toLocaleString('pt-BR') : '-'}
+                                        </td>
+                                        <td className="p-4 text-center text-indigo-400">
+                                            {isExpanded ? <ChevronRight className="rotate-90 transition-transform"/> : <ChevronRight className="transition-transform"/>}
+                                        </td>
+                                    </tr>
+                                    
+                                    {/* LINHA DETALHADA (LISTA DE BOBINAS) */}
+                                    {isExpanded && (
+                                        <tr>
+                                            <td colSpan="6" className="bg-gray-900/50 p-0">
+                                                <div className="p-4 border-t border-indigo-900/50 animate-fade-in">
+                                                    <table className="w-full text-xs text-left text-gray-400">
+                                                        <thead className="text-indigo-300 border-b border-gray-700">
+                                                            <tr>
+                                                                <th className="pb-2">Data Entrada</th>
+                                                                <th className="pb-2">Origem (Mãe)</th>
+                                                                <th className="pb-2">ID Rastreio</th>
+                                                                <th className="pb-2 text-right">Peso</th>
+                                                                <th className="pb-2 text-center">Status</th>
+                                                                <th className="pb-2">Destino / Consumo</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-gray-800">
+                                                            {group.items.map((item, idx) => (
+                                                                <tr key={idx} className="hover:bg-gray-800/50">
+                                                                    <td className="py-2">{item.createdAt}</td>
+                                                                    <td className="py-2">
+                                                                        <div className="font-bold text-gray-300">{item.motherCode}</div>
+                                                                        <div className="text-[10px] truncate max-w-[200px]">{item.motherMaterial}</div>
+                                                                    </td>
+                                                                    <td className="py-2 font-mono text-indigo-200">{item.id}</td>
+                                                                    <td className="py-2 text-right font-bold text-white">{item.weight} kg</td>
+                                                                    <td className="py-2 text-center">
+                                                                        {item.status === 'stock' 
+                                                                            ? <span className="text-emerald-500 font-bold">ESTOQUE</span>
+                                                                            : <span className="text-gray-600">BAIXADO</span>
+                                                                        }
+                                                                    </td>
+                                                                    <td className="py-2">
+                                                                        {item.status === 'consumed' ? (
+                                                                            <div>
+                                                                                <div className="text-white font-bold">{item.consumptionDate}</div>
+                                                                                <div className="text-indigo-300 truncate max-w-[250px]">{item.productFinal}</div>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <span className="text-gray-600 italic">-</span>
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </React.Fragment>
+                            );
+                        })}
+                    </tbody>
+                </table>
+                {groupsList.length === 0 && <div className="p-8 text-center text-gray-500">Nenhum registro encontrado.</div>}
+            </div>
+         </Card>
+      </div>
+    );
+  };
+
+
+
+
   // --- RETURN FINAL ---
 
   // --- FUNÇÃO ESPECIAL: CARGA INICIAL (JSON -> FIREBASE) ---
@@ -4047,7 +4507,8 @@ const handleFullRestore = (e) => {
            <button onClick={() => { setActiveTab('mother'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'mother' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <ScrollText size={20} className={activeTab === 'mother' ? "text-blue-400" : "group-hover:text-blue-400 transition-colors"}/> <span className="font-medium">Bobina Mãe</span>
            </button>
-           
+           {/* ... outros botões ... */}
+                     
            <button onClick={() => { setActiveTab('cutting'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'cutting' ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <Scissors size={20} className={activeTab === 'cutting' ? "text-purple-400" : "group-hover:text-purple-400 transition-colors"}/> <span className="font-medium">Corte Slitter</span>
            </button>
@@ -4063,6 +4524,14 @@ const handleFullRestore = (e) => {
            <button onClick={() => { setActiveTab('reports'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'reports' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <FileText size={20} className={activeTab === 'reports' ? "text-rose-400" : "group-hover:text-rose-400 transition-colors"}/> <span className="font-medium">Relatórios</span>
            </button>
+
+            <button onClick={() => { setActiveTab('b2report'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'b2report' ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+              <List size={20} className={activeTab === 'b2report' ? "text-indigo-400" : "group-hover:text-indigo-400 transition-colors"}/> <span className="font-medium">Rastreio B2</span>
+            </button>
+
+           <button onClick={() => { setActiveTab('indicators'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'indicators' ? 'bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+                <PieChart size={20} className={activeTab === 'indicators' ? "text-cyan-400" : "group-hover:text-cyan-400 transition-colors"}/> <span className="font-medium">BI & Gráficos</span>
+            </button>
 
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mt-8 mb-4">Gestão</p>
 
@@ -4099,6 +4568,7 @@ const handleFullRestore = (e) => {
                   {activeTab === 'production' && "Apontamento"}
                   {activeTab === 'shipping' && "Expedição"}
                   {activeTab === 'reports' && "Relatórios"}
+                  {activeTab === 'indicators' && "Indicadores & BI"}               
                 </h2>
                 <p className="text-xs text-gray-500 mt-0.5 font-medium uppercase tracking-wider hidden md:block">Controle de Produção</p>
               </div>
@@ -4115,6 +4585,8 @@ const handleFullRestore = (e) => {
               {activeTab === 'production' && renderProduction()}
               {activeTab === 'shipping' && renderShipping()}
               {activeTab === 'reports' && renderReports()}
+              {activeTab === 'b2report' && renderB2DynamicReport()}
+              {activeTab === 'indicators' && renderIndicators()}
             </div>
          </main>
       </div>

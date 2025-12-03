@@ -1,6 +1,7 @@
 // src/firebaseConfig.js
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
+import { getAuth } from "firebase/auth"; // <--- 1. ADICIONE ISSO
 
 // COLE O SEU CÓDIGO AQUI (SUBSTITUA ESTE BLOCO PELO DO SITE)
 const firebaseConfig = {
@@ -15,4 +16,10 @@ const firebaseConfig = {
 // Inicializa o Firebase
 const app = initializeApp(firebaseConfig);
 // Exporta o Banco de Dados para usarmos no app
+
+const auth = getAuth(app);
+
+export { auth };
 export const db = getFirestore(app);
+
+
