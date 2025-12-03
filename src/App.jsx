@@ -3983,14 +3983,55 @@ const handleFullRestore = (e) => {
   };
 
   const renderIndicators = () => {
-    // --- 1. PREPARAÇÃO DOS DADOS ---
+    // --- 0. GUARD-RAILS / LISTAS SEGURAS --- // ***
+    const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
+    const safeChild = Array.isArray(childCoils) ? childCoils : [];
+    const safeCutting = Array.isArray(cuttingLogs) ? cuttingLogs : [];
+    const safeShipping = Array.isArray(shippingLogs) ? shippingLogs : [];
+    const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
 
-    // A) FLUXO DE AÇO (15 DIAS)
+    const totalRecords = safeMother.length + safeChild.length + safeProd.length; // ***
+
+    // --- 1. PREPARAÇÃO DOS DADOS --- //
+
+    // Helpers globais de data // ***
+    const now = new Date();
+    const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+    const normalizeDateBR = (raw) => { // ***
+        if (!raw) return null;
+        let dateStr = String(raw).trim();
+
+        // Corta hora caso venha ISO (2025-12-03T10:15:00Z)
+        if (dateStr.length >= 10 && dateStr.includes('T')) {
+            dateStr = dateStr.slice(0, 10);
+        }
+
+        // yyyy-mm-dd
+        if (dateStr.includes('-')) {
+            const [y, m, d] = dateStr.split('-');
+            if (y && y.length === 4 && m && d) {
+                return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+            }
+        }
+
+        // dd/mm/yyyy
+        if (dateStr.includes('/')) {
+            const [d, m, y] = dateStr.split('/');
+            if (d && m && y) {
+                return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y.padStart(4, '0')}`;
+            }
+        }
+
+        return null;
+    };
+
     const getLast15Days = () => {
         const dates = [];
+        const base = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // zera hora // ***
         for (let i = 14; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
+            const d = new Date(base);
+            d.setDate(base.getDate() - i);
             dates.push(d.toLocaleDateString('pt-BR'));
         }
         return dates;
@@ -3999,18 +4040,19 @@ const handleFullRestore = (e) => {
     const groupByDate = (list, dateField, valueField) => {
         const map = {};
         list.forEach(item => {
-            if (!item[dateField]) return;
-            let d = item[dateField];
-            if (d.includes('-')) { const p = d.split('-'); d = `${p[2]}/${p[1]}/${p[0]}`; }
-            if (!map[d]) map[d] = 0;
-            map[d] += (parseFloat(item[valueField]) || 0);
+            const d = normalizeDateBR(item[dateField]);
+            if (!d) return;
+            const rawVal = item[valueField];
+            const val = Number(rawVal) || 0;
+            map[d] = (map[d] || 0) + val;
         });
         return map;
     };
 
+    // A) FLUXO DE AÇO (15 DIAS)
     const dateLabels = getLast15Days();
-    const entryMap = groupByDate(motherCoils, 'date', 'weight');
-    const cutMap = groupByDate(cuttingLogs, 'date', 'inputWeight');
+    const entryMap = groupByDate(safeMother, 'date', 'weight');
+    const cutMap = groupByDate(safeCutting, 'date', 'inputWeight');
 
     const flowData = dateLabels.map(date => ({
         name: date.slice(0, 5),
@@ -4021,24 +4063,36 @@ const handleFullRestore = (e) => {
     // B) AGING SIMPLIFICADO (O CLÁSSICO VERDE -> VERMELHO)
     const calculateSimpleAging = (list, dateField, weightField) => {
         const buckets = { '0-30': 0, '30-60': 0, '60-90': 0, '+90': 0 };
+
         list.forEach(item => {
             if (item.status !== 'stock') return;
-            let dateStr = item[dateField] || item.date || item.createdAt;
-            if (!dateStr) return;
-            
-            let entryDate = new Date();
-            if (dateStr.includes('-')) { const p = dateStr.split('-'); entryDate = new Date(p[0], p[1]-1, p[2]); }
-            else if (dateStr.includes('/')) { const p = dateStr.split('/'); entryDate = new Date(p[2], p[1]-1, p[0]); }
 
-            const diffDays = Math.ceil(Math.abs(new Date() - entryDate) / (1000 * 60 * 60 * 24)); 
-            const weight = parseFloat(item[weightField] || item.weight) || 0;
+            const rawDate =
+                item[dateField] ||
+                item.date ||
+                item.createdAt;
+
+            const norm = normalizeDateBR(rawDate);
+            if (!norm) return;
+
+            const [d, m, y] = norm.split('/');
+            const entryDate = new Date(Number(y), Number(m) - 1, Number(d));
+            if (isNaN(entryDate.getTime())) return;
+
+            const diffDays = Math.max(
+                0,
+                Math.ceil((now - entryDate) / MS_PER_DAY)
+            );
+
+            const rawW = item[weightField] ?? item.weight ?? 0;
+            const weight = Number(rawW) || 0;
 
             if (diffDays <= 30) buckets['0-30'] += weight;
             else if (diffDays <= 60) buckets['30-60'] += weight;
             else if (diffDays <= 90) buckets['60-90'] += weight;
             else buckets['+90'] += weight;
         });
-        
+
         // Retorna com as cores de alerta
         return [
             { name: '0-30 dias', peso: buckets['0-30'], fill: '#10b981' }, // Verde
@@ -4048,155 +4102,273 @@ const handleFullRestore = (e) => {
         ];
     };
 
-    const agingMother = calculateSimpleAging(motherCoils, 'entryDate', 'remainingWeight');
-    const agingB2 = calculateSimpleAging(childCoils, 'createdAt', 'weight');
+    const agingMother = calculateSimpleAging(safeMother, 'entryDate', 'remainingWeight');
+    const agingB2 = calculateSimpleAging(safeChild, 'createdAt', 'weight');
 
     // C) DADOS GERAIS (ESTOQUE E EXPEDIÇÃO)
     const stockByType = {};
-    motherCoils.forEach(c => { if(c.status==='stock') { const t = c.type||'OUTROS'; stockByType[t] = (stockByType[t]||0) + (c.remainingWeight||c.weight); }});
-    const typeData = Object.keys(stockByType).map(k=>({name:k, value:stockByType[k]})).sort((a,b)=>b.value-a.value);
+    safeMother.forEach(c => {
+        if (c.status === 'stock') {
+            const t = c.type || 'OUTROS';
+            const rawW = c.remainingWeight ?? c.weight ?? 0; // ***
+            const w = Number(rawW) || 0;
+            stockByType[t] = (stockByType[t] || 0) + w;
+        }
+    });
+
+    const typeData = Object.keys(stockByType)
+        .map(k => ({ name: k, value: stockByType[k] }))
+        .sort((a, b) => b.value - a.value);
 
     const shippingDestMap = {};
-    shippingLogs.forEach(l => { const d=(l.destination||'ND').toUpperCase(); if(!d.includes('AJUSTE')) shippingDestMap[d] = (shippingDestMap[d]||0) + (parseInt(l.quantity)||0); });
-    const shippingData = Object.keys(shippingDestMap).map(k=>({name:k, value:shippingDestMap[k]}));
+    safeShipping.forEach(l => {
+        const d = (l.destination || 'ND').toUpperCase();
+        if (!d.includes('AJUSTE')) {
+            const q = Number(l.quantity) || 0;
+            shippingDestMap[d] = (shippingDestMap[d] || 0) + q;
+        }
+    });
+
+    const shippingData = Object.keys(shippingDestMap)
+        .map(k => ({ name: k, value: shippingDestMap[k] }))
+        .sort((a, b) => b.value - a.value); // ***
 
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
     return (
-      <div className="space-y-6 pb-20 animate-fade-in">
-        <div className="flex justify-between items-center mb-6">
-            <div>
-                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                    <RechartsPie size={28} className="text-cyan-500"/> Dashboard Metalosa
-                </h2>
-                <p className="text-gray-400 text-sm">Visão tática baseada em {motherCoils.length + childCoils.length + productionLogs.length} registros</p>
+        <div className="space-y-6 pb-20 animate-fade-in">
+            <div className="flex justify-between items-center mb-6">
+                <div>
+                    <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                        {/* ATENÇÃO AQUI: garante que esse componente é o ÍCONE, não o PieChart do Recharts */}
+                        <RechartsPie size={28} className="text-cyan-500" /> Dashboard Metalosa
+                    </h2>
+                    <p className="text-gray-400 text-sm">
+                        Visão tática baseada em {totalRecords} registros
+                    </p>
+                </div>
+            </div>
+
+            {/* 1. FLUXO DE AÇO (ÁREA) */}
+            <Card className="h-[400px] flex flex-col">
+                <h3 className="font-bold text-gray-200 mb-4 pl-2 border-l-4 border-blue-500">
+                    Fluxo de Aço: Entrada vs Consumo (15d)
+                </h3>
+                <div className="flex-1 w-full min-h-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={flowData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                            <defs>
+                                <linearGradient id="colorEntrada" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
+                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                </linearGradient>
+                                <linearGradient id="colorConsumo" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
+                                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                                </linearGradient>
+                            </defs>
+                            <XAxis dataKey="name" stroke="#6b7280" tick={{ fill: '#9ca3af', fontSize: 12 }} />
+                            <YAxis stroke="#6b7280" tick={{ fill: '#9ca3af', fontSize: 12 }} />
+                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                            <Tooltip
+                                contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }}
+                                formatter={(value, name) => {
+                                    const v = Number(value) || 0;
+                                    return [`${v.toLocaleString('pt-BR')} kg`, name === 'entrada' ? 'Entrada' : 'Consumo'];
+                                }}
+                            />
+                            <Legend verticalAlign="top" height={36} />
+                            <Area
+                                type="monotone"
+                                dataKey="entrada"
+                                name="Entrada (kg)"
+                                stroke="#3b82f6"
+                                fillOpacity={1}
+                                fill="url(#colorEntrada)"
+                            />
+                            <Area
+                                type="monotone"
+                                dataKey="consumo"
+                                name="Consumo (kg)"
+                                stroke="#ef4444"
+                                fillOpacity={1}
+                                fill="url(#colorConsumo)"
+                            />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                </div>
+            </Card>
+
+            {/* 2. AGING SIMPLIFICADO (LADO A LADO) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* AGING MP */}
+                <Card className="h-[300px] flex flex-col">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-gray-200 pl-2 border-l-4 border-purple-500">
+                            Aging: Bobinas Mãe
+                        </h3>
+                        <span className="text-xs text-purple-400 bg-purple-900/20 px-2 py-1 rounded">
+                            Matéria Prima
+                        </span>
+                    </div>
+                    <div className="flex-1 w-full min-h-0">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={agingMother} layout="vertical" margin={{ left: 20 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
+                                <XAxis
+                                    type="number"
+                                    stroke="#9ca3af"
+                                    tickFormatter={(val) => `${((Number(val) || 0) / 1000).toFixed(0)}t`}
+                                />
+                                <YAxis dataKey="name" type="category" stroke="#fff" width={80} tick={{ fontSize: 11 }} />
+                                <Tooltip
+                                    cursor={{ fill: '#ffffff10' }}
+                                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
+                                    formatter={(value) => {
+                                        const v = Number(value) || 0;
+                                        return [`${v.toLocaleString('pt-BR')} kg`, 'Peso'];
+                                    }}
+                                />
+                                <Bar dataKey="peso" radius={[0, 4, 4, 0]} barSize={40}>
+                                    {agingMother.map((entry, index) => (
+                                        <Cell key={`cell-mother-${index}`} fill={entry.fill} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </Card>
+
+                {/* AGING B2 */}
+                <Card className="h-[300px] flex flex-col">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-gray-200 pl-2 border-l-4 border-indigo-500">
+                            Aging: Bobinas Slitter (B2)
+                        </h3>
+                        <span className="text-xs text-indigo-400 bg-indigo-900/20 px-2 py-1 rounded">
+                            Em Processo
+                        </span>
+                    </div>
+                    <div className="flex-1 w-full min-h-0">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={agingB2} layout="vertical" margin={{ left: 20 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
+                                <XAxis
+                                    type="number"
+                                    stroke="#9ca3af"
+                                    tickFormatter={(val) => `${((Number(val) || 0) / 1000).toFixed(0)}t`}
+                                />
+                                <YAxis dataKey="name" type="category" stroke="#fff" width={80} tick={{ fontSize: 11 }} />
+                                <Tooltip
+                                    cursor={{ fill: '#ffffff10' }}
+                                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
+                                    formatter={(value) => {
+                                        const v = Number(value) || 0;
+                                        return [`${v.toLocaleString('pt-BR')} kg`, 'Peso'];
+                                    }}
+                                />
+                                <Bar dataKey="peso" radius={[0, 4, 4, 0]} barSize={40}>
+                                    {agingB2.map((entry, index) => (
+                                        <Cell key={`cell-b2-${index}`} fill={entry.fill} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </Card>
+            </div>
+
+            {/* 3. TOTAIS E EXPEDIÇÃO */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* ESTOQUE TOTAL POR TIPO */}
+                <Card className="h-[300px] flex flex-col">
+                    <h3 className="font-bold text-gray-200 mb-4 pl-2 border-l-4 border-blue-500">
+                        Estoque MP por Tipo (kg)
+                    </h3>
+                    <div className="flex-1 w-full min-h-0">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={typeData} layout="vertical" margin={{ left: 20, right: 30 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
+                                <XAxis
+                                    type="number"
+                                    stroke="#9ca3af"
+                                    tickFormatter={(val) => `${((Number(val) || 0) / 1000).toFixed(0)}t`}
+                                />
+                                <YAxis
+                                    dataKey="name"
+                                    type="category"
+                                    stroke="#fff"
+                                    width={60}
+                                    tick={{ fontSize: 12, fontWeight: 'bold' }}
+                                />
+                                <Tooltip
+                                    cursor={{ fill: '#ffffff10' }}
+                                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
+                                    formatter={(value) => {
+                                        const v = Number(value) || 0;
+                                        return [`${v.toLocaleString('pt-BR')} kg`, 'Peso'];
+                                    }}
+                                />
+                                <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={25}>
+                                    {typeData.map((entry, index) => (
+                                        <Cell key={`cell-type-${index}`} fill={COLORS[index % COLORS.length]} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </Card>
+
+                {/* EXPEDIÇÃO */}
+                <Card className="h-[300px] flex flex-col">
+                    <h3 className="font-bold text-gray-200 mb-4 pl-2 border-l-4 border-amber-500">
+                        Expedição (Cometa vs Serra)
+                    </h3>
+                    <div className="flex-1 w-full min-h-0 flex items-center justify-center">
+                        {shippingData.length === 0 ? ( // ***
+                            <span className="text-gray-500 text-sm">
+                                Sem dados de expedição no período.
+                            </span>
+                        ) : (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <RechartsPie>
+                                    <Pie
+                                        data={shippingData}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={60}
+                                        outerRadius={80}
+                                        paddingAngle={5}
+                                        dataKey="value"
+                                    >
+                                        {shippingData.map((entry, index) => (
+                                            <Cell
+                                                key={`cell-ship-${index}`}
+                                                fill={COLORS[index % COLORS.length]}
+                                            />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip
+                                        contentStyle={{
+                                            backgroundColor: '#1f2937',
+                                            borderColor: '#374151',
+                                        }}
+                                        formatter={(value, name) => {
+                                            const v = Number(value) || 0;
+                                            return [`${v.toLocaleString('pt-BR')} pcs`, name];
+                                        }}
+                                    />
+                                    <Legend verticalAlign="bottom" height={36} />
+                                </RechartsPie>
+                            </ResponsiveContainer>
+                        )}
+                    </div>
+                </Card>
             </div>
         </div>
-
-        {/* 1. FLUXO DE AÇO (ÁREA) */}
-        <Card className="h-[400px] flex flex-col">
-            <h3 className="font-bold text-gray-200 mb-4 pl-2 border-l-4 border-blue-500">Fluxo de Aço: Entrada vs Consumo (15d)</h3>
-            <div className="flex-1 w-full min-h-0">
-                <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={flowData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                        <defs>
-                            <linearGradient id="colorEntrada" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                            </linearGradient>
-                            <linearGradient id="colorConsumo" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8}/>
-                                <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
-                            </linearGradient>
-                        </defs>
-                        <XAxis dataKey="name" stroke="#6b7280" tick={{fill: '#9ca3af', fontSize: 12}} />
-                        <YAxis stroke="#6b7280" tick={{fill: '#9ca3af', fontSize: 12}} />
-                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                        <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }} />
-                        <Legend verticalAlign="top" height={36}/>
-                        <Area type="monotone" dataKey="entrada" name="Entrada (kg)" stroke="#3b82f6" fillOpacity={1} fill="url(#colorEntrada)" />
-                        <Area type="monotone" dataKey="consumo" name="Consumo (kg)" stroke="#ef4444" fillOpacity={1} fill="url(#colorConsumo)" />
-                    </AreaChart>
-                </ResponsiveContainer>
-            </div>
-        </Card>
-
-        {/* 2. AGING SIMPLIFICADO (LADO A LADO) */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* AGING MP */}
-            <Card className="h-[300px] flex flex-col">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-bold text-gray-200 pl-2 border-l-4 border-purple-500">Aging: Bobinas Mãe</h3>
-                    <span className="text-xs text-purple-400 bg-purple-900/20 px-2 py-1 rounded">Matéria Prima</span>
-                </div>
-                <div className="flex-1 w-full min-h-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={agingMother} layout="vertical" margin={{ left: 20 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false}/>
-                            <XAxis type="number" stroke="#9ca3af" tickFormatter={(val) => `${(val/1000).toFixed(0)}t`} />
-                            <YAxis dataKey="name" type="category" stroke="#fff" width={80} tick={{fontSize: 11}} />
-                            <Tooltip 
-                                cursor={{fill: '#ffffff10'}} 
-                                contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
-                                formatter={(value) => [`${value.toLocaleString('pt-BR')} kg`, 'Peso']}
-                            />
-                            {/* A MÁGICA DA COR ESTÁ AQUI: Usa a cor definida no dado (entry.fill) */}
-                            <Bar dataKey="peso" radius={[0, 4, 4, 0]} barSize={40}>
-                                {agingMother.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.fill} />)}
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
-            </Card>
-
-            {/* AGING B2 */}
-            <Card className="h-[300px] flex flex-col">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-bold text-gray-200 pl-2 border-l-4 border-indigo-500">Aging: Bobinas Slitter (B2)</h3>
-                    <span className="text-xs text-indigo-400 bg-indigo-900/20 px-2 py-1 rounded">Em Processo</span>
-                </div>
-                <div className="flex-1 w-full min-h-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={agingB2} layout="vertical" margin={{ left: 20 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false}/>
-                            <XAxis type="number" stroke="#9ca3af" tickFormatter={(val) => `${(val/1000).toFixed(0)}t`} />
-                            <YAxis dataKey="name" type="category" stroke="#fff" width={80} tick={{fontSize: 11}} />
-                            <Tooltip 
-                                cursor={{fill: '#ffffff10'}} 
-                                contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
-                                formatter={(value) => [`${value.toLocaleString('pt-BR')} kg`, 'Peso']}
-                            />
-                            <Bar dataKey="peso" radius={[0, 4, 4, 0]} barSize={40}>
-                                {agingB2.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.fill} />)}
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
-            </Card>
-        </div>
-
-        {/* 3. TOTAIS E EXPEDIÇÃO */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* ESTOQUE TOTAL POR TIPO */}
-            <Card className="h-[300px] flex flex-col">
-                <h3 className="font-bold text-gray-200 mb-4 pl-2 border-l-4 border-blue-500">Estoque MP por Tipo (kg)</h3>
-                <div className="flex-1 w-full min-h-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={typeData} layout="vertical" margin={{ left: 20, right: 30 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
-                            <XAxis type="number" stroke="#9ca3af" tickFormatter={(val) => `${(val/1000).toFixed(0)}t`} />
-                            <YAxis dataKey="name" type="category" stroke="#fff" width={60} tick={{fontSize: 12, fontWeight: 'bold'}} />
-                            <Tooltip cursor={{fill: '#ffffff10'}} contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }} formatter={(value) => [`${value.toLocaleString('pt-BR')} kg`, 'Peso']}/>
-                            <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={25}>
-                                {typeData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
-            </Card>
-
-            {/* EXPEDIÇÃO */}
-            <Card className="h-[300px] flex flex-col">
-                <h3 className="font-bold text-gray-200 mb-4 pl-2 border-l-4 border-amber-500">Expedição (Cometa vs Serra)</h3>
-                <div className="flex-1 w-full min-h-0 flex items-center justify-center">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <RechartsPie>
-                            <Pie data={shippingData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                                {shippingData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                ))}
-                            </Pie>
-                            <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }} />
-                            <Legend verticalAlign="bottom" height={36}/>
-                        </RechartsPie>
-                    </ResponsiveContainer>
-                </div>
-            </Card>
-        </div>
-      </div>
     );
-  };
+};
+
 
 const renderB2DynamicReport = () => {
     // 1. PREPARAÇÃO DOS DADOS (JOIN DAS TABELAS)
