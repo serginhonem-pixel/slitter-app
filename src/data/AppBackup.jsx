@@ -1,17 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { 
-  collection, 
-  onSnapshot, 
-  query, 
-  orderBy, 
-  writeBatch, 
-  doc, 
-  setDoc 
-} from 'firebase/firestore';
 
-import { db } from './services/api'; // Certifique-se de exportar 'db' no seu arquivo de configuração
-import { loadFromDb, saveToDb, deleteFromDb, updateInDb } from './services/api';
 // --- IMPORTAÇÃO DOS ÍCONES (Lucide) ---
 import {
   Scissors, Factory, ScrollText, Plus, Trash2, Save, History, LayoutDashboard,
@@ -102,139 +91,64 @@ const CutDetailsModal = ({ log, onClose }) => {
 };
 
 const ProductHistoryModal = ({ product, logs, onClose, onReprint }) => {
-  if (!product) return null;
-
-  const baseCode = String(product.code || '').trim();
-  const mode = product.context || product.type || null; // 'PRODUÇÃO' | 'CORTE' | etc.
-  const safeLogs = Array.isArray(logs) ? logs : [];
-
-  const getDateObj = (l) => {
-    if (l.timestamp) return new Date(l.timestamp);
-    if (l.date) {
-      if (typeof l.date === 'string' && l.date.includes('/')) {
-        const [d, m, y] = l.date.split('/');
-        return new Date(`${y}-${m}-${d}T12:00:00`);
-      }
-      return new Date(l.date);
-    }
-    return new Date(0);
-  };
-
-  const history = safeLogs
-    .filter((l) => {
-      const lotId = String(l.id || '').trim();
-      const lotBase = lotId.includes('-')
-        ? lotId.split('-')[0]
-        : lotId;
-
-      const prodCode = String(l.productCode || '').trim();
-
-      // 🔹 Se veio do contexto CORTE:
-      if (mode === 'CORTE') {
-        // normalmente os cortes usam o id base (ex: 10262, 10262-1, 10262-2...)
-        return lotBase === baseCode || prodCode === baseCode;
-      }
-
-      // 🔹 Contexto padrão = PRODUÇÃO
-      return prodCode === baseCode;
-    })
-    .sort((a, b) => getDateObj(b) - getDateObj(a));
-
-  const totalPieces = history.reduce(
-    (acc, curr) => acc + (curr.pieces || 0),
-    0
-  );
+  // Filtra apenas os logs desse produto e ordena do mais recente para o mais antigo
+  const history = logs
+    .filter(l => l.productCode === product.code)
+    .sort((a, b) => new Date(b.timestamp || b.date) - new Date(a.timestamp || a.date));
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
       <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-3xl max-h-[80vh] flex flex-col shadow-2xl">
         <div className="p-4 border-b border-gray-700 flex justify-between items-center">
           <div>
-            <h3 className="text-white font-bold text-lg">Histórico de Lotes</h3>
-            <p className="text-blue-400 text-sm font-bold">
-              {product.code} - {product.name}
-            </p>
+             <h3 className="text-white font-bold text-lg">Histórico de Lotes</h3>
+             <p className="text-blue-400 text-sm font-bold">{product.code} - {product.name}</p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white"
-          >
-            <X size={20} />
-          </button>
+          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20}/></button>
         </div>
-
+        
         <div className="p-4 overflow-y-auto flex-1 custom-scrollbar-dark">
           {history.length === 0 ? (
-            <div className="text-center text-gray-500 py-8">
-              Nenhum lote produzido ainda.
-            </div>
+             <div className="text-center text-gray-500 py-8">Nenhum lote produzido ainda.</div>
           ) : (
-            <table className="w-full text-sm text-left text-gray-300">
-              <thead className="bg-gray-900 text-gray-400 sticky top-0">
-                <tr>
-                  <th className="p-2">ID Lote</th>
-                  <th className="p-2">Data</th>
-                  <th className="p-2">Pacote</th>
-                  <th className="p-2 text-right">Qtd</th>
-                  <th className="p-2 text-center">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-700">
-                {history.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-700/50">
-                    <td className="p-2 font-mono text-xs text-blue-300">
-                      {log.id}
-                    </td>
-                    <td className="p-2 text-gray-400">
-                      {log.date ||
-                        (log.timestamp &&
-                          new Date(log.timestamp).toLocaleDateString('pt-BR'))}
-                    </td>
-                    <td className="p-2 text-xs">
-                      {log.packIndex ? (
-                        <span className="bg-blue-900/50 text-blue-200 px-1.5 py-0.5 rounded border border-blue-900">
-                          {log.packIndex}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
-                    </td>
-                    <td className="p-2 text-right font-bold text-emerald-400">
-                      {(log.pieces || 0) + ' pçs'}
-                    </td>
-                    <td className="p-2 text-center">
-                      <button
-                        onClick={() => onReprint && onReprint(log)}
-                        className="p-1.5 bg-gray-700 text-gray-200 rounded hover:bg-white hover:text-black transition-colors"
-                        title="Imprimir este lote"
-                      >
-                        <Printer size={16} />
-                      </button>
-                    </td>
+             <table className="w-full text-sm text-left text-gray-300">
+                <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                  <tr>
+                    <th className="p-2">ID Lote</th>
+                    <th className="p-2">Data</th>
+                    <th className="p-2">Pacote</th>
+                    <th className="p-2 text-right">Qtd</th>
+                    <th className="p-2 text-center">Ação</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {history.map(log => (
+                    <tr key={log.id} className="hover:bg-gray-700/50">
+                      <td className="p-2 font-mono text-xs text-blue-300">{log.id}</td>
+                      <td className="p-2 text-gray-400">{log.date}</td>
+                      <td className="p-2 text-xs">
+                        {log.packIndex ? <span className="bg-blue-900/50 text-blue-200 px-1.5 py-0.5 rounded border border-blue-900">{log.packIndex}</span> : '-'}
+                      </td>
+                      <td className="p-2 text-right font-bold text-emerald-400">{log.pieces} pçs</td>
+                      <td className="p-2 text-center">
+                        <button onClick={() => onReprint(log)} className="p-1.5 bg-gray-700 text-gray-200 rounded hover:bg-white hover:text-black transition-colors" title="Imprimir este lote">
+                          <Printer size={16}/>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+             </table>
           )}
         </div>
-
         <div className="p-3 border-t border-gray-700 bg-gray-900/50 flex justify-between items-center">
-          <span className="text-xs text-gray-500">
-            Total Produzido: {totalPieces} peças
-          </span>
-          <Button
-            variant="secondary"
-            onClick={onClose}
-            className="px-4 py-1 text-xs"
-          >
-            Fechar
-          </Button>
+            <span className="text-xs text-gray-500">Total Produzido: {history.reduce((acc, curr) => acc + curr.pieces, 0)} peças</span>
+            <Button variant="secondary" onClick={onClose} className="px-4 py-1 text-xs">Fechar</Button>
         </div>
       </div>
     </div>
   );
 };
-
 const Button = ({ children, onClick, variant = "primary", className = "", disabled = false, title = "" }) => {
   const variants = {
     primary: "bg-blue-600 text-white hover:bg-blue-500 disabled:bg-blue-900/50 disabled:text-gray-400 shadow-lg shadow-blue-900/20",
@@ -895,194 +809,83 @@ export default function App() {
     return localStorage.getItem('currentFileName') || 'Nenhum arquivo carregado';
   });
 
-  // useEffect(() => {
-  //   localStorage.setItem('currentFileName', currentFileName);
-  // }, [currentFileName]);
+  useEffect(() => {
+    localStorage.setItem('currentFileName', currentFileName);
+  }, [currentFileName]);
   // ----------------------------------------------------------------------
 
   const [productionDate, setProductionDate] = useState(new Date().toISOString().split('T')[0]);
-
+  useEffect(() => {
+    try {
+      // Adicione junto com os outros states
+    
 
   // Salva no localStorage para não perder se der F5
-  // useEffect(() => {
-  //   localStorage.setItem('currentFileName', currentFileName);
-  // }, [currentFileName]);
-  //     const savedMother = localStorage.getItem('motherCoils');
-  //     const savedChild = localStorage.getItem('childCoils');
-  //     const savedLogs = localStorage.getItem('productionLogs');
-  //     const savedShipping = localStorage.getItem('shippingLogs');
-  //     const savedCatalog = localStorage.getItem('productCatalog');
-  //     const savedMotherCatalog = localStorage.getItem('motherCatalog');
-  //     const savedCutLogs = localStorage.getItem('cuttingLogs');
-  //     if (savedCutLogs) setCuttingLogs(JSON.parse(savedCutLogs));
+  useEffect(() => {
+    localStorage.setItem('currentFileName', currentFileName);
+  }, [currentFileName]);
+      const savedMother = localStorage.getItem('motherCoils');
+      const savedChild = localStorage.getItem('childCoils');
+      const savedLogs = localStorage.getItem('productionLogs');
+      const savedShipping = localStorage.getItem('shippingLogs');
+      const savedCatalog = localStorage.getItem('productCatalog');
+      const savedMotherCatalog = localStorage.getItem('motherCatalog');
+      const savedCutLogs = localStorage.getItem('cuttingLogs');
+      if (savedCutLogs) setCuttingLogs(JSON.parse(savedCutLogs));
       
 
-  //     if (savedMother) setMotherCoils(JSON.parse(savedMother));
-  //     if (savedChild) setChildCoils(JSON.parse(savedChild));
-  //     if (savedLogs) setProductionLogs(JSON.parse(savedLogs));
-  //     if (savedShipping) setShippingLogs(JSON.parse(savedShipping));
-  //     if (savedMotherCatalog) {
-  //         const parsed = JSON.parse(savedMotherCatalog);
-  //         if (parsed.length > 0) setMotherCatalog(parsed); 
-  //         else setMotherCatalog(INITIAL_MOTHER_CATALOG);
-  //     } else { setMotherCatalog(INITIAL_MOTHER_CATALOG); }
+      if (savedMother) setMotherCoils(JSON.parse(savedMother));
+      if (savedChild) setChildCoils(JSON.parse(savedChild));
+      if (savedLogs) setProductionLogs(JSON.parse(savedLogs));
+      if (savedShipping) setShippingLogs(JSON.parse(savedShipping));
+      if (savedMotherCatalog) {
+          const parsed = JSON.parse(savedMotherCatalog);
+          if (parsed.length > 0) setMotherCatalog(parsed); 
+          else setMotherCatalog(INITIAL_MOTHER_CATALOG);
+      } else { setMotherCatalog(INITIAL_MOTHER_CATALOG); }
 
-  //     if (savedCatalog) {
-  //       const parsedCatalog = JSON.parse(savedCatalog);
-  //       if (parsedCatalog.length < INITIAL_PRODUCT_CATALOG.length) {
-  //          setProductCatalog(INITIAL_PRODUCT_CATALOG);
-  //       } else {
-  //          setProductCatalog(parsedCatalog);
-  //       }
-  //     } else { setProductCatalog(INITIAL_PRODUCT_CATALOG); }
-  //   } catch (error) { console.error("Erro ao carregar dados:", error); }
-  // }, []);
+      if (savedCatalog) {
+        const parsedCatalog = JSON.parse(savedCatalog);
+        if (parsedCatalog.length < INITIAL_PRODUCT_CATALOG.length) {
+           setProductCatalog(INITIAL_PRODUCT_CATALOG);
+        } else {
+           setProductCatalog(parsedCatalog);
+        }
+      } else { setProductCatalog(INITIAL_PRODUCT_CATALOG); }
+    } catch (error) { console.error("Erro ao carregar dados:", error); }
+  }, []);
 
-  // useEffect(() => {
-  //   localStorage.setItem('motherCoils', JSON.stringify(motherCoils));
-  //   localStorage.setItem('childCoils', JSON.stringify(childCoils));
-  //   localStorage.setItem('productionLogs', JSON.stringify(productionLogs));
-  //   localStorage.setItem('shippingLogs', JSON.stringify(shippingLogs));
-  //   localStorage.setItem('productCatalog', JSON.stringify(productCatalog));
-  //   localStorage.setItem('motherCatalog', JSON.stringify(motherCatalog));
-  //   localStorage.setItem('cuttingLogs', JSON.stringify(cuttingLogs));
-  // }, [motherCoils, childCoils, productionLogs, shippingLogs, productCatalog, motherCatalog]);
-
-  // useEffect(() => {
-  //   if (newMotherCoil.code && motherCatalog.length > 0) {
-  //     const found = motherCatalog.find(m => m.code.toString() === newMotherCoil.code.toString());
-  //     if (found) {
-  //       setNewMotherCoil(prev => ({ ...prev, material: found.description, thickness: found.thickness || prev.thickness, type: found.type || prev.type }));
-  //     }
-  //   }
-  // }, [newMotherCoil.code, motherCatalog]);
-
-    // CARREGAR DADOS (Firebase com fallback no localStorage)
-  
-  
-  
-  
-
-// IMPORTANTE: Adicione estes imports do Firebase no topo do arquivo
-
-
-// ... dentro do componente App:
-
-  // 1. CARREGAMENTO EM TEMPO REAL (Conexão Viva)
   useEffect(() => {
-    const unsubs = []; // Array para guardar as conexões abertas
+    localStorage.setItem('motherCoils', JSON.stringify(motherCoils));
+    localStorage.setItem('childCoils', JSON.stringify(childCoils));
+    localStorage.setItem('productionLogs', JSON.stringify(productionLogs));
+    localStorage.setItem('shippingLogs', JSON.stringify(shippingLogs));
+    localStorage.setItem('productCatalog', JSON.stringify(productCatalog));
+    localStorage.setItem('motherCatalog', JSON.stringify(motherCatalog));
+    localStorage.setItem('cuttingLogs', JSON.stringify(cuttingLogs));
+  }, [motherCoils, childCoils, productionLogs, shippingLogs, productCatalog, motherCatalog]);
 
-    // Função auxiliar para criar o ouvinte
-    const setupListener = (collectionName, setter) => {
-      try {
-        // Cria a referência para a coleção
-        const q = collection(db, collectionName);
-        
-        // Inicia a escuta (onSnapshot)
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-          const data = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-
-          // ORDENAÇÃO: Garante que os logs mais novos fiquem no topo
-          if (collectionName.includes('Logs')) {
-             data.sort((a, b) => {
-                 // Tenta ordenar por data ou timestamp
-                 const dateA = new Date(a.timestamp || a.date || 0).getTime();
-                 const dateB = new Date(b.timestamp || b.date || 0).getTime();
-                 return dateB - dateA; // Decrescente (Mais novo primeiro)
-             });
-          }
-
-          // Atualiza o estado da tela
-          setter(data);
-          
-        }, (error) => {
-          console.error(`Erro de conexão com ${collectionName}:`, error);
-          // Se cair a conexão, tenta pegar do LocalStorage como emergência
-          try {
-             const saved = localStorage.getItem(collectionName);
-             if (saved) setter(JSON.parse(saved));
-          } catch (e) { console.log('Erro no fallback local'); }
-        });
-
-        unsubs.push(unsubscribe); // Guarda para limpar depois
-
-      } catch (err) {
-        console.error(`Erro ao configurar listener para ${collectionName}:`, err);
+  useEffect(() => {
+    if (newMotherCoil.code && motherCatalog.length > 0) {
+      const found = motherCatalog.find(m => m.code.toString() === newMotherCoil.code.toString());
+      if (found) {
+        setNewMotherCoil(prev => ({ ...prev, material: found.description, thickness: found.thickness || prev.thickness, type: found.type || prev.type }));
       }
-    };
-
-    // Configura os 5 ouvintes
-    setupListener('motherCoils', setMotherCoils);
-    setupListener('childCoils', setChildCoils);
-    setupListener('productionLogs', setProductionLogs);
-    setupListener('shippingLogs', setShippingLogs);
-    setupListener('cuttingLogs', setCuttingLogs);
-
-    // LIMPEZA: Quando fechar a tela, desliga as conexões para não travar o navegador
-    return () => {
-      unsubs.forEach(unsub => unsub());
-    };
-  }, []); // Roda apenas uma vez ao montar a tela
-
-  // 2. BACKUP LOCAL (Mantive igual, pois é uma segurança extra)
-  useEffect(() => {
-    try {
-      localStorage.setItem('currentFileName', currentFileName);
-      localStorage.setItem('motherCoils', JSON.stringify(motherCoils));
-      localStorage.setItem('childCoils', JSON.stringify(childCoils));
-      localStorage.setItem('productionLogs', JSON.stringify(productionLogs));
-      localStorage.setItem('shippingLogs', JSON.stringify(shippingLogs));
-      localStorage.setItem('cuttingLogs', JSON.stringify(cuttingLogs));
-    } catch (error) {
-      console.error('Erro ao salvar backup local', error);
     }
-  }, [currentFileName, motherCoils, childCoils, productionLogs, shippingLogs, cuttingLogs]);
-
-  // ... (Sua função updateMotherCoil continua igual)
-
-    // BACKUP LOCAL: sempre que mudar, salva cópia no navegador
-  useEffect(() => {
-    try {
-      localStorage.setItem('currentFileName', currentFileName);
-      localStorage.setItem('motherCoils', JSON.stringify(motherCoils));
-      localStorage.setItem('childCoils', JSON.stringify(childCoils));
-      localStorage.setItem('productionLogs', JSON.stringify(productionLogs));
-      localStorage.setItem('shippingLogs', JSON.stringify(shippingLogs));
-      localStorage.setItem('cuttingLogs', JSON.stringify(cuttingLogs));
-    } catch (error) {
-      console.error('Erro ao salvar backup local', error);
-    }
-  }, [currentFileName, motherCoils, childCoils, productionLogs, shippingLogs, cuttingLogs]);
-
-
-      const updateMotherCoil = async (updatedCoil) => {
+  }, [newMotherCoil.code, motherCatalog]);
+  const updateMotherCoil = (updatedCoil) => {
+    // Garante que peso e largura sejam números
     const safeCoil = {
-      ...updatedCoil,
-      weight: parseFloat(updatedCoil.weight) || 0,
-      remainingWeight: parseFloat(updatedCoil.weight) || 0, // Atualiza o saldo também se mudar o peso
-      originalWeight: parseFloat(updatedCoil.weight) || 0,
-      width: parseFloat(updatedCoil.width) || 0,
+        ...updatedCoil,
+        weight: parseFloat(updatedCoil.weight) || 0,
+        remainingWeight: parseFloat(updatedCoil.weight) || 0, // Atualiza o saldo também se mudar o peso
+        originalWeight: parseFloat(updatedCoil.weight) || 0,
+        width: parseFloat(updatedCoil.width) || 0
     };
 
-    // Atualiza otimista no estado
-    setMotherCoils(prev =>
-      prev.map(m => (m.id === safeCoil.id ? safeCoil : m))
-    );
+    setMotherCoils(motherCoils.map(m => m.id === safeCoil.id ? safeCoil : m));
     setEditingMotherCoil(null); // Fecha o modal
-
-    try {
-      await updateInDb('motherCoils', safeCoil.id, safeCoil);
-    } catch (error) {
-      console.error('Erro ao atualizar bobina no Firebase', error);
-      alert('Atualizei só localmente; não consegui salvar no servidor.');
-    }
   };
-
-
-
 
   const getUniqueB2Types = (motherType) => {
     const uniqueMap = new Map();
@@ -1107,21 +910,15 @@ export default function App() {
     return stock;
   };
 
-    const addMotherCoil = async () => {
-    if (!newMotherCoil.code || !newMotherCoil.weight) {
-      return alert("Preencha código e peso.");
-    }
-
-    // Garante que tem uma data válida
-    const isoDate = newMotherCoil.entryDate || new Date().toISOString().split('T')[0];
-    const dateParts = isoDate.split('-');
+  const addMotherCoil = () => {
+    if (!newMotherCoil.code || !newMotherCoil.weight) return alert("Preencha código e peso.");
+    
+    // Formata a data de YYYY-MM-DD para DD/MM/YYYY
+    const dateParts = newMotherCoil.entryDate.split('-');
     const formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
 
-    // 1. Gera um ID Temporário para mostrar na tela agora
-    const tempId = Date.now().toString();
-
-    const newCoil = {
-      id: tempId, // <--- ID PROVISÓRIO
+    setMotherCoils([...motherCoils, {
+      id: Date.now().toString(),
       ...newMotherCoil,
       type: newMotherCoil.type,
       weight: parseFloat(newMotherCoil.weight),
@@ -1129,64 +926,23 @@ export default function App() {
       width: parseFloat(newMotherCoil.width) || 1200,
       remainingWeight: parseFloat(newMotherCoil.weight),
       status: 'stock',
-      date: formattedDate,
-    };
+      date: formattedDate // <--- USA A DATA ESCOLHIDA FORMATADA
+    }]);
 
-    // 2. Atualiza otimista no front (Usuário vê instantaneamente)
-    setMotherCoils(prev => [...prev, newCoil]);
-
-    // Reseta formulário imediatamente
-    setNewMotherCoil({
-        code: '', nf: '', weight: '', material: '', width: '', thickness: '', type: '', 
+    // Limpa o formulário mas mantêm a data de hoje para facilitar o próximo
+    setNewMotherCoil({ 
+        code: '', weight: '', material: '', width: '', thickness: '', type: '', 
         entryDate: new Date().toISOString().split('T')[0] 
     });
-
-    try {
-      // 3. Persiste no Firebase e ESPERA O ID REAL
-      // Nota: removemos o ID provisório antes de mandar pro banco pra não sujar os dados
-      const { id, ...coilDataToSend } = newCoil; 
-      const savedItem = await saveToDb('motherCoils', coilDataToSend);
-
-      // 4. O SEGREDO: Troca o ID provisório pelo ID Real do Firebase na tela
-      setMotherCoils(prev => prev.map(item => 
-          item.id === tempId ? { ...item, id: savedItem.id } : item
-      ));
-
-      alert("Bobina salva na Nuvem! Data: " + formattedDate);
-
-    } catch (error) {
-      console.error('Erro ao salvar bobina no Firebase', error);
-      alert('Erro de conexão! A bobina está na tela, mas NÃO foi salva no banco. Se der F5 ela some.');
-      // Opcional: Remover da tela se deu erro, para não enganar o usuário
-      // setMotherCoils(prev => prev.filter(m => m.id !== tempId));
-    }
+    
+    alert("Bobina salva com Data de Entrada: " + formattedDate);
   };
 
-  const deleteMotherCoil = async (id) => {
-    if (!window.confirm("Tem certeza? Isso apagará a bobina permanentemente.")) {
-      return;
-    }
-
-    // Remove otimista no front
-    setMotherCoils(prev => prev.filter(m => m.id !== id));
-
-    try {
-      await deleteFromDb('motherCoils', id);
-    } catch (error) {
-      console.error('Erro ao excluir bobina no Firebase', error);
-      alert('Não consegui excluir no servidor. Vou tentar recarregar os dados do banco.');
-
-      try {
-        const mothers = await loadFromDb('motherCoils');
-        if (Array.isArray(mothers)) {
-          setMotherCoils(mothers);
-        }
-      } catch (reloadError) {
-        console.error('Erro ao recarregar dados após falha de exclusão', reloadError);
-      }
+  const deleteMotherCoil = (id) => {
+    if(window.confirm("Tem certeza? Isso apagará a bobina permanentemente.")){
+      setMotherCoils(motherCoils.filter(m => m.id !== id));
     }
   };
-
   const addTempChildCoil = () => {
     // Função auxiliar para limpar números (Aceita 2000,50 e 2000.50)
     const parseWeight = (val) => {
@@ -1247,116 +1003,91 @@ export default function App() {
     setCutWeight('');
     setCutQuantity('');
   };
-  const confirmCut = async () => {
+  const confirmCut = () => {
     const mother = motherCoils.find(m => m.id === selectedMotherForCut);
     if (!mother) return;
-
-    // --- 1. PREPARAÇÃO DOS DADOS ---
+    
     const dateParts = cuttingDate.split('-');
-    const dateNow = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+    const dateNow = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`; 
+
     const totalCutsWeight = tempChildCoils.reduce((acc, curr) => acc + curr.weight, 0);
+    
+    // --- CORREÇÃO DA SUCATA (VÍRGULA -> PONTO) ---
     const manualScrap = processScrap ? parseFloat(String(processScrap).replace(',', '.').trim()) : 0;
+    // ---------------------------------------------
+
     const totalConsumed = totalCutsWeight + manualScrap;
 
     if (totalConsumed > mother.remainingWeight) {
-      if (!window.confirm(`Peso excedido (${totalConsumed.toFixed(1)}kg). Continuar?`)) return;
+      if(!window.confirm(`Peso excedido (${totalConsumed.toFixed(1)}kg consumidos de ${mother.remainingWeight}kg disponíveis). Continuar mesmo assim?`)) return;
     }
 
     const remaining = Math.max(0, mother.remainingWeight - totalConsumed);
-    const isTotalConsumption = remaining < 10;
-    
-    // Texto do Histórico
-    const itemsSummary = tempChildCoils.map(t => t.isDirectConsumption ? `${t.b2Name} (${t.weight}kg)` : `${t.b2Code} - ${t.b2Name} (${t.weight.toFixed(0)}kg)`).join(', ');
+    const isTotalConsumption = remaining < 10; 
 
-    // --- 2. BACKUP DE ESTADO (Para caso dê erro) ---
-    const prevMothers = [...motherCoils];
-    const prevLogs = [...cuttingLogs];
-    const prevChildren = [...childCoils];
+    // Texto do Histórico (Código + Nome)
+    const itemsSummary = tempChildCoils.map(t => {
+        if (t.isDirectConsumption) return `${t.b2Name} (${t.weight.toFixed(0)}kg)`;
+        return `${t.b2Code} - ${t.b2Name} (${t.weight.toFixed(0)}kg)`;
+    }).join(', ');
 
-    // --- 3. CRIAÇÃO DOS OBJETOS COM ID TEMPORÁRIO ---
-    const tempLogId = `TEMP-LOG-${Date.now()}`;
     const newCutLog = {
-      id: tempLogId,
-      date: dateNow, motherCode: mother.code, motherMaterial: mother.material,
-      inputWeight: totalConsumed, outputCount: tempChildCoils.length, scrap: manualScrap,
-      generatedItems: itemsSummary, timestamp: new Date().toLocaleString()
+        id: `CUT-${Date.now()}`,
+        date: dateNow,
+        motherCode: mother.code,
+        motherMaterial: mother.material,
+        inputWeight: totalConsumed,
+        outputCount: tempChildCoils.length,
+        scrap: manualScrap,
+        generatedItems: itemsSummary,
+        timestamp: new Date().toLocaleString()
     };
 
-    const tempNewChildren = tempChildCoils
+    const newChildren = tempChildCoils
       .filter(item => !item.isDirectConsumption)
       .map((temp, index) => ({
-        id: `TEMP-CHILD-${Date.now()}-${index}`, // ID Temporário
-        motherId: mother.id, motherCode: mother.code,
-        b2Code: temp.b2Code, b2Name: temp.b2Name, width: temp.width, thickness: temp.thickness,
-        type: mother.type, weight: temp.weight, initialWeight: temp.weight, status: 'stock', createdAt: dateNow
-      }));
+        id: `B2-${mother.code}-${Date.now()}-${index}`,
+        motherId: mother.id,
+        motherCode: mother.code,
+        b2Code: temp.b2Code, 
+        b2Name: temp.b2Name, 
+        width: temp.width, 
+        thickness: temp.thickness, 
+        type: mother.type, 
+        weight: temp.weight, 
+        initialWeight: temp.weight, 
+        status: 'stock', 
+        createdAt: dateNow
+    }));
 
-    // Objeto de atualização da Mãe
-    const motherUpdateData = {
-      remainingWeight: remaining,
-      status: isTotalConsumption ? 'consumed' : 'stock',
-      cutWaste: (mother.cutWaste || 0) + manualScrap,
-      consumedDate: isTotalConsumption ? dateNow : mother.consumedDate,
-      consumptionDetail: isTotalConsumption ? (mother.consumptionDetail ? mother.consumptionDetail + ' + ' + itemsSummary : itemsSummary) : mother.consumptionDetail
-    };
+    const updatedMothers = motherCoils.map(m => {
+      if (m.id === mother.id) {
+          const consumptionNote = tempChildCoils.length > 0 
+             ? (tempChildCoils[0].isDirectConsumption ? tempChildCoils[0].b2Name : 'CORTE SLITTER')
+             : 'AJUSTE/SUCATA';
 
-    // --- 4. ATUALIZAÇÃO OTIMISTA (NA TELA AGORA) ---
-    // Atualiza Mãe
-    setMotherCoils(prev => prev.map(m => m.id === mother.id ? { ...m, ...motherUpdateData } : m));
-    // Adiciona Log
-    setCuttingLogs(prev => [newCutLog, ...prev]);
-    // Adiciona Filhas
-    setChildCoils(prev => [...prev, ...tempNewChildren]);
-
-    // Limpa formulário visualmente
-    setTempChildCoils([]); setProcessScrap(''); setSelectedMotherForCut(''); setMotherSearchQuery('');
-
-    try {
-      // --- 5. PERSISTÊNCIA NO FIREBASE ---
-      
-      // A) Atualiza Mãe
-      await updateInDb('motherCoils', mother.id, motherUpdateData);
-
-      // B) Salva Log e pega ID Real
-      const { id: logTempId, ...logData } = newCutLog;
-      const savedLog = await saveToDb('cuttingLogs', logData);
-
-      // C) Salva Filhas e pega IDs Reais
-      const savedChildrenReal = [];
-      for (const childTemp of tempNewChildren) {
-          const { id: childTempId, ...childData } = childTemp;
-          const savedChild = await saveToDb('childCoils', childData);
-          savedChildrenReal.push(savedChild);
+          if (isTotalConsumption) {
+              return { ...m, remainingWeight: 0, status: 'consumed', cutWaste: manualScrap + remaining, consumedDate: dateNow, consumptionDetail: consumptionNote };
+          } else {
+              return { ...m, remainingWeight: remaining, status: 'stock', cutWaste: (m.cutWaste || 0) + manualScrap, consumptionDetail: m.consumptionDetail ? m.consumptionDetail + ' + ' + consumptionNote : consumptionNote };
+          }
       }
+      return m;
+    });
 
-      // --- 6. TROCA SILENCIOSA DE IDS (TEMP -> REAL) ---
-      
-      // Troca ID do Log
-      setCuttingLogs(prev => prev.map(l => l.id === tempLogId ? { ...l, id: savedLog.id } : l));
-      
-      // Troca IDs das Filhas (Remove as Temp e bota as Reais para garantir integridade)
-      setChildCoils(prev => {
-          const others = prev.filter(c => !tempNewChildren.some(t => t.id === c.id));
-          return [...others, ...savedChildrenReal];
-      });
-
-      // Prepara impressão com os dados reais (com ID certo para o QR Code)
-      setItemsToPrint(savedChildrenReal); 
-      setPrintType('coil'); 
-      setShowPrintModal(true);
-      
-      alert("Corte salvo na nuvem!");
-
-    } catch (error) {
-      console.error("Erro no corte:", error);
-      alert("Erro ao salvar o corte na nuvem. Revertendo alterações...");
-      
-      // --- 7. ROLLBACK (EM CASO DE ERRO) ---
-      setMotherCoils(prevMothers);
-      setCuttingLogs(prevLogs);
-      setChildCoils(prevChildren);
-    }
+    setMotherCoils(updatedMothers);
+    setChildCoils([...childCoils, ...newChildren]);
+    setCuttingLogs([newCutLog, ...cuttingLogs]);
+    
+    setTempChildCoils([]);
+    setProcessScrap(''); 
+    setSelectedMotherForCut('');
+    setMotherSearchQuery('');
+    setItemsToPrint(newChildren);
+    setPrintType('coil'); 
+    setShowPrintModal(true); 
   };
+
   const handleImportFinishedStock = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1467,159 +1198,123 @@ export default function App() {
     };
     reader.readAsText(file);
   };
-  const registerProduction = async () => {
-    if (selectedInputCoils.length === 0) return alert("Selecione bobinas!");
-    if (!selectedProductCode || !totalProducedPieces) return alert("Preencha dados.");
-
+  const registerProduction = () => {
+    // 1. Validações Iniciais
+    if (selectedInputCoils.length === 0) return alert("Selecione as bobinas de entrada!");
+    if (!selectedProductCode || !totalProducedPieces) return alert("Preencha o produto e o total produzido.");
+    
+    // 2. Cálculos de Quebra de Lote (Total / Padrão)
     const total = parseInt(totalProducedPieces);
-    const packSize = parseInt(standardPackSize) || total;
-    const fullPacksCount = Math.floor(total / packSize);
-    const remainder = total % packSize;
+    // Se não tiver padrão definido, assume que é tudo um pacote só
+    const packSize = parseInt(standardPackSize) || total; 
+    
+    const fullPacksCount = Math.floor(total / packSize); // Ex: 486 / 100 = 4 pacotes
+    const remainder = total % packSize;                  // Ex: 486 % 100 = 86 peças
     const totalLabels = remainder > 0 ? fullPacksCount + 1 : fullPacksCount;
 
-    if (!window.confirm(`Produzir ${total} peças (${totalLabels} vols)?`)) return;
+    // 3. Confirmação do Usuário
+    if (!window.confirm(`Confirma a produção de ${total} peças?\n\nIsso irá gerar ${totalLabels} etiquetas:\n- ${fullPacksCount}x de ${packSize} peças\n- ${remainder > 0 ? `1x de ${remainder} peças (Final)` : ''}`)) {
+        return;
+    }
 
-    // --- 1. PREPARAÇÃO ---
     const productInfo = productCatalog.find(p => p.code === selectedProductCode);
+    // Formata a data escolhida (YYYY-MM-DD -> DD/MM/YYYY)
     const dateParts = productionDate.split('-');
     const date = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
     const timestamp = new Date().toLocaleString();
     
+    // --- 4. RASTREABILIDADE E LIMPEZA DE DADOS ---
     const sourceIds = selectedInputCoils.map(c => c.id);
+
+    // Pega códigos únicos das B2 (Remove repetições como "85503E, 85503E")
     const uniqueB2Codes = [...new Set(selectedInputCoils.map(c => c.b2Code))].join(', ');
-    const uniqueMotherCodes = [...new Set(selectedInputCoils.map(c => c.motherCode))].filter(Boolean).join(', ');
-
-    // Gerador de ID de rastreio visual
-    const generateTrackingId = () => {
-        const d = new Date();
-        const ymd = d.toISOString().slice(0, 10).replace(/-/g, '');
-        const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-        return `PROD-${ymd}-${random}`;
-    };
-    const baseTrackingId = generateTrackingId();
-
-    const logsToCreate = [];
-    // Cria Pacotes Cheios
-    for (let i = 0; i < fullPacksCount; i++) {
-        logsToCreate.push({
-            id: `TEMP-PROD-${Date.now()}-${i}`, // ID Temporário para React
-            trackingId: `${baseTrackingId}-${i + 1}`, // ID Visual (Etiqueta)
-            childIds: sourceIds, motherCode: uniqueMotherCodes, b2Code: uniqueB2Codes, b2Name: selectedInputCoils[0].b2Name,
-            productCode: productInfo.code, productName: productInfo.name, pieces: packSize,
-            packIndex: `${i + 1}/${totalLabels}`, scrap: i === 0 ? parseFloat(prodScrap) || 0 : 0,
-            date: date, timestamp: timestamp
-        });
-    }
-    // Cria Pacote Resto
-    if (remainder > 0) {
-        logsToCreate.push({
-            id: `TEMP-PROD-${Date.now()}-F`,
-            trackingId: `${baseTrackingId}-F`,
-            childIds: sourceIds, motherCode: uniqueMotherCodes, b2Code: uniqueB2Codes, b2Name: selectedInputCoils[0].b2Name,
-            productCode: productInfo.code, productName: productInfo.name, pieces: remainder,
-            packIndex: `${totalLabels}/${totalLabels}`, scrap: 0, date: date, timestamp: timestamp
-        });
-    }
-
-    // --- 2. BACKUP ---
-    const prevProduction = [...productionLogs];
-    const prevChildren = [...childCoils];
-
-    // --- 3. ATUALIZAÇÃO OTIMISTA ---
-    // Adiciona logs na tela
-    setProductionLogs(prev => [...logsToCreate, ...prev]);
     
-    // Marca bobinas como consumidas na tela
-    setChildCoils(prev => prev.map(c => sourceIds.includes(c.id) ? { ...c, status: 'consumed' } : c));
+    // Pega códigos únicos das Mães (Ex: "10644") para garantir rastreio
+    // O filter(Boolean) remove vazios caso alguma bobina antiga não tenha o código gravado
+    const uniqueMotherCodes = [...new Set(selectedInputCoils.map(c => c.motherCode))].filter(Boolean).join(', ');
+    // ---------------------------------------------
 
-    // Limpa form
-    setSelectedInputCoils([]); setSelectedProductCode(''); setTotalProducedPieces(''); setProdScrap('');
+    const newLogs = [];
 
-    try {
-        // --- 4. PERSISTÊNCIA ---
-        const savedLogsReal = [];
-        
-        // Salva Logs e Pega IDs
-        for (const log of logsToCreate) {
-            const { id: tempId, ...logData } = log;
-            const saved = await saveToDb('productionLogs', logData);
-            // Combina o ID do firebase com o trackingId visual
-            savedLogsReal.push({ ...saved, trackingId: log.trackingId });
-        }
-
-        // Atualiza Bobinas (Consome)
-        for (const coilId of sourceIds) {
-            await updateInDb('childCoils', coilId, { status: 'consumed' });
-        }
-
-        // --- 5. TROCA SILENCIOSA DE IDS ---
-        setProductionLogs(prev => {
-            // Remove os temporários e adiciona os reais
-            const others = prev.filter(l => !logsToCreate.some(t => t.id === l.id));
-            return [...savedLogsReal, ...others];
+    // 5. Gera os logs dos Pacotes Cheios
+    for (let i = 0; i < fullPacksCount; i++) {
+        newLogs.push({
+            id: generateTrackingId() + `-${i+1}`,
+            childIds: sourceIds,
+            motherCode: uniqueMotherCodes, // Salva a Mãe correta
+            b2Code: uniqueB2Codes,         // Salva a B2 limpa
+            b2Name: selectedInputCoils[0].b2Name,
+            productCode: productInfo.code,
+            productName: productInfo.name,
+            pieces: packSize, 
+            packIndex: `${i+1}/${totalLabels}`,
+            // Lança a sucata apenas na primeira etiqueta para não duplicar o peso no relatório
+            scrap: i === 0 ? parseFloat(prodScrap) || 0 : 0, 
+            date: date,
+            timestamp: timestamp
         });
-
-        // Manda imprimir os reais
-        setItemsToPrint(savedLogsReal); setPrintType('product'); setShowPrintModal(true);
-        alert("Produção salva na nuvem!");
-
-    } catch (error) {
-        console.error("Erro produção:", error);
-        alert("Erro ao salvar produção. Revertendo...");
-        setProductionLogs(prevProduction);
-        setChildCoils(prevChildren);
     }
+
+    // 6. Gera o log do Pacote de Sobra (se houver resto)
+    if (remainder > 0) {
+        newLogs.push({
+            id: generateTrackingId() + `-F`,
+            childIds: sourceIds,
+            motherCode: uniqueMotherCodes,
+            b2Code: uniqueB2Codes,
+            b2Name: selectedInputCoils[0].b2Name,
+            productCode: productInfo.code,
+            productName: productInfo.name,
+            pieces: remainder, 
+            packIndex: `${totalLabels}/${totalLabels}`,
+            scrap: 0,
+            date: date,
+            timestamp: timestamp
+        });
+    }
+
+    // 7. Atualiza o Estoque (Marca as bobinas B2 como consumidas)
+    const updatedChildren = childCoils.map(c => {
+      if (sourceIds.includes(c.id)) return { ...c, status: 'consumed' };
+      return c;
+    });
+
+    // 8. Salva no Estado e Limpa Campos
+    setProductionLogs([...newLogs, ...productionLogs]);
+    setChildCoils(updatedChildren);
+    
+    setSelectedInputCoils([]);
+    setSelectedProductCode('');
+    setTotalProducedPieces('');
+    setProdScrap('');
+    // Obs: Não limpamos standardPackSize propositalmente para agilizar o próximo lançamento
+    
+    // 9. Abre Modal de Impressão
+    setItemsToPrint(newLogs);
+    setPrintType('product');
+    setShowPrintModal(true);
   };
-  const registerShipping = async () => {
-    if (!shipProduct || !shipQty) return alert("Preencha tudo");
-
-    // Validação de Estoque (Leitura Local)
-    const stock = {};
-    productionLogs.forEach(log => {
-      if (!stock[log.productCode]) stock[log.productCode] = 0;
-      stock[log.productCode] += (parseInt(log.pieces) || 0);
-    });
-    shippingLogs.forEach(log => {
-      if (stock[log.productCode]) stock[log.productCode] -= (parseInt(log.quantity) || 0);
-    });
-
-    const currentStock = stock[shipProduct] || 0;
+  const registerShipping = () => {
+    if(!shipProduct || !shipQty) return alert("Preencha tudo");
+    const stock = getFinishedStock();
+    const currentStock = stock[shipProduct] ? stock[shipProduct].count : 0;
     const qty = parseInt(shipQty);
-    if (qty > currentStock) return alert("Estoque insuficiente.");
-
+    if(qty > currentStock) return alert("Estoque insuficiente para essa baixa.");
     const prodInfo = productCatalog.find(p => p.code === shipProduct);
-
-    // --- 1. DADOS ---
-    const tempId = `TEMP-SHIP-${Date.now()}`;
     const newShipLog = {
-      id: tempId,
-      productCode: shipProduct, productName: prodInfo ? prodInfo.name : shipProduct,
-      quantity: qty, destination: shipDest,
-      date: new Date().toLocaleDateString(), timestamp: new Date().toLocaleString()
+       id: `SHIP-${Date.now()}`,
+       productCode: shipProduct,
+       productName: prodInfo ? prodInfo.name : shipProduct,
+       quantity: qty,
+       destination: shipDest,
+       date: new Date().toLocaleDateString(),
+       timestamp: new Date().toLocaleString()
     };
-
-    // --- 2. BACKUP ---
-    const prevShipping = [...shippingLogs];
-
-    // --- 3. OTIMISTA ---
-    setShippingLogs(prev => [newShipLog, ...prev]);
+    setShippingLogs([newShipLog, ...shippingLogs]);
     setShipQty('');
-
-    try {
-        // --- 4. PERSISTÊNCIA ---
-        const { id: temp, ...dataToSend } = newShipLog;
-        const savedLog = await saveToDb('shippingLogs', dataToSend);
-
-        // --- 5. TROCA ID ---
-        setShippingLogs(prev => prev.map(l => l.id === tempId ? { ...l, id: savedLog.id } : l));
-        
-        alert("Expedição salva!");
-    } catch (e) {
-        console.error(e);
-        alert("Erro ao salvar expedição.");
-        setShippingLogs(prevShipping);
-    }
+    alert("Baixa de expedição realizada com sucesso!");
   };
+
   // --- 1. BACKUP COMPLETO (SALVA TUDO) ---
   // --- 1. BACKUP COMPLETO (SALVA TUDO) ---
   const handleFullBackup = () => {
@@ -2592,34 +2287,16 @@ const makeKeyFromCut = (c, safeMother) => {
 
 
   // Helper para abrir detalhes da Visão Geral
-  // Helper para abrir detalhes da Visão Geral
-const handleGlobalDetail = (item) => {
-  const type = item.type;
-
-  // 🔹 Produção / Expedição / Corte -> abre o MESMO modal de histórico
-  if (type === 'PRODUÇÃO' || type === 'EXPEDIÇÃO' || type === 'CORTE') {
-    if (typeof setSelectedGroupData === 'function') {
-      // code = item.id (pode ser código do PA, da bobina 2, etc.)
-      setSelectedGroupData({
-        code: item.id,
-        name: item.desc,
-        type: type,          // se o modal quiser diferenciar
-      });
-      setShowHistoryModal(true);
+  const handleGlobalDetail = (item) => {
+    if (item.type === 'PRODUÇÃO' || item.type === 'EXPEDIÇÃO') {
+      if (typeof setSelectedGroupData === 'function') {
+        setSelectedGroupData({ code: item.id, name: item.desc });
+        setShowHistoryModal(true);
+      }
+    } else {
+      alert("Para ver o extrato detalhado deste item, vá para a aba 'Extrato MP'.");
     }
-    return;
-  }
-
-  // 🔹 Se você quiser, pode tratar ENTRADA MP aqui (abrir extrato MP, por ex.)
-  if (type === 'ENTRADA MP') {
-    alert("Por enquanto, ENTRADA MP não tem tela de detalhes. Veja na aba 'Extrato MP'.");
-    return;
-  }
-
-  // 🔹 Qualquer outro tipo futuro
-  alert('Sem detalhes configurados para esse tipo de evento.');
-};
-
+  };
 
   // Arrays seguros
   const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
@@ -3904,32 +3581,20 @@ const handleFullRestore = (e) => {
                 {/* COLUNA 2: IMPORTAR BACKUP */}
                 <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-amber-500/50 transition-colors">
                     <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Importar Backup</h4>
-                    {/* ... dentro da área de Backup e Restauração ... */}
+                    <div className="flex flex-col gap-4">
+                        {/* RESTORE JSON */}
+                        <div className="flex items-center gap-2"><div className="relative flex-1"><input type="file" accept=".json" className="hidden" ref={importFullBackupRef} onChange={handleFullRestore} /><Button variant="primary" onClick={() => importFullBackupRef.current.click()} className="text-xs w-full h-9 bg-blue-600 hover:bg-blue-500 font-bold"><Upload size={14} className="mr-2"/> Restaurar Completo</Button></div></div>
+                        <div className="border-t border-gray-700 my-1"></div>
+                        
+                        {/* SALDO MÃE */}
+                        <div className="flex items-center gap-2"><Button variant="info" onClick={() => { const csv = "Codigo;Largura;Peso;Filial;Tipo\n10644;1200;5000;MATRIZ;BEG"; const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'}); const l = document.createElement("a"); l.href = URL.createObjectURL(blob); l.download = "modelo_mae.csv"; l.click(); }} className="w-9 h-9 p-0"><FileInput size={16}/></Button><div className="relative flex-1 flex gap-1"><input type="file" accept=".csv" className="hidden" ref={importMotherStockRef} onChange={(e) => handleImportBackup(e, setMotherCoils, 'Estoque Mãe')} /><input type="file" accept=".csv" className="hidden" ref={inventoryMotherRef} onChange={handleMotherInventory} /><Button variant="secondary" onClick={() => importMotherStockRef.current.click()} className="text-xs flex-1 h-9 bg-gray-800 border-gray-600 hover:bg-gray-700 text-gray-400">Backup</Button><Button variant="secondary" onClick={() => inventoryMotherRef.current.click()} className="text-xs flex-[2] h-9 bg-sky-900/20 text-sky-400 border-sky-900/50 hover:bg-sky-900/40 font-bold">Ajustar</Button></div></div>
+                        
+                        {/* SALDO ACABADO */}
+                        <div className="flex items-center gap-2"><Button variant="info" onClick={() => { const csv = "Codigo;Qtd\n00652B;500"; const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'}); const l = document.createElement("a"); l.href = URL.createObjectURL(blob); l.download = "modelo_prod.csv"; l.click(); }} className="w-9 h-9 p-0"><FileInput size={16}/></Button><div className="relative flex-1"><input type="file" accept=".csv" className="hidden" ref={importFinishedStockRef} onChange={handleImportFinishedStock} /><Button variant="warning" onClick={() => importFinishedStockRef.current.click()} className="text-xs w-full h-9 bg-purple-900/20 text-purple-400 border-purple-900/50 hover:bg-purple-900/40"><Upload size={14}/> Saldo Acabado</Button></div></div>
 
-<div className="mt-6 p-4 bg-red-900/20 border border-red-500/50 rounded-xl">
-  <h4 className="text-red-400 font-bold text-sm uppercase mb-2 flex items-center gap-2">
-    ⚠️ Área de Perigo: Migração Inicial
-  </h4>
-  <p className="text-xs text-gray-400 mb-4">
-    Use isto apenas UMA VEZ para subir seu arquivo .json local para o servidor do Firebase.
-  </p>
-  
-  <div className="relative">
-    <input 
-      type="file" 
-      accept=".json" 
-      className="hidden" 
-      id="upload-json-db"
-      onChange={handleUploadJSONToFirebase} 
-    />
-    <label 
-      htmlFor="upload-json-db" 
-      className="w-full h-10 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg flex items-center justify-center cursor-pointer transition-colors shadow-lg"
-    >
-      <Upload size={18} className="mr-2"/> Selecionar JSON e Enviar para Nuvem
-    </label>
-  </div>
-</div>
+                        {/* SALDO B2 */}
+                        <div className="flex items-center gap-2"><Button variant="info" onClick={() => handleDownloadTemplate('b2')} className="w-9 h-9 p-0"><FileJson size={16}/></Button><div className="relative flex-1"><input type="file" accept=".csv" className="hidden" ref={importChildStockRef} onChange={(e) => handleImportBackup(e, setChildCoils, 'Estoque B2')} /><Button variant="secondary" onClick={() => importChildStockRef.current.click()} className="text-xs w-full h-9 bg-indigo-900/20 text-indigo-400 border-indigo-900/50 hover:bg-indigo-900/40"><Upload size={14}/> Saldo B2</Button></div></div>
+                    </div>
                 </div>
               </div>
             </Card>
@@ -3940,82 +3605,6 @@ const handleFullRestore = (e) => {
     }
   };
   // --- RETURN FINAL ---
-
-  // --- FUNÇÃO ESPECIAL: CARGA INICIAL (JSON -> FIREBASE) ---
-  const handleUploadJSONToFirebase = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    if (!window.confirm("ATENÇÃO: Isso vai enviar todos os dados do JSON para o banco de dados oficial na nuvem.\n\nTem certeza que quer continuar?")) {
-       return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const rawData = JSON.parse(event.target.result);
-        console.log("Iniciando migração...", rawData);
-
-        // Lista das coleções que existem no seu JSON e no Banco
-        const collectionsMap = [
-          { jsonKey: 'motherCoils', dbName: 'motherCoils' },
-          { jsonKey: 'childCoils', dbName: 'childCoils' },
-          { jsonKey: 'productionLogs', dbName: 'productionLogs' },
-          { jsonKey: 'shippingLogs', dbName: 'shippingLogs' },
-          { jsonKey: 'cuttingLogs', dbName: 'cuttingLogs' },
-          { jsonKey: 'productCatalog', dbName: 'productCatalog' }, // Se quiser salvar o catálogo também
-          { jsonKey: 'motherCatalog', dbName: 'motherCatalog' },
-        ];
-
-        let totalSaved = 0;
-        let batch = writeBatch(db);
-        let operationCounter = 0;
-
-        for (const map of collectionsMap) {
-          const items = rawData[map.jsonKey];
-          
-          if (Array.isArray(items) && items.length > 0) {
-            console.log(`Processando ${map.dbName}: ${items.length} itens...`);
-            
-            for (const item of items) {
-              if (!item.id && !item.code) continue; // Pula se não tiver identificador
-
-              // Garante que temos um ID (usa o do JSON ou gera um se não tiver)
-              const docId = String(item.id || item.code); 
-              
-              // Prepara a referência: db, nome_coleção, ID_específico
-              const docRef = doc(db, map.dbName, docId);
-              
-              // Adiciona ao lote de gravação
-              batch.set(docRef, item);
-              operationCounter++;
-              totalSaved++;
-
-              // O Firebase aceita lotes de no máximo 500 operações
-              if (operationCounter >= 450) {
-                await batch.commit(); // Salva o pacote atual
-                batch = writeBatch(db); // Cria um novo pacote
-                operationCounter = 0;
-                console.log("Lote intermediário salvo...");
-              }
-            }
-          }
-        }
-
-        // Salva o que sobrou no último lote
-        if (operationCounter > 0) {
-          await batch.commit();
-        }
-
-        alert(`Sucesso! ${totalSaved} registros foram enviados para a nuvem.`);
-        
-      } catch (err) {
-        console.error("Erro na migração:", err);
-        alert("Erro ao migrar: " + err.message);
-      }
-    };
-    reader.readAsText(file);
-  };
   return (
     <div className="flex h-screen bg-[#0f172a] font-sans text-gray-100 overflow-hidden">
       
@@ -4163,24 +3752,29 @@ const handleFullRestore = (e) => {
         />
       )}
       {showHistoryModal && selectedGroupData && (
-      <ProductHistoryModal
-        product={selectedGroupData}
-        logs={
-          selectedGroupData.context === 'CORTE'
-            ? cuttingLogs          // 🔹 quando veio de CORTE, usa os cortes
-            : productionLogs       // 🔹 padrão = produção
-        }
-        onClose={() => setShowHistoryModal(false)}
-        onReprint={handleReprint}
-      />
-    )}
-
+        <ProductHistoryModal 
+          product={selectedGroupData} 
+          logs={productionLogs} 
+          onClose={() => setShowHistoryModal(false)}
+          onReprint={handleReprintProduct}
+        />
+      )}
     </div>    
   );
 };
 // ==========================================================
 // COLE ISTO NO FINAL ABSOLUTO DO ARQUIVO (FORA DA FUNÇÃO APP)
 // ==========================================================
+
+// --- FUNÇÕES AUXILIARES (FICA NO FINAL DO ARQUIVO, FORA DO APP) ---
+
+// ==================================================================
+// COLE ISTO NO FINAL ABSOLUTO DO ARQUIVO (FORA DA FUNÇÃO APP)
+// ==================================================================
+
+// ==================================================================
+// COLE ISTO NO FINAL ABSOLUTO DO ARQUIVO (FORA DA FUNÇÃO APP)
+// ==================================================================
 
 const detectDelimiter = (text) => {
   const firstLine = text.split('\n')[0];
