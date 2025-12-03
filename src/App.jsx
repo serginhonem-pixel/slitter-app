@@ -948,17 +948,17 @@ export default function App() {
   //   localStorage.setItem('cuttingLogs', JSON.stringify(cuttingLogs));
   // }, [motherCoils, childCoils, productionLogs, shippingLogs, productCatalog, motherCatalog]);
 
-  // useEffect(() => {
-  //   if (newMotherCoil.code && motherCatalog.length > 0) {
-  //     const found = motherCatalog.find(m => m.code.toString() === newMotherCoil.code.toString());
-  //     if (found) {
-  //       setNewMotherCoil(prev => ({ ...prev, material: found.description, thickness: found.thickness || prev.thickness, type: found.type || prev.type }));
-  //     }
-  //   }
-  // }, [newMotherCoil.code, motherCatalog]);
+  useEffect(() => {
+    if (newMotherCoil.code && motherCatalog.length > 0) {
+      const found = motherCatalog.find(m => m.code.toString() === newMotherCoil.code.toString());
+      if (found) {
+        setNewMotherCoil(prev => ({ ...prev, material: found.description, thickness: found.thickness || prev.thickness, type: found.type || prev.type }));
+      }
+    }
+  }, [newMotherCoil.code, motherCatalog]);
 
     // CARREGAR DADOS (Firebase com fallback no localStorage)
-  
+    
   
   
   
