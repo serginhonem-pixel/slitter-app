@@ -3905,31 +3905,34 @@ const handleFullRestore = (e) => {
                 <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-amber-500/50 transition-colors">
                     <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Importar Backup</h4>
                     {/* ... dentro da área de Backup e Restauração ... */}
-
-<div className="mt-6 p-4 bg-red-900/20 border border-red-500/50 rounded-xl">
-  <h4 className="text-red-400 font-bold text-sm uppercase mb-2 flex items-center gap-2">
-    ⚠️ Área de Perigo: Migração Inicial
-  </h4>
-  <p className="text-xs text-gray-400 mb-4">
-    Use isto apenas UMA VEZ para subir seu arquivo .json local para o servidor do Firebase.
-  </p>
-  
-  <div className="relative">
-    <input 
-      type="file" 
-      accept=".json" 
-      className="hidden" 
-      id="upload-json-db"
-      onChange={handleUploadJSONToFirebase} 
-    />
-    <label 
-      htmlFor="upload-json-db" 
-      className="w-full h-10 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg flex items-center justify-center cursor-pointer transition-colors shadow-lg"
-    >
-      <Upload size={18} className="mr-2"/> Selecionar JSON e Enviar para Nuvem
-    </label>
+{/* --- ÁREA DE PERIGO (ESCONDIDA) --- */}
+{/* --- ÁREA DE PERIGO (ESCONDIDA) --- */}
+{false && (
+  <div className="mt-6 p-4 bg-red-900/20 border border-red-500/50 rounded-xl">
+    <h4 className="text-red-400 font-bold text-sm uppercase mb-2 flex items-center gap-2">
+      ⚠️ Área de Perigo: Migração Inicial
+    </h4>
+    <p className="text-xs text-gray-400 mb-4">
+      Use isto apenas UMA VEZ para subir seu arquivo .json local para o servidor do Firebase.
+    </p>
+    
+    <div className="relative">
+      <input 
+        type="file" 
+        accept=".json" 
+        className="hidden" 
+        id="upload-json-db"
+        onChange={handleUploadJSONToFirebase} 
+      />
+      <label 
+        htmlFor="upload-json-db" 
+        className="w-full h-10 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg flex items-center justify-center cursor-pointer transition-colors shadow-lg"
+      >
+        <Upload size={18} className="mr-2"/> Selecionar JSON e Enviar para Nuvem
+      </label>
+    </div>
   </div>
-</div>
+)}
                 </div>
               </div>
             </Card>
