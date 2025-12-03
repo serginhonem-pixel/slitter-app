@@ -4078,14 +4078,14 @@ const handleFullRestore = (e) => {
       <div className="flex-1 flex flex-col overflow-hidden relative bg-[#111827]">
          
          {/* 👇👇👇 AQUI ENTRA A BARRA DE STATUS 👇👇👇 */}
-         <div className={`w-full py-1 px-4 text-center text-xs font-bold uppercase tracking-widest shadow-md z-20 flex justify-between items-center ${
+         {/* <div className={`w-full py-1 px-4 text-center text-xs font-bold uppercase tracking-widest shadow-md z-20 flex justify-between items-center ${
             currentFileName.includes('Salvo') ? 'bg-emerald-600 text-white' : 
             currentFileName.includes('Carregado') ? 'bg-blue-600 text-white' : 'bg-amber-600 text-black'
          }`}>
             <span>STATUS DA BASE DE DADOS:</span>
             <span className="font-black text-sm">{currentFileName}</span>
             <span>{new Date().toLocaleTimeString()}</span>
-         </div>
+         </div> */}
          {/* 👆👆👆 FIM DA BARRA 👆👆👆 */}
 
          <header className="h-16 md:h-20 bg-[#1f293b] shadow-lg flex items-center justify-between px-4 md:px-8 z-10 border-b border-gray-800 shrink-0">
