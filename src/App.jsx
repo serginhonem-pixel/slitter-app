@@ -52,6 +52,8 @@ import {
   Upload,
   User,
   X,
+  Calendar, 
+  TrendingUp,
   AlertTriangle,
 } from 'lucide-react';
 
@@ -681,12 +683,17 @@ export default function App() {
       type: '',
       entryDate: new Date().toISOString().split('T')[0] 
   });
-  const [mpLeadTime, setMpLeadTime] = useState(15);
+  // Adicione junto com mpManualDaily, mpSimulatedPrice, etc.
+  const [mpIncomingOrders, setMpIncomingOrders] = useState([]); // Lista de pedidos
+  const [hoverData, setHoverData] = useState(null);
+  const [mpOrderQty, setMpOrderQty] = useState(''); // Input Qtd
+  const [mpOrderDate, setMpOrderDate] = useState(''); // Input Data
+  const [mpLeadTime, setMpLeadTime] = useState(30);
   const [reportGroupData, setReportGroupData] = useState(null); // Para abrir o modal agrupado
   const [mpHorizonDays, setMpHorizonDays] = useState(30);       // janela de análise (dias)
   const [mpNeedSearch, setMpNeedSearch] = useState('');         // busca por código / material
   const [selectedMpCode, setSelectedMpCode] = useState(null);   // MP clicada na tabela
-  const [mpScenarioMode, setMpScenarioMode] = useState('historical'); // 'historical' | 'manual' | 'file'
+  const [mpScenarioMode, setMpScenarioMode] = useState('manual'); // 'historical' | 'manual' | 'file'
   const [mpSimulatedPrice, setMpSimulatedPrice] = useState('');
   const [mpManualDaily, setMpManualDaily] = useState('');       // kg/dia digitado
   const [mpManualDays, setMpManualDays] = useState(30);         // horizonte para simulação
@@ -707,9 +714,9 @@ export default function App() {
   const [reportViewMode, setReportViewMode] = useState('GLOBAL'); // 'GLOBAL' ou 'MP_KARDEX'
   const [viewingMpDetails, setViewingMpDetails] = useState(null); // Armazena o código que está sendo visto
   // Adicione junto com os outros estados (logo abaixo de mpManualDaily, por exemplo)
-  const [mpManualInputType, setMpManualInputType] = useState('daily'); // 'daily' ou 'total'
+  const [mpManualInputType, setMpManualInputType] = useState('total'); // 'daily' ou 'total'
   const [mpManualTotal, setMpManualTotal] = useState(''); // Para guardar o valor total
-  const [mpTargetDays, setMpTargetDays] = useState(45); // Meta de cobertura (ex: quero cobrir 45 dias)
+  const [mpTargetDays, setMpTargetDays] = useState(90); // Meta de cobertura (ex: quero cobrir 45 dias)
   const [shipProduct, setShipProduct] = useState('');
   const [shipQty, setShipQty] = useState('');
   const [shipDest, setShipDest] = useState('COMETA');
@@ -4086,7 +4093,7 @@ const handleFullRestore = (e) => {
                                 contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }}
                                 formatter={(value, name) => {
                                     const v = Number(value) || 0;
-                                    return [`${v.toLocaleString('pt-BR')} kg`, name === 'entrada' ? 'Entrada' : 'Consumo'];
+                                    return [`${v.toLocaleString('pt-BR')} kg`, name === 'entrada' ? 'Entrada' : 'Entrada'];
                                 }}
                             />
                             <Legend verticalAlign="top" height={36} />
@@ -4096,7 +4103,7 @@ const handleFullRestore = (e) => {
                                 name="Entrada (kg)"
                                 stroke="#3b82f6"
                                 fillOpacity={1}
-                                fill="url(#colorEntrada)"
+                                fill="url(#colorEntrada)" 
                             />
                             <Area
                                 type="monotone"
@@ -4664,16 +4671,40 @@ const renderB2DynamicReport = () => {
 
 //RENDER LEANDRO TESTEEEEE
 
-
 const renderRawMaterialRequirement = () => {
-  // --- 0. PREPARAÇÃO SEGURA ---
+  // --- 1. FORMATADORES (DEFINIDOS PRIMEIRO PARA EVITAR ERRO) ---
+  const formatKg = (v) => v?.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) || '0';
+  const formatMoney = (v) => v?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) || 'R$ 0,00';
+  const formatDate = (d) => d ? new Date(d).toLocaleDateString('pt-BR') : '-';
+  const formatDays = (d) => !isFinite(d) ? '∞' : d.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+
+  // --- 2. VARIÁVEIS DE EXIBIÇÃO (INICIALIZADAS) ---
+  // Isso evita que o código quebre se nada estiver selecionado
+  let scenarioDaily = 0;
+  let idealStock = 0;
+  let purchaseNeed = 0;
+  let investment = 0;
+  let stockValue = 0;
+  let ruptureDateStr = 'Sem risco';
+  let deadlineDateStr = '-';
+  let isLeadTimeCritical = false;
+  let dailyStatement = [];
+  let activeOrders = [];
+  // Variáveis do Gráfico
+  let graphPoints = '';
+  let graphArea = '';
+  let graphZeroY = 0;
+  let graphZeroPercent = 0;
+  let graphH = 220; 
+  let graphW = 1000;
+  let graphPointsData = []; // Dados para o tooltip
+
+  // --- 3. DADOS E HELPER ---
   const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
   const safeChild = Array.isArray(childCoils) ? childCoils : [];
-  const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
   const safeCatalog = Array.isArray(productCatalog) ? productCatalog : [];
   const safeMotherCatalog = Array.isArray(INITIAL_MOTHER_CATALOG) ? INITIAL_MOTHER_CATALOG : [];
 
-  // --- HELPER: Descobrir Tipo e Espessura ---
   const getMaterialMetadata = (rawMotherCode, rawB2Code) => {
     const cleanMother = rawMotherCode ? String(rawMotherCode).trim().toUpperCase() : null;
     const cleanB2 = rawB2Code ? String(rawB2Code).trim().toUpperCase() : null;
@@ -4695,32 +4726,17 @@ const renderRawMaterialRequirement = () => {
         }
       }
     }
-    if ((!type || !thickness) && cleanMother) {
-       const matchAny = safeCatalog.find(p => String(p.motherCode).trim().toUpperCase() === cleanMother);
-       if (matchAny) { if (!type) type = matchAny.type; if (!thickness) thickness = matchAny.thickness; }
-    }
     return { type: type ? String(type).toUpperCase() : 'OUTROS', thickness: thickness ? String(thickness).replace('.', ',') : '0' };
   };
 
-  // --- 1. JANELA E CÁLCULOS BASE ---
-  const horizon = Number(mpHorizonDays) || 30;
-  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - horizon);
-  const parseDate = (d) => {
-    if (!d) return null;
-    if (d.includes('/')) { const [dd, mm, yy] = d.split('/'); return new Date(`${yy}-${mm}-${dd}`); }
-    if (d.includes('-')) return new Date(d);
-    return null;
-  };
-
-  // --- 2. AGRUPAMENTO (Com captura de ITENS) ---
+  // --- 4. AGRUPAMENTO ---
   const groupMap = new Map();
   const ensureGroup = (type, thickness) => {
     const key = `${type}|${thickness}`;
     if (!groupMap.has(key)) {
       groupMap.set(key, { 
           groupId: key, type, thickness, codesIncluded: new Set(), 
-          motherStockWeight: 0, b2StockWeight: 0, windowConsumptionWeight: 0,
-          items: [] 
+          motherStockWeight: 0, b2StockWeight: 0, items: [] 
       });
     }
     return groupMap.get(key);
@@ -4733,418 +4749,347 @@ const renderRawMaterialRequirement = () => {
     entry.codesIncluded.add(m.code);
     const w = Number(m.weight) || 0;
     entry.motherStockWeight += w;
-    entry.items.push({ origin: 'Mãe', code: m.code, width: Number(m.width) || 0, weight: w });
+    entry.items.push({ origin: 'Mãe', code: m.code, width: Number(m.width)||0, weight: w });
   });
 
   safeChild.forEach(b2 => {
+    if (b2.status !== 'stock') return;
     let mCode = b2.motherCode;
     if (!mCode) {
-        const cat = safeCatalog.find(p => String(p.b2Code) === String(b2.b2Code) || String(p.code) === String(b2.code));
+        const cat = safeCatalog.find(p => String(p.b2Code) === String(b2.b2Code));
         if (cat) mCode = cat.motherCode;
     }
     const { type, thickness } = getMaterialMetadata(mCode, b2.b2Code);
     const entry = ensureGroup(type, thickness);
     if (mCode) entry.codesIncluded.add(mCode);
     const w = Number(b2.weight) || 0;
-    if (b2.status === 'stock') {
-        entry.b2StockWeight += w;
-        entry.items.push({ origin: 'B2', code: b2.code || b2.b2Code, width: Number(b2.width) || 0, weight: w });
-    } else {
-      const prodLog = safeProd.find(l => l.childIds?.includes(b2.id));
-      const d = parseDate(prodLog ? prodLog.date : b2.consumptionDate);
-      if (d && d >= cutoff) entry.windowConsumptionWeight += w;
-    }
+    entry.b2StockWeight += w;
+    entry.items.push({ origin: 'B2', code: b2.b2Code||b2.code, width: Number(b2.width)||0, weight: w });
   });
 
-  // --- 3. PROJEÇÃO LISTA ---
-  const groupList = Array.from(groupMap.values()).map(g => {
-    const available = g.motherStockWeight + g.b2StockWeight;
-    const dailyAvg = horizon > 0 ? g.windowConsumptionWeight / horizon : 0;
-    const projectedNeed = dailyAvg * horizon;
-    const shortage = Math.max(0, projectedNeed - available);
-    const coverageDays = dailyAvg > 0 ? available / dailyAvg : Infinity;
-    return { ...g, available, dailyAvg, projectedNeed, coverageDays, shortage, uniqueCodesCount: g.codesIncluded.size };
-  });
+  const groupList = Array.from(groupMap.values()).map(g => ({
+      ...g,
+      available: g.motherStockWeight + g.b2StockWeight,
+      uniqueCodesCount: g.codesIncluded.size
+  }));
 
-  // --- 4. FILTROS ---
-  const thicknessOptions = Array.from(new Set(groupList.map(g => g.thickness).filter(t => t !== '0'))).sort((a,b) => parseFloat(a.replace(',','.')) - parseFloat(b.replace(',','.')));
-  const typeOptions = Array.from(new Set(groupList.map(g => g.type).filter(t => t !== 'OUTROS'))).sort();
+  // Filtros
   const search = mpNeedSearch.toLowerCase();
   const filteredGroups = groupList.filter(g => {
     if (mpFilterThickness !== 'all' && g.thickness !== mpFilterThickness) return false;
     if (mpFilterType !== 'all' && g.type !== mpFilterType) return false;
     if (search && (!g.type.toLowerCase().includes(search) && !g.thickness.includes(search))) return false;
     return true;
-  }).sort((a,b) => b.shortage - a.shortage);
+  }).sort((a,b) => b.available - a.available);
 
-  const totalAvailable = filteredGroups.reduce((acc, m) => acc + m.available, 0);
-  const totalShortage = filteredGroups.reduce((acc, m) => acc + m.shortage, 0);
-
-  // --- FORMATADORES ---
-  const formatKg = (v) => v?.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) || '0';
-  const formatDays = (d) => !isFinite(d) ? '∞' : d.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
-  const formatMoney = (v) => v?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) || 'R$ 0,00';
-
-  // --- 5. LÓGICA DE SIMULAÇÃO (Com Lead Time) ---
+  // --- 5. LÓGICA DE SIMULAÇÃO (Se grupo selecionado) ---
   const selectedGroup = filteredGroups.find(g => g.groupId === selectedMpCode);
-  let scenarioDaily = 0;
+  
   if (selectedGroup) {
-      if (mpScenarioMode === 'historical') scenarioDaily = selectedGroup.dailyAvg;
-      else if (mpScenarioMode === 'file' && mpFileDaily != null) scenarioDaily = mpFileDaily;
-      else if (mpScenarioMode === 'manual') {
+      // 5.1 Taxa Diária
+      if (mpScenarioMode === 'manual') {
           if (mpManualInputType === 'total') {
-              const period = Number(mpManualDays) || 1; 
-              scenarioDaily = (Number(mpManualTotal) || 0) / period;
+              const total = Number(mpManualTotal) || 0;
+              const days = Number(mpManualDays) || 1;
+              scenarioDaily = total / days;
           } else {
               scenarioDaily = Number(mpManualDaily) || 0;
           }
+      } else if (mpScenarioMode === 'file' && mpFileDaily) {
+          scenarioDaily = mpFileDaily;
       }
+
+      // 5.2 Parâmetros
+      const price = Number(mpSimulatedPrice) || 0;
+      const targetDays = Number(mpTargetDays) || 90;
+      const leadTime = Number(mpLeadTime) || 30;
+      
+      activeOrders = mpIncomingOrders.filter(o => o.groupId === selectedMpCode);
+      const totalIncoming = activeOrders.reduce((acc,o) => acc + o.qty, 0);
+      
+      // 5.3 Metas Financeiras
+      idealStock = scenarioDaily * targetDays;
+      purchaseNeed = Math.max(0, idealStock - (selectedGroup.available + totalIncoming));
+      investment = purchaseNeed * price;
+      stockValue = selectedGroup.available * price;
+
+      // 5.4 Datas Críticas
+      const today = new Date();
+      if (isFinite(scenarioDaily) && scenarioDaily > 0) {
+          const daysCovered = (selectedGroup.available + totalIncoming) / scenarioDaily;
+          const rDate = new Date(); rDate.setDate(today.getDate() + Math.ceil(daysCovered));
+          ruptureDateStr = rDate.toLocaleDateString('pt-BR');
+          
+          // Data Limite = Ruptura - Lead Time
+          const deadline = new Date(rDate);
+          deadline.setDate(deadline.getDate() - leadTime);
+          deadlineDateStr = deadline.toLocaleDateString('pt-BR');
+          
+          // Verifica se já passou da data limite
+          const daysToDeadline = (deadline - today) / (1000 * 60 * 60 * 24);
+          if (daysToDeadline < 0) isLeadTimeCritical = true;
+      }
+
+      // 5.5 Motor do Gráfico (Evolução Dia a Dia)
+      const simulationHorizon = targetDays + 15; // Até a meta + margem
+      let currentBalance = selectedGroup.available;
+      let firstStockoutDate = null;
+      let maxStock = currentBalance || 1000;
+      let minStock = currentBalance || 0;
+
+      for (let i = 0; i <= simulationHorizon; i++) {
+          const simDate = new Date();
+          simDate.setDate(today.getDate() + i);
+          
+          const inflows = activeOrders.filter(o => {
+              const d = new Date(o.date);
+              return d.getDate() === simDate.getDate() && d.getMonth() === simDate.getMonth();
+          });
+          const inflowQty = inflows.reduce((acc, o) => acc + o.qty, 0);
+
+          currentBalance += inflowQty;
+          if (i > 0) currentBalance -= scenarioDaily;
+
+          if (currentBalance < 0 && !firstStockoutDate) firstStockoutDate = new Date(simDate);
+          if (currentBalance > maxStock) maxStock = currentBalance;
+          if (currentBalance < minStock) minStock = currentBalance;
+
+          dailyStatement.push({ dayIndex: i, date: simDate, balance: currentBalance, inflow: inflowQty });
+      }
+
+      // 5.6 Cálculos SVG
+      const range = (maxStock - minStock) || 1;
+      const padding = range * 0.1;
+      const gMax = maxStock + padding;
+      const gMin = minStock - padding;
+      const gRange = gMax - gMin;
+
+      const getX = (i) => (i / (dailyStatement.length - 1 || 1)) * graphW;
+      const getY = (val) => {
+          const y = graphH - ((val - gMin) / gRange) * graphH;
+          return isNaN(y) ? graphH : y;
+      };
+
+      graphPoints = dailyStatement.map((d, i) => `${getX(i)},${getY(d.balance)}`).join(' ');
+      graphArea = `${graphPoints} L ${graphW},${graphH} L 0,${graphH} Z`;
+      graphZeroY = getY(0);
+      
+      if (gMin >= 0) graphZeroPercent = 1; 
+      else if (gMax <= 0) graphZeroPercent = 0; 
+      else graphZeroPercent = (gMax / gRange);
+      
+      // Dados para renderizar o tooltip e marcadores
+      graphPointsData = dailyStatement.map((d, i) => ({
+          x: getX(i),
+          y: getY(d.balance),
+          ...d
+      }));
   }
 
-  // Definições de Meta e Prazos
-  const targetDays = Number(mpTargetDays) || 30;
-  const leadTime = Number(mpLeadTime) || 0;
-  
-  const idealStock = scenarioDaily * targetDays; // Meta
-  const currentAvailable = selectedGroup ? selectedGroup.available : 0;
-  
-  // Necessidade = Meta - Estoque
-  const scenarioNeed = Math.max(0, idealStock - currentAvailable);
-  const scenarioCoverage = scenarioDaily > 0 ? currentAvailable / scenarioDaily : Infinity;
-  
-  // Lógica de Lead Time (Risco de Parada)
-  const isLeadTimeCritical = isFinite(scenarioCoverage) && scenarioCoverage < leadTime;
-  const daysUntilStockout = scenarioCoverage;
-  const daysLate = leadTime - scenarioCoverage;
+  // Handlers
+  const handleAddOrder = () => {
+      if (!selectedMpCode || !mpOrderQty || !mpOrderDate) return;
+      setMpIncomingOrders([...mpIncomingOrders, { id: Date.now(), groupId: selectedMpCode, date: mpOrderDate, qty: Number(mpOrderQty) }]);
+      setMpOrderQty(''); setMpOrderDate('');
+  };
 
-  const simulatedPrice = Number(mpSimulatedPrice) || 0;
-  const estimatedCost = scenarioNeed * simulatedPrice;
-  const currentStockValue = currentAvailable * simulatedPrice;
-  
-  let ruptureDateStr = '-';
-  if (isFinite(scenarioCoverage) && scenarioCoverage > 0) {
-      const today = new Date(); today.setDate(today.getDate() + Math.ceil(scenarioCoverage));
-      ruptureDateStr = today.toLocaleDateString('pt-BR');
-  }
-
-  // --- FUNÇÃO DE EXPORTAR PDF ---
   const exportSimulationPDF = () => {
     if (!selectedGroup) return;
-    // Importação dinâmica ou assumindo global 'jspdf'
     import('jspdf').then(({ jsPDF }) => {
         import('jspdf-autotable').then(({ default: autoTable }) => {
             const doc = new jsPDF();
-            const today = new Date().toLocaleDateString('pt-BR');
-
-            // Header
-            doc.setFillColor(41, 128, 185); // Azul
-            doc.rect(0, 0, 210, 20, 'F');
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(16);
-            doc.text("RELATÓRIO DE SOLICITAÇÃO DE COMPRA", 14, 13);
+            doc.setFillColor(41, 128, 185); doc.rect(0, 0, 210, 25, 'F');
+            doc.setTextColor(255, 255, 255); doc.setFontSize(16); doc.text("MRP - PLANEJAMENTO DE COMPRAS", 14, 16);
             
-            // Info Básica
-            doc.setTextColor(0, 0, 0);
-            doc.setFontSize(10);
-            doc.text(`Data Emissão: ${today}`, 14, 30);
-            doc.text(`Responsável: Controle de Produção`, 14, 35);
-
-            // Resumo do Material
-            doc.setFontSize(12);
-            doc.setFont(undefined, 'bold');
-            doc.text("1. MATERIAL SOLICITADO", 14, 45);
-            
-            const matData = [
-                ["Grupo / Tipo", selectedGroup.type],
-                ["Espessura", `${selectedGroup.thickness} mm`],
-                ["Quantidade Necessária", `${formatKg(scenarioNeed)} kg`],
-                ["Valor Estimado (Unit.)", formatMoney(simulatedPrice)],
-                ["Investimento Total", formatMoney(estimatedCost)]
+            doc.setTextColor(0,0,0); doc.setFontSize(11); doc.text("1. CENÁRIO", 14, 40);
+            const summary = [
+                ["Item", `${selectedGroup.type} ${selectedGroup.thickness}mm`],
+                ["Estoque Atual", `${formatKg(selectedGroup.available)} kg`],
+                ["Consumo Diário", `${formatKg(scenarioDaily)} kg/dia`],
+                ["Data Esgotamento", ruptureDateStr],
+                ["Falta Comprar", `${formatKg(purchaseNeed)} kg`],
+                ["Investimento", formatMoney(investment)]
             ];
-            
-            autoTable(doc, {
-                startY: 50,
-                head: [['Item', 'Detalhe']],
-                body: matData,
-                theme: 'striped',
-                headStyles: { fillColor: [52, 73, 94] }
-            });
-
-            // Justificativa e Cenário
-            doc.text("2. JUSTIFICATIVA E CENÁRIO", 14, doc.lastAutoTable.finalY + 10);
-            const cenarioData = [
-                ["Estoque Atual", `${formatKg(currentAvailable)} kg`],
-                ["Ritmo de Consumo", `${formatKg(scenarioDaily)} kg/dia`],
-                ["Cobertura Atual", `${formatDays(scenarioCoverage)} dias`],
-                ["Meta de Cobertura", `${targetDays} dias`],
-                ["Prazo Fornecedor (Lead Time)", `${leadTime} dias`],
-                ["Status do Pedido", isLeadTimeCritical ? `CRÍTICO (Atrasado ${formatDays(daysLate)} dias)` : "OK (Dentro do prazo)"]
-            ];
-
-            autoTable(doc, {
-                startY: doc.lastAutoTable.finalY + 15,
-                head: [['Parâmetro', 'Valor']],
-                body: cenarioData,
-                theme: 'grid',
-                headStyles: { fillColor: isLeadTimeCritical ? [192, 57, 43] : [39, 174, 96] }
-            });
-
-            // Observações
-            doc.setFontSize(10);
-            doc.setFont(undefined, 'normal');
-            doc.text("Observações:", 14, doc.lastAutoTable.finalY + 10);
-            doc.rect(14, doc.lastAutoTable.finalY + 12, 180, 20);
-
-            doc.save(`Solicitacao_Compra_${selectedGroup.type}_${selectedGroup.thickness}.pdf`);
+            autoTable(doc, { startY: 45, body: summary, theme: 'grid' });
+            doc.save(`MRP_${selectedGroup.type}.pdf`);
         });
-    }).catch(err => alert("Erro ao gerar PDF. Verifique se jsPDF está instalado."));
-  };
-
-  // Upload
-  const handleMpFileUpload = (e) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const lines = String(ev.target?.result || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      if (lines.length < 2) return;
-      let total = 0; const daySet = new Set();
-      lines.slice(1).forEach(l => {
-        const p = l.split(/[;,]/); if (p.length>=2) { const v = parseFloat(p[1].replace(',','.')); if(!isNaN(v)){ total+=v; daySet.add(p[0]); }}
-      });
-      setMpFileDaily(total / (daySet.size||1)); setMpScenarioMode('file');
-    };
-    reader.readAsText(file, 'utf-8');
+    });
   };
 
   return (
     <div className="space-y-6 pb-20 animate-fade-in">
-      {/* HEADER E FILTROS */}
-      <div className="flex flex-col md:flex-row md:items-end gap-4 bg-gray-800 p-4 rounded-xl border border-gray-700">
-        <div className="flex-1">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2"><Factory className="text-indigo-400" size={22}/> Simulação de Compras</h2>
-          <p className="text-sm text-gray-400">Simule compras considerando consumo, meta de estoque e lead time.</p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-            <input type="text" placeholder="Buscar..." value={mpNeedSearch} onChange={e=>setMpNeedSearch(e.target.value)} className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white w-40 outline-none focus:border-indigo-500"/>
-            <select value={mpHorizonDays} onChange={e=>setMpHorizonDays(Number(e.target.value))} className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white outline-none"><option value={30}>Ref: 30 dias</option><option value={60}>Ref: 60 dias</option><option value={90}>Ref: 90 dias</option></select>
-            <select value={mpFilterThickness} onChange={e=>setMpFilterThickness(e.target.value)} className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white outline-none"><option value="all">Espessura</option>{thicknessOptions.map(t=><option key={t} value={t}>{t}</option>)}</select>
-            <select value={mpFilterType} onChange={e=>setMpFilterType(e.target.value)} className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white outline-none"><option value="all">Tipo</option>{typeOptions.map(t=><option key={t} value={t}>{t}</option>)}</select>
-        </div>
+      <div className="flex gap-4 bg-gray-800 p-4 rounded-xl border border-gray-700 items-end">
+        <div className="flex-1"><h2 className="text-xl font-bold text-white flex gap-2"><TrendingUp className="text-indigo-400"/> MRP & Planejamento</h2></div>
+        <input type="text" placeholder="Buscar..." value={mpNeedSearch} onChange={e=>setMpNeedSearch(e.target.value)} className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white w-40"/>
+        <select value={mpFilterThickness} onChange={e=>setMpFilterThickness(e.target.value)} className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="all">Espessura</option>{[...new Set(groupList.map(g=>g.thickness))].sort().map(t=><option key={t}>{t}</option>)}</select>
+        <select value={mpFilterType} onChange={e=>setMpFilterType(e.target.value)} className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="all">Tipo</option>{[...new Set(groupList.map(g=>g.type))].sort().map(t=><option key={t}>{t}</option>)}</select>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-emerald-900/20 border-emerald-500/30 py-3 px-4">
-          <span className="text-xs text-emerald-400 font-bold uppercase">Estoque Agrupado</span>
-          <div className="text-2xl font-bold text-white">{formatKg(totalAvailable)} <span className="text-sm font-normal text-gray-400">kg</span></div>
-        </Card>
-        <Card className="bg-amber-900/20 border-amber-500/40 py-3 px-4">
-          <span className="text-xs text-amber-400 font-bold uppercase">Necessidade Total (Ref. Padrão)</span>
-          <div className="text-2xl font-bold text-amber-200">{formatKg(totalShortage)} <span className="text-sm font-normal text-gray-400">kg</span></div>
-        </Card>
-        <Card className="bg-gray-800/60 border-gray-600/40 py-3 px-4">
-            <span className="text-xs text-gray-300 font-bold uppercase">Grupos Críticos</span>
-            <div className="text-2xl font-bold text-white">{filteredGroups.filter(m => m.shortage > 0).length} <span className="text-sm font-normal text-gray-400">grupos</span></div>
-        </Card>
-      </div>
-
-      {/* SIMULAÇÃO DE COMPRA */}
-      <Card className="bg-gray-900/80 border border-gray-700/60 p-4 flex flex-col gap-4">
-        {!selectedGroup ? (
-          <div className="text-sm text-gray-400 text-center py-6">Selecione um grupo na tabela abaixo para ver os detalhes e simular.</div>
-        ) : (
-          <>
+      {selectedGroup && (
+        <Card className={`bg-gray-900 border p-6 space-y-6 ${isLeadTimeCritical ? 'border-rose-500 shadow-lg shadow-rose-900/20' : 'border-gray-700'}`}>
             <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center gap-3">
-                  <div className="text-3xl font-bold text-white">{selectedGroup.type}</div>
-                  <div className="px-3 py-1 bg-gray-800 rounded border border-gray-600 text-emerald-400 font-bold font-mono">{selectedGroup.thickness} mm</div>
-                </div>
-                <div className="text-xs text-gray-500 mt-1">Agrupa {selectedGroup.uniqueCodesCount} códigos de MP</div>
-              </div>
-              <div className="flex flex-col items-end gap-2">
                 <div>
-                    <div className="text-xs uppercase text-gray-400 text-right">Estoque Atual</div>
-                    <div className="text-2xl font-bold text-emerald-400 text-right">{formatKg(currentAvailable)} <span className="text-xs text-gray-500">kg</span></div>
+                    <h1 className="text-4xl font-bold text-white mb-1">{selectedGroup.type} <span className="text-emerald-400 text-2xl">{selectedGroup.thickness} mm</span></h1>
+                    <div className="text-gray-400 text-sm">Agrupa {selectedGroup.uniqueCodesCount} códigos</div>
                 </div>
-                {/* BOTÃO PDF */}
-                <button onClick={exportSimulationPDF} className="flex items-center gap-2 bg-rose-700 hover:bg-rose-600 text-white px-3 py-1.5 rounded text-xs font-bold transition-colors shadow-lg shadow-rose-900/50">
-                    <FileText size={14}/> PDF DA SIMULAÇÃO
-                </button>
-              </div>
+                <div className="text-right">
+                    <div className="text-xs text-gray-400 uppercase">Estoque Atual</div>
+                    <div className="text-3xl font-bold text-white">{formatKg(selectedGroup.available)} <span className="text-sm font-normal text-gray-500">kg</span></div>
+                    <button onClick={exportSimulationPDF} className="mt-2 bg-rose-600 hover:bg-rose-500 text-white px-4 py-1.5 rounded text-xs font-bold flex items-center gap-2 ml-auto"><FileText size={14}/> PDF</button>
+                </div>
             </div>
-            <hr className="border-gray-700/50"/>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                    <div className="flex gap-2">
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 border-t border-gray-800 pt-6">
+                <div className="lg:col-span-5 space-y-6">
+                    <div className="flex bg-gray-800 border border-gray-700 rounded-lg p-1">
                         {['historical','manual','file'].map(m => (
-                            <button key={m} onClick={()=>setMpScenarioMode(m)} className={`px-3 py-1.5 rounded-full text-xs font-medium border capitalize ${mpScenarioMode===m?'bg-indigo-600 text-white border-indigo-400':'border-gray-600 text-gray-300 hover:bg-gray-800'}`}>{m==='historical'?'Histórico':m==='file'?'Arquivo CSV':'Manual'}</button>
+                            <button key={m} onClick={()=>setMpScenarioMode(m)} className={`flex-1 py-2 text-xs font-bold rounded-md uppercase ${mpScenarioMode===m?'bg-indigo-600 text-white':'text-gray-400 hover:text-white'}`}>{m}</button>
                         ))}
                     </div>
+
                     {mpScenarioMode === 'manual' && (
-                        <div className="bg-gray-800/40 p-3 rounded border border-gray-700/50 space-y-3">
-                            <div className="flex gap-2 text-xs mb-1">
-                                <button onClick={()=>setMpManualInputType('daily')} className={`flex-1 py-1 rounded transition-colors ${mpManualInputType==='daily'?'bg-indigo-500/20 text-indigo-300 border border-indigo-500/50':'text-gray-500 hover:text-gray-300 bg-gray-900'}`}>Por Taxa Diária</button>
-                                <button onClick={()=>setMpManualInputType('total')} className={`flex-1 py-1 rounded transition-colors ${mpManualInputType==='total'?'bg-indigo-500/20 text-indigo-300 border border-indigo-500/50':'text-gray-500 hover:text-gray-300 bg-gray-900'}`}>Por Demanda Total</button>
+                        <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 space-y-4">
+                            <div className="flex border-b border-gray-700 pb-2 mb-2">
+                                <button onClick={()=>setMpManualInputType('daily')} className={`flex-1 text-xs pb-2 ${mpManualInputType==='daily'?'text-indigo-400 border-b-2 border-indigo-400':'text-gray-500'}`}>Por Taxa Diária</button>
+                                <button onClick={()=>setMpManualInputType('total')} className={`flex-1 text-xs pb-2 ${mpManualInputType==='total'?'text-indigo-400 border-b-2 border-indigo-400':'text-gray-500'}`}>Por Demanda Total</button>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                {mpManualInputType === 'daily' ? (
-                                    <div className="col-span-2">
-                                        <label className="text-xs text-gray-400 block mb-1">Consumo (kg/dia)</label>
-                                        <input type="number" value={mpManualDaily} onChange={e=>setMpManualDaily(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white text-sm focus:border-indigo-500 outline-none" placeholder={selectedGroup.dailyAvg.toFixed(0)}/>
-                                    </div>
-                                ) : (
+                            <div className="grid grid-cols-2 gap-4">
+                                {mpManualInputType === 'total' ? (
                                     <>
-                                        <div><label className="text-xs text-gray-400 block mb-1">Demanda Período (kg)</label><input type="number" value={mpManualTotal} onChange={e=>setMpManualTotal(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white text-sm focus:border-indigo-500 outline-none"/></div>
-                                        <div><label className="text-xs text-gray-400 block mb-1">Dias do Período</label><input type="number" value={mpManualDays} onChange={e=>setMpManualDays(Number(e.target.value))} className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white text-sm focus:border-indigo-500 outline-none"/></div>
+                                        <div><label className="text-[10px] text-gray-400 uppercase font-bold block mb-1">Demanda Período</label><input type="number" value={mpManualTotal} onChange={e=>setMpManualTotal(e.target.value)} className="w-full bg-gray-900 border-gray-600 rounded p-2 text-white font-mono"/></div>
+                                        <div><label className="text-[10px] text-gray-400 uppercase font-bold block mb-1">Dias do Período</label><input type="number" value={mpManualDays} onChange={e=>setMpManualDays(Number(e.target.value))} className="w-full bg-gray-900 border-gray-600 rounded p-2 text-white font-mono"/></div>
                                     </>
+                                ) : (
+                                    <div className="col-span-2"><label className="text-[10px] text-gray-400 uppercase font-bold block mb-1">Consumo Diário</label><input type="number" value={mpManualDaily} onChange={e=>setMpManualDaily(e.target.value)} className="w-full bg-gray-900 border-gray-600 rounded p-2 text-white font-mono"/></div>
                                 )}
                             </div>
                         </div>
                     )}
-                    
-                    {/* INPUTS GERAIS: META, LEAD TIME, PREÇO */}
+
+                    <div className="bg-blue-900/10 p-3 rounded border border-blue-500/20">
+                        <label className="text-xs font-bold text-blue-400 uppercase block mb-2">Pedidos em Trânsito</label>
+                        <div className="flex gap-1 mb-2">
+                            <input type="date" value={mpOrderDate} onChange={e=>setMpOrderDate(e.target.value)} className="w-full bg-gray-900 border-gray-600 rounded text-xs text-white p-1"/>
+                            <input type="number" placeholder="Kg" value={mpOrderQty} onChange={e=>setMpOrderQty(e.target.value)} className="w-20 bg-gray-900 border-gray-600 rounded text-xs text-white p-1"/>
+                            <button onClick={handleAddOrder} className="bg-blue-600 text-white rounded px-2 font-bold">+</button>
+                        </div>
+                        <div className="space-y-1 max-h-24 overflow-y-auto custom-scrollbar-dark">
+                            {activeOrders.map(o => (
+                                <div key={o.id} className="flex justify-between bg-gray-900/50 p-1 rounded text-xs border border-gray-700"><span className="text-blue-300">{formatDate(o.date)}</span><span className="font-bold text-white">+{formatKg(o.qty)}</span><button onClick={()=>setMpIncomingOrders(mpIncomingOrders.filter(x=>x.id!==o.id))} className="text-red-400 px-1">x</button></div>
+                            ))}
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-3 gap-2">
-                        <div className="bg-emerald-900/10 p-2 rounded border border-emerald-500/20">
-                            <label className="text-[10px] text-emerald-400 font-bold block mb-1 uppercase">Meta Cobertura (Dias)</label>
-                            <input type="number" value={mpTargetDays} onChange={e=>setMpTargetDays(Number(e.target.value))} className="w-full bg-gray-900 border border-emerald-500/30 rounded p-1.5 text-white text-sm focus:border-emerald-400 outline-none text-center font-bold"/>
-                        </div>
-                        <div className="bg-purple-900/10 p-2 rounded border border-purple-500/20">
-                            <label className="text-[10px] text-purple-300 font-bold block mb-1 uppercase">Prazo Fornecedor (Dias)</label>
-                            <input type="number" value={mpLeadTime} onChange={e=>setMpLeadTime(Number(e.target.value))} className="w-full bg-gray-900 border border-purple-500/30 rounded p-1.5 text-white text-sm focus:border-purple-400 outline-none text-center font-bold"/>
-                        </div>
-                        <div className="bg-gray-800 p-2 rounded border border-gray-600">
-                            <label className="text-[10px] text-gray-400 font-bold block mb-1 uppercase">Preço (R$/kg)</label>
-                            <input type="number" value={mpSimulatedPrice} onChange={e=>setMpSimulatedPrice(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded p-1.5 text-white text-sm focus:border-indigo-500 outline-none text-center"/>
-                        </div>
+                        <div className="bg-emerald-900/10 p-2 rounded border border-emerald-500/20"><label className="text-[9px] text-emerald-400 font-bold block mb-1 uppercase">Meta (Dias)</label><input type="number" value={mpTargetDays} onChange={e=>setMpTargetDays(Number(e.target.value))} className="w-full bg-transparent text-center text-white font-bold outline-none"/></div>
+                        <div className="bg-purple-900/10 p-2 rounded border border-purple-500/20"><label className="text-[9px] text-purple-400 font-bold block mb-1 uppercase">Lead Time</label><input type="number" value={mpLeadTime} onChange={e=>setMpLeadTime(Number(e.target.value))} className="w-full bg-transparent text-center text-white font-bold outline-none"/></div>
+                        <div className="bg-gray-800 p-2 rounded border border-gray-600"><label className="text-[9px] text-gray-400 font-bold block mb-1 uppercase">Preço R$</label><input type="number" value={mpSimulatedPrice} onChange={e=>setMpSimulatedPrice(e.target.value)} className="w-full bg-transparent text-center text-white font-bold outline-none"/></div>
                     </div>
                 </div>
 
-                {/* PAINEL DE RESULTADOS */}
-                <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50 flex flex-col justify-between">
-                    <div>
-                        <div className="flex justify-between items-end mb-4 border-b border-gray-700 pb-2">
-                             <div><span className="text-gray-400 text-xs block uppercase">Ritmo Calculado</span><span className="text-white font-bold text-xl">{formatKg(scenarioDaily)} <span className="text-xs font-normal text-gray-500">kg/dia</span></span></div>
-                             <div className="text-right"><span className="text-gray-400 text-xs block uppercase">Esgotamento Previsto</span><span className={`${scenarioCoverage < targetDays ? 'text-rose-400' : 'text-emerald-400'} font-bold text-xl`}>{ruptureDateStr}</span></div>
-                        </div>
-                        
-                        {/* ALERTA DE LEAD TIME CRÍTICO */}
-                        {isLeadTimeCritical && (
-                             <div className="mb-4 bg-purple-900/30 border border-purple-500 text-purple-200 p-3 rounded flex items-center gap-3 animate-pulse">
-                                 <AlertTriangle size={24} className="text-purple-400" />
-                                 <div className="text-xs">
-                                     <strong className="block text-sm">RISCO DE PARADA DE FÁBRICA</strong>
-                                     O estoque atual dura <b>{formatDays(scenarioCoverage)} dias</b>, mas o fornecedor demora <b>{leadTime} dias</b>.
-                                 </div>
-                             </div>
-                        )}
+                <div className="lg:col-span-7 space-y-6">
+                    {/* ALERTAS */}
+                    <div className="grid grid-cols-2 gap-4">
+                        {isLeadTimeCritical ? (
+                            <div className="col-span-2 bg-rose-900/30 border border-rose-500 p-3 rounded flex items-center justify-between">
+                                <div className="flex items-center gap-3"><AlertTriangle className="text-rose-500" size={24}/><div><h4 className="text-rose-400 font-bold text-sm uppercase">Ação Necessária</h4><p className="text-xs text-rose-200">Pedir até: {deadlineDateStr}</p></div></div>
+                            </div>
+                        ) : null}
+                    </div>
 
-                        <div className="grid grid-cols-2 gap-y-6 gap-x-4 text-sm mt-4">
-                            <div><span className="text-gray-400 block text-xs uppercase mb-1">Estoque Ideal ({targetDays} dias)</span><span className="text-indigo-300 font-bold text-lg block">{formatKg(idealStock)} kg</span><span className="text-xs text-gray-500">Meta calculada</span></div>
-                            <div><span className="text-gray-400 block text-xs uppercase mb-1">Falta Comprar</span><span className={`${scenarioNeed > 0 ? 'text-rose-400' : 'text-gray-500'} font-bold text-2xl block`}>{scenarioNeed > 0 ? formatKg(scenarioNeed) : 'OK'}</span><span className="text-xs text-gray-500">Gap de estoque</span></div>
-                            <div><span className="text-gray-400 block text-xs uppercase mb-1">Valor em Estoque</span><span className="text-gray-300 font-mono font-bold">{formatMoney(currentStockValue)}</span></div>
-                            <div><span className="text-gray-400 block text-xs uppercase mb-1">Investimento Necessário</span><span className="text-rose-300 font-mono font-bold text-lg">{scenarioNeed > 0 ? formatMoney(estimatedCost) : '-'}</span></div>
-                        </div>
+                    {/* KPIS */}
+                    <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700 grid grid-cols-2 gap-8">
+                        <div><div className="text-xs text-gray-400 uppercase mb-1">Estoque Ideal ({mpTargetDays} Dias)</div><div className="text-2xl font-bold text-blue-400">{formatKg(idealStock)}</div></div>
+                        <div><div className="text-xs text-gray-400 uppercase mb-1">Falta Comprar</div><div className={`text-2xl font-bold ${purchaseNeed>0?'text-rose-400':'text-emerald-400'}`}>{formatKg(purchaseNeed)}</div></div>
+                        <div><div className="text-xs text-gray-400 uppercase mb-1">Valor em Estoque</div><div className="text-lg font-mono font-bold text-gray-300">{formatMoney(stockValue)}</div></div>
+                        <div><div className="text-xs text-gray-400 uppercase mb-1">Investimento</div><div className="text-2xl font-mono font-bold text-rose-400">{formatMoney(investment)}</div></div>
+                    </div>
+
+                    {/* GRÁFICO SVG SEGURO */}
+                    <div className="bg-gray-900 border border-gray-700 rounded-lg p-0 overflow-hidden relative h-[250px]">
+                        <div className="absolute top-3 left-4 text-xs font-bold text-gray-500 z-10">PROJEÇÃO DE SALDO</div>
+                        {dailyStatement.length > 1 ? (
+                            <div className="w-full h-full relative" onMouseLeave={() => setHoverData(null)}>
+                                <svg className="w-full h-full" viewBox={`0 0 ${graphW} ${graphH}`} preserveAspectRatio="none">
+                                    <defs>
+                                        <linearGradient id="gSplit" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset={`${graphZeroPercent*100}%`} stopColor="#10b981" stopOpacity="0.4"/><stop offset={`${graphZeroPercent*100}%`} stopColor="#ef4444" stopOpacity="0.4"/>
+                                        </linearGradient>
+                                    </defs>
+                                    <line x1="0" y1={graphZeroY} x2={graphW} y2={graphZeroY} stroke="#6b7280" strokeWidth="1" strokeDasharray="4"/>
+                                    <path d={graphArea} fill="url(#gSplit)" />
+                                    <polyline points={graphPoints} fill="none" stroke="#e5e7eb" strokeWidth="2" strokeLinecap="round" />
+                                    {dailyStatement.filter(d => d.inflow > 0).map((d, i) => <circle key={i} cx={graphPointsData[i].x} cy={graphPointsData[i].y} r="4" fill="#3b82f6" stroke="white" strokeWidth="1.5"/>)}
+                                    {graphPointsData.map((d, i) => <rect key={i} x={d.x-5} y="0" width="10" height={graphH} fill="transparent" onMouseEnter={() => setHoverData(d)}/>)}
+                                </svg>
+                                {hoverData && (
+                                    <div className="absolute bg-gray-800 border border-gray-600 rounded p-2 shadow-xl pointer-events-none z-20" style={{ left: `${(hoverData.dayIndex/dailyStatement.length)*100}%`, top: '10%', transform: 'translateX(-50%)' }}>
+                                        <div className="text-xs text-white text-center">{formatDate(hoverData.date)}</div>
+                                        <div className={`font-bold text-center ${hoverData.balance<0?'text-rose-400':'text-emerald-400'}`}>{formatKg(hoverData.balance)} kg</div>
+                                        {hoverData.inflow > 0 && <div className="text-[10px] text-blue-300 font-bold mt-1 text-center">+ {formatKg(hoverData.inflow)}</div>}
+                                    </div>
+                                )}
+                            </div>
+                        ) : <div className="h-full flex items-center justify-center text-gray-500">Dados insuficientes</div>}
                     </div>
                 </div>
             </div>
-          </>
-        )}
-      </Card>
+        </Card>
+      )}
 
-      {/* TABELA EXPANSÍVEL */}
-      <Card className="flex-1 overflow-hidden p-0">
-        <div className="overflow-x-auto max-h-[600px] custom-scrollbar-dark">
-          <table className="w-full text-sm text-left text-gray-300 border-collapse">
-            <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10 uppercase text-xs">
-              <tr>
-                <th className="p-3">Tipo</th>
-                <th className="p-3">Espessura</th>
-                <th className="p-3 text-center">Itens</th>
-                <th className="p-3 text-right">Total (kg)</th>
-                <th className="p-3 text-right">Média/Dia</th>
-                <th className="p-3 text-right">Cobertura</th>
-                <th className="p-3 text-right text-rose-300">Necessidade</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-700">
-              {filteredGroups.map(group => {
-                const critical = group.shortage > 0;
-                const isSelected = selectedMpCode === group.groupId;
-                
-                // Agrupamento para detalhe
-                const widthMap = new Map();
-                if (isSelected) {
-                    group.items.forEach(item => {
-                        const w = item.width || 0;
-                        if (!widthMap.has(w)) widthMap.set(w, { width: w, motherCount: 0, motherWeight: 0, b2Count: 0, b2Weight: 0, codes: new Set() });
-                        const wEntry = widthMap.get(w);
-                        wEntry.codes.add(item.code);
-                        if (item.origin === 'Mãe') { wEntry.motherCount++; wEntry.motherWeight += item.weight; }
-                        else { wEntry.b2Count++; wEntry.b2Weight += item.weight; }
-                    });
-                }
-                const sortedWidths = Array.from(widthMap.values()).sort((a,b) => b.width - a.width);
+      <Card className="flex-1 overflow-hidden p-0 mt-6">
+         <div className="overflow-x-auto max-h-[500px] custom-scrollbar-dark">
+             <table className="w-full text-sm text-left text-gray-300 border-collapse">
+                 <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10 uppercase text-xs">
+                     <tr><th className="p-3">Tipo</th><th className="p-3">Espessura</th><th className="p-3 text-center">Itens</th><th className="p-3 text-right">Est. Atual</th><th className="p-3 text-right">Média/Dia</th></tr>
+                 </thead>
+                 <tbody className="divide-y divide-gray-700">
+                     {filteredGroups.map(g => {
+                         const isSelected = selectedMpCode === g.groupId;
+                         const widthMap = new Map();
+                         if (isSelected) {
+                             g.items.forEach(item => {
+                                 const w = item.width || 0;
+                                 if (!widthMap.has(w)) widthMap.set(w, { width: w, motherW: 0, b2W: 0, count: 0 });
+                                 const e = widthMap.get(w); e.count++;
+                                 if(item.origin === 'Mãe') e.motherW += item.weight; else e.b2W += item.weight;
+                             });
+                         }
+                         const sortedWidths = Array.from(widthMap.values()).sort((a,b) => b.width - a.width);
 
-                return (
-                  <React.Fragment key={group.groupId}>
-                      <tr onClick={()=>setSelectedMpCode(group.groupId)} className={`cursor-pointer transition-colors border-l-2 ${critical?'bg-rose-900/10 hover:bg-rose-900/20 border-rose-500/60':'hover:bg-gray-800/40 border-transparent'} ${isSelected?'bg-gray-800 ring-0 border-l-4 border-l-indigo-500':''}`}>
-                        <td className="p-3 font-bold text-white">{group.type}</td>
-                        <td className="p-3 text-gray-300 font-mono">{group.thickness}</td>
-                        <td className="p-3 text-center text-xs text-gray-500 bg-gray-900/50 rounded">{group.uniqueCodesCount}</td>
-                        <td className="p-3 text-right font-bold text-white">{formatKg(group.available)}</td>
-                        <td className="p-3 text-right text-gray-400">{formatKg(group.dailyAvg)}</td>
-                        <td className="p-3 text-right font-medium">{formatDays(group.coverageDays)}</td>
-                        <td className="p-3 text-right font-bold text-rose-300">{group.shortage>0?formatKg(group.shortage):'-'}</td>
-                      </tr>
-                      {isSelected && (
-                          <tr className="bg-gray-900/40 animate-fade-in">
-                              <td colSpan={7} className="p-4 border-t border-gray-700/50 border-b border-gray-700 inset-shadow">
-                                  <div className="flex items-center gap-2 mb-2 text-xs text-indigo-400 font-bold uppercase tracking-wider">
-                                      <List size={14}/> Detalhamento por Largura ({group.type} {group.thickness}mm)
-                                  </div>
-                                  <div className="overflow-hidden rounded-lg border border-gray-700 bg-gray-900/80">
-                                      <table className="w-full text-xs text-left">
-                                          <thead className="bg-gray-900 text-gray-500 uppercase font-bold">
-                                              <tr>
-                                                  <th className="p-2 pl-4">Largura</th>
-                                                  <th className="p-2 text-center text-emerald-700">Bob. Mãe</th>
-                                                  <th className="p-2 text-center text-indigo-700">Bob. 2 (Slitter)</th>
-                                                  <th className="p-2 text-right">Peso Total</th>
-                                                  <th className="p-2 text-gray-600">Códigos</th>
-                                              </tr>
-                                          </thead>
-                                          <tbody className="divide-y divide-gray-800 text-gray-300">
-                                              {sortedWidths.map(w => (
-                                                  <tr key={w.width} className="hover:bg-gray-800/50">
-                                                      <td className="p-2 pl-4 font-bold text-white">{w.width} mm</td>
-                                                      <td className="p-2 text-center">{w.motherCount > 0 ? <span className="text-emerald-400 font-bold">{w.motherCount} un <span className="text-gray-600 font-normal">({formatKg(w.motherWeight)})</span></span> : <span className="text-gray-700">-</span>}</td>
-                                                      <td className="p-2 text-center">{w.b2Count > 0 ? <span className="text-indigo-400 font-bold">{w.b2Count} un <span className="text-gray-600 font-normal">({formatKg(w.b2Weight)})</span></span> : <span className="text-gray-700">-</span>}</td>
-                                                      <td className="p-2 text-right font-mono text-white">{formatKg(w.motherWeight + w.b2Weight)}</td>
-                                                      <td className="p-2 text-gray-500 truncate max-w-[200px]" title={Array.from(w.codes).join(', ')}>{Array.from(w.codes).slice(0, 3).join(', ')}{w.codes.size > 3 ? ` +${w.codes.size - 3}` : ''}</td>
-                                                  </tr>
-                                              ))}
-                                              {sortedWidths.length === 0 && <tr><td colSpan={5} className="p-3 text-center italic text-gray-600">Nenhum item em estoque para este grupo.</td></tr>}
-                                          </tbody>
-                                      </table>
-                                  </div>
-                              </td>
-                          </tr>
-                      )}
-                  </React.Fragment>
-                );
-              })}
-              {filteredGroups.length===0 && <tr><td colSpan={7} className="p-6 text-center text-gray-500">Nada encontrado.</td></tr>}
-            </tbody>
-          </table>
-        </div>
+                         return (
+                             <React.Fragment key={g.groupId}>
+                                 <tr onClick={()=>setSelectedMpCode(g.groupId)} className={`cursor-pointer border-l-2 hover:bg-gray-800/50 ${isSelected?'bg-gray-800 border-l-indigo-500':'border-transparent'}`}>
+                                     <td className="p-3 font-bold text-white">{g.type}</td><td className="p-3 text-gray-300">{g.thickness}</td><td className="p-3 text-center text-xs text-gray-500">{g.uniqueCodesCount}</td>
+                                     <td className="p-3 text-right font-bold text-white">{formatKg(g.available)}</td><td className="p-3 text-right text-gray-400">{formatKg(g.dailyAvg)}</td>
+                                 </tr>
+                                 {isSelected && (
+                                     <tr className="bg-gray-900/40">
+                                         <td colSpan={5} className="p-4 inset-shadow">
+                                             <div className="flex items-center gap-2 mb-2 text-[10px] text-gray-400 font-bold uppercase"><List size={12}/> Detalhe Físico</div>
+                                             <div className="overflow-hidden rounded border border-gray-700 bg-gray-900">
+                                                 <table className="w-full text-xs text-left">
+                                                     <thead className="bg-gray-800 text-gray-500 uppercase"><tr><th className="p-2 pl-4">Largura</th><th className="p-2 text-right">Peso Mãe</th><th className="p-2 text-right">Peso B2</th><th className="p-2 text-right">Total</th></tr></thead>
+                                                     <tbody className="divide-y divide-gray-800 text-gray-400">
+                                                         {sortedWidths.map(w => (
+                                                             <tr key={w.width}><td className="p-2 pl-4 font-bold text-white">{w.width} mm</td><td className="p-2 text-right text-emerald-400">{formatKg(w.motherW)}</td><td className="p-2 text-right text-indigo-400">{formatKg(w.b2W)}</td><td className="p-2 text-right font-bold text-white">{formatKg(w.motherW + w.b2W)}</td></tr>
+                                                         ))}
+                                                     </tbody>
+                                                 </table>
+                                             </div>
+                                         </td>
+                                     </tr>
+                                 )}
+                             </React.Fragment>
+                         );
+                     })}
+                 </tbody>
+             </table>
+         </div>
       </Card>
     </div>
   );
 };
-
-
-
-
 
   // --- RETURN FINAL ---
 
