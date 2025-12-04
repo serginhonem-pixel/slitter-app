@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
+import Button from './components/ui/Button';
 import { QRCodeSVG } from 'qrcode.react';
+import { db } from './services/api'; // Certifique-se de exportar 'db' no seu arquivo de configuração
+import { loadFromDb, saveToDb, deleteFromDb, updateInDb } from './services/api';
 import { 
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
   ResponsiveContainer, AreaChart, Area, ComposedChart, 
   PieChart as RechartsPie, // <--- O GRÁFICO AGORA SE CHAMA 'RechartsPie'
   Pie, Cell 
 } from 'recharts'
-
 
 import { 
   collection, 
@@ -18,9 +20,8 @@ import {
   setDoc 
 } from 'firebase/firestore';
 
-import { db } from './services/api'; // Certifique-se de exportar 'db' no seu arquivo de configuração
-import { loadFromDb, saveToDb, deleteFromDb, updateInDb } from './services/api';
-// --- IMPORTAÇÃO DOS ÍCONES (Lucide) ---
+
+
 import {
   Scissors, Factory, ScrollText, Plus, Trash2, Save, History, LayoutDashboard,
   Package, AlertCircle, ChevronRight, TrendingDown, FileSpreadsheet, Settings,
@@ -30,230 +31,25 @@ import {
   PieChart, // <--- Este é o ÍCONE
   Menu, LogOut, User, Activity, // <--- ADICIONEI O ACTIVITY AQUI
   Home, Moon, FileInput, ChevronLeft, Printer, Eye, Truck, Archive, PenSquare,
-  FileJson
+  FileJson, WifiOff 
 } from 'lucide-react';
 
-// --- CONFIGURAÇÕES ---
 
 
-// --- IMPORTAÇÃO DOS CATÁLOGOS (Essas linhas tinham sumido!) ---
-// --- ISSO PRECISA ESTAR NO TOPO DO ARQUIVO ---
+import CutDetailsModal from './components/modals/CutDetailsModal';
+import ProductHistoryModal from './components/modals/ProductHistoryModal';
+import EditMotherCoilModal from './components/modals/ProductHistoryModal';
+
+// --- IMPORTAÇÃO DOS Catalogos ---
+
 import { INITIAL_MOTHER_CATALOG } from './data/motherCatalog';
 import { INITIAL_PRODUCT_CATALOG } from './data/productCatalog';
 
 const ITEMS_PER_PAGE = 50;
 
-// --- MODAL DE DETALHES DO ESTOQUE (Cole isso no topo do arquivo) ---
-
 // --- Componentes UI ---
-// ... (daqui pra baixo seu código continua igual)
 
-// --- Componentes UI ---
 const Card = ({ children, className = "" }) => <div className={`bg-gray-800 rounded-xl shadow-lg border border-gray-700 p-6 ${className}`}>{children}</div>;
-const CutDetailsModal = ({ log, onClose }) => {
-  // Transforma a string "Cód - Desc (Peso), Cód - Desc (Peso)" em uma lista
-  const items = (log.generatedItems || '').split(', ').map(itemStr => {
-      // Tenta extrair as partes com Regex
-      // Padrão esperado: "CÓDIGO - DESCRIÇÃO (PESOkg)"
-      const match = itemStr.match(/^([^-]+) - (.*) \(([\d.]+)kg\)$/);
-      if (match) {
-          return { code: match[1].trim(), name: match[2].trim(), weight: match[3] };
-      }
-      // Fallback se não conseguir quebrar (mostra o texto cru)
-      return { code: '-', name: itemStr, weight: '-' };
-  });
-
-  return (
-    <div className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4">
-      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-2xl shadow-2xl flex flex-col max-h-[80vh]">
-        <div className="p-4 border-b border-gray-700 flex justify-between items-center">
-          <div>
-             <h3 className="text-white font-bold text-lg">Detalhes do Corte</h3>
-             <p className="text-purple-400 text-sm font-bold">Origem Mãe: {log.motherCode}</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20}/></button>
-        </div>
-        
-        <div className="p-4 overflow-y-auto custom-scrollbar-dark flex-1">
-             <div className="grid grid-cols-2 gap-4 mb-4 text-xs text-gray-400 bg-gray-900/50 p-3 rounded-lg">
-                 <div>Data do Corte: <strong className="text-gray-200">{log.date}</strong></div>
-                 <div>Peso Total Processado: <strong className="text-gray-200">{log.inputWeight} kg</strong></div>
-                 <div>Sucata Gerada: <strong className="text-red-400">{log.scrap} kg</strong></div>
-                 <div>Tiras Geradas: <strong className="text-blue-400">{log.outputCount}</strong></div>
-             </div>
-
-             <table className="w-full text-sm text-left text-gray-300">
-                <thead className="bg-gray-900 text-gray-400 sticky top-0">
-                  <tr>
-                    <th className="p-2">Código B2</th>
-                    <th className="p-2">Descrição</th>
-                    <th className="p-2 text-right">Peso</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-700">
-                  {items.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-gray-700/50">
-                      <td className="p-2 font-bold text-emerald-400">{item.code}</td>
-                      <td className="p-2 text-white">{item.name}</td>
-                      <td className="p-2 text-right font-mono">{item.weight} kg</td>
-                    </tr>
-                  ))}
-                </tbody>
-             </table>
-        </div>
-        <div className="p-3 border-t border-gray-700 bg-gray-900/50 flex justify-end">
-            <Button variant="secondary" onClick={onClose} className="px-4 py-1 text-xs">Fechar</Button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const ProductHistoryModal = ({ product, logs, onClose, onReprint }) => {
-  if (!product) return null;
-
-  const baseCode = String(product.code || '').trim();
-  const mode = product.context || product.type || null; // 'PRODUÇÃO' | 'CORTE' | etc.
-  const safeLogs = Array.isArray(logs) ? logs : [];
-
-  const getDateObj = (l) => {
-    if (l.timestamp) return new Date(l.timestamp);
-    if (l.date) {
-      if (typeof l.date === 'string' && l.date.includes('/')) {
-        const [d, m, y] = l.date.split('/');
-        return new Date(`${y}-${m}-${d}T12:00:00`);
-      }
-      return new Date(l.date);
-    }
-    return new Date(0);
-  };
-
-  const history = safeLogs
-    .filter((l) => {
-      const lotId = String(l.id || '').trim();
-      const lotBase = lotId.includes('-')
-        ? lotId.split('-')[0]
-        : lotId;
-
-      const prodCode = String(l.productCode || '').trim();
-
-      // 🔹 Se veio do contexto CORTE:
-      if (mode === 'CORTE') {
-        // normalmente os cortes usam o id base (ex: 10262, 10262-1, 10262-2...)
-        return lotBase === baseCode || prodCode === baseCode;
-      }
-
-      // 🔹 Contexto padrão = PRODUÇÃO
-      return prodCode === baseCode;
-    })
-    .sort((a, b) => getDateObj(b) - getDateObj(a));
-
-  const totalPieces = history.reduce(
-    (acc, curr) => acc + (curr.pieces || 0),
-    0
-  );
-
-  return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-3xl max-h-[80vh] flex flex-col shadow-2xl">
-        <div className="p-4 border-b border-gray-700 flex justify-between items-center">
-          <div>
-            <h3 className="text-white font-bold text-lg">Histórico de Lotes</h3>
-            <p className="text-blue-400 text-sm font-bold">
-              {product.code} - {product.name}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="p-4 overflow-y-auto flex-1 custom-scrollbar-dark">
-          {history.length === 0 ? (
-            <div className="text-center text-gray-500 py-8">
-              Nenhum lote produzido ainda.
-            </div>
-          ) : (
-            <table className="w-full text-sm text-left text-gray-300">
-              <thead className="bg-gray-900 text-gray-400 sticky top-0">
-                <tr>
-                  <th className="p-2">ID Lote</th>
-                  <th className="p-2">Data</th>
-                  <th className="p-2">Pacote</th>
-                  <th className="p-2 text-right">Qtd</th>
-                  <th className="p-2 text-center">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-700">
-                {history.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-700/50">
-                    <td className="p-2 font-mono text-xs text-blue-300">
-                      {log.id}
-                    </td>
-                    <td className="p-2 text-gray-400">
-                      {log.date ||
-                        (log.timestamp &&
-                          new Date(log.timestamp).toLocaleDateString('pt-BR'))}
-                    </td>
-                    <td className="p-2 text-xs">
-                      {log.packIndex ? (
-                        <span className="bg-blue-900/50 text-blue-200 px-1.5 py-0.5 rounded border border-blue-900">
-                          {log.packIndex}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
-                    </td>
-                    <td className="p-2 text-right font-bold text-emerald-400">
-                      {(log.pieces || 0) + ' pçs'}
-                    </td>
-                    <td className="p-2 text-center">
-                      <button
-                        onClick={() => onReprint && onReprint(log)}
-                        className="p-1.5 bg-gray-700 text-gray-200 rounded hover:bg-white hover:text-black transition-colors"
-                        title="Imprimir este lote"
-                      >
-                        <Printer size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        <div className="p-3 border-t border-gray-700 bg-gray-900/50 flex justify-between items-center">
-          <span className="text-xs text-gray-500">
-            Total Produzido: {totalPieces} peças
-          </span>
-          <Button
-            variant="secondary"
-            onClick={onClose}
-            className="px-4 py-1 text-xs"
-          >
-            Fechar
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const Button = ({ children, onClick, variant = "primary", className = "", disabled = false, title = "" }) => {
-  const variants = {
-    primary: "bg-blue-600 text-white hover:bg-blue-500 disabled:bg-blue-900/50 disabled:text-gray-400 shadow-lg shadow-blue-900/20",
-    secondary: "bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-500",
-    danger: "bg-red-600/20 text-red-400 border border-red-900/50 hover:bg-red-600/30",
-    success: "bg-emerald-600 text-white hover:bg-emerald-500 disabled:bg-emerald-900/50 shadow-lg shadow-emerald-900/20",
-    warning: "bg-amber-600 text-white hover:bg-amber-500 shadow-lg",
-    info: "bg-sky-600/20 text-sky-400 border border-sky-600/50 hover:bg-sky-600/30"
-  };
-  return <button onClick={onClick} disabled={disabled} className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all flex items-center gap-2 justify-center ${variants[variant]} ${className}`} title={title}>{children}</button>;
-};
 
 const Input = ({ label, value, onChange, type = "text", placeholder = "", min, disabled = false, readOnly = false }) => (
   <div className="mb-4">
@@ -319,8 +115,10 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil' }) => {
             const id = item.id || 'ESTOQUE';
 
             return (
+                  
               <div key={index} className="bg-white text-black border-2 border-black p-4 mb-8 page-break-after-always flex flex-col justify-between h-[15cm] w-[10cm] shadow-2xl print:shadow-none print:mb-0 print:mx-auto">
                  <div className="flex justify-between items-start border-b-2 border-black pb-2 mb-2">
+                  
                    <div>
                      <h1 className="text-2xl font-black tracking-tighter">METALOSA</h1>
                      <p className="text-xs font-bold">INDÚSTRIA METALÚRGICA</p>
@@ -584,75 +382,9 @@ const ProductDetailsModal = ({ data, onClose }) => {
     </div>
   );
 };
-// --- MODAL DE EDIÇÃO DA BOBINA MÃE ---
-// --- MODAL DE EDIÇÃO DA BOBINA MÃE (BLINDADO) ---
-const EditMotherCoilModal = ({ coil, onClose, onSave }) => {
-  const [editData, setEditData] = useState(coil);
 
-  // Função segura para atualizar números sem quebrar se ficar vazio
-  const handleNumChange = (field, value) => {
-      setEditData({ ...editData, [field]: value });
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/80 z-[90] flex items-center justify-center p-4">
-      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-md p-6 shadow-2xl animate-fade-in">
-        <div className="flex justify-between items-center mb-6 border-b border-gray-700 pb-4">
-            <h3 className="text-white font-bold text-lg">Editar Bobina Mãe</h3>
-            <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20}/></button>
-        </div>
-        
-        <div className="space-y-4">
-           {/* CÓDIGO E NF */}
-           <div className="grid grid-cols-2 gap-4">
-               <Input 
-                 label="Código Lote" 
-                 value={editData.code} 
-                 onChange={e => setEditData({...editData, code: e.target.value})} 
-               />
-               <Input 
-                 label="Nota Fiscal" 
-                 value={editData.nf} 
-                 onChange={e => setEditData({...editData, nf: e.target.value})} 
-               />
-           </div>
-
-           {/* DESCRIÇÃO */}
-           <Input 
-             label="Descrição / Material" 
-             value={editData.material} 
-             onChange={e => setEditData({...editData, material: e.target.value})} 
-           />
-
-           {/* PESO E LARGURA */}
-           <div className="grid grid-cols-2 gap-4">
-              <Input 
-                label="Peso (kg)" 
-                type="number" 
-                value={editData.weight} 
-                onChange={e => handleNumChange('weight', e.target.value)} 
-              />
-              <Input 
-                label="Largura (mm)" 
-                type="number" 
-                value={editData.width} 
-                onChange={e => handleNumChange('width', e.target.value)} 
-              />
-           </div>
-           
-           {/* BOTÕES */}
-           <div className="flex gap-3 mt-6 pt-4 border-t border-gray-700">
-             <Button onClick={onClose} variant="secondary" className="flex-1">Cancelar</Button>
-             <Button onClick={() => onSave(editData)} variant="success" className="flex-1">Salvar Alterações</Button>
-           </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-// --- MODAL DE DETALHES DO ESTOQUE (COM EXPORTAÇÃO) ---
-// --- MODAL DE DETALHES DO ESTOQUE (COM EXPORTAÇÃO) ---
 // --- MODAL DE DETALHES DO ESTOQUE (COM DESCRIÇÃO) ---
+
 const StockDetailsModal = ({ code, coils, onClose, onReprint, type }) => { 
 
   const isMother = type === 'mother';
@@ -808,13 +540,17 @@ const handleGeneratePDF = (title, data) => {
   // --- FUNÇÃO DE INVENTÁRIO ATUALIZADA (LÊ TUDO) ---
     
 export default function App() {
+  const importFullBackupRef = useRef(null);
   const [viewingCutLog, setViewingCutLog] = useState(null); // Para abrir o modal de detalhes do corte
   const [activeTab, setActiveTab] = useState('dashboard');
   // --- ESTADOS PARA O RELATÓRIO DINÂMICO B2 ---
   const [b2ReportSearch, setB2ReportSearch] = useState('');
   const [b2ReportStatus, setB2ReportStatus] = useState('ALL'); // 'ALL', 'STOCK', 'CONSUMED'
   const [expandedGroupCode, setExpandedGroupCode] = useState(null);; // Qual linha está aberta
-
+  const [b2ThicknessFilter, setB2ThicknessFilter] = useState('');
+  const [mpFilterThickness, setMpFilterThickness] = useState('all');
+  const [mpFilterType, setMpFilterType] = useState('all');
+  const [b2TypeFilter, setB2TypeFilter] = useState('');
   const [motherCoils, setMotherCoils] = useState([]);
   const [childCoils, setChildCoils] = useState([]);
   const [productionLogs, setProductionLogs] = useState([]);
@@ -833,6 +569,15 @@ export default function App() {
       entryDate: new Date().toISOString().split('T')[0] 
   });
   const [reportGroupData, setReportGroupData] = useState(null); // Para abrir o modal agrupado
+  const [mpHorizonDays, setMpHorizonDays] = useState(30);       // janela de análise (dias)
+  const [mpNeedSearch, setMpNeedSearch] = useState('');         // busca por código / material
+  const [selectedMpCode, setSelectedMpCode] = useState(null);   // MP clicada na tabela
+  const [mpScenarioMode, setMpScenarioMode] = useState('historical'); // 'historical' | 'manual' | 'file'
+  const [mpManualDaily, setMpManualDaily] = useState('');       // kg/dia digitado
+  const [mpManualDays, setMpManualDays] = useState(30);         // horizonte para simulação
+  const [mpFileDaily, setMpFileDaily] = useState(null);         // média via arquivo
+
+
   const [selectedMotherForCut, setSelectedMotherForCut] = useState('');
   const [motherSearchQuery, setMotherSearchQuery] = useState('');
   const [tempChildCoils, setTempChildCoils] = useState([]);
@@ -862,6 +607,8 @@ export default function App() {
   const [viewingStockCode, setViewingStockCode] = useState(null); 
   const [stockDetailsModalOpen, setStockDetailsModalOpen] = useState(false);
   const [editingMotherCoil, setEditingMotherCoil] = useState(null); 
+  const [currentView, setCurrentView] = useState('dashboard'); 
+// 'dashboard', 'rastreioB2', 'mpNeed', etc...
 
   const [motherPage, setMotherPage] = useState(1);
   const [childPage, setChildPage] = useState(1);
@@ -873,7 +620,6 @@ export default function App() {
   const importMotherStockRef = useRef(null);
   const importChildStockRef = useRef(null);
   const importLogsRef = useRef(null);
-  const importFullBackupRef = useRef(null);
   const fileInputMotherCatalogRef = useRef(null);
   const importFinishedStockRef = useRef(null);
 // --- ESTADOS PARA PRODUÇÃO EM LOTE (Total + Quebra) ---
@@ -979,7 +725,12 @@ export default function App() {
 // IMPORTANTE: Adicione estes imports do Firebase no topo do arquivo
 
 
-// ... dentro do componente App:
+
+
+// DADOS DO FIREBASE ATUALIZANDO !!
+
+
+
 
   // 1. CARREGAMENTO EM TEMPO REAL (Conexão Viva)
   useEffect(() => {
@@ -1105,7 +856,7 @@ export default function App() {
     }
   };
 
-
+// fINAL DOS DADOS ATUALIZANDO 
 
 
   const getUniqueB2Types = (motherType) => {
@@ -1644,7 +1395,7 @@ export default function App() {
         setShippingLogs(prevShipping);
     }
   };
-  // --- 1. BACKUP COMPLETO (SALVA TUDO) ---
+
   // --- 1. BACKUP COMPLETO (SALVA TUDO) ---
   const handleFullBackup = () => {
     try {
@@ -2445,6 +2196,8 @@ export default function App() {
         }).join('');
 
         return `
+
+        
             <div class="item-container">
                 <div class="item-header">
                     <span class="item-code">${item.code}</span>
@@ -3696,7 +3449,12 @@ const handleFullRestore = (e) => {
         setCurrentFileName(`📂 ${fileName} (Salvo em: ${fileDate})`);
         
         // Calcula total de registros para confirmar visualmente
-        const totalRegs = (data.motherCoils?.length||0) + (data.childCoils?.length||0) + (data.productionLogs?.length||0);
+        // Substitua a linha do 'totalRegs' por esta:
+        const totalRegs = (data.motherCoils?.length||0) 
+                + (data.childCoils?.length||0) 
+                + (data.productionLogs?.length||0) 
+                + (data.productCatalog?.length||0) // <--- Agora conta o catálogo também!
+                + (data.shippingLogs?.length||0);
 
         alert(`Backup restaurado com sucesso!\n\nArquivo: ${fileName}\nData Original: ${fileDate}\nRegistros Carregados: ~${totalRegs}`);
       } catch (err) {
@@ -3923,58 +3681,7 @@ const handleFullRestore = (e) => {
                </Card>
             </div>
             
-            {/* --- CARD DE BACKUP E RESTAURAÇÃO --- */}
-            <Card className="border-gray-700">
-              <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2"><Database className="text-blue-500"/> Backup e Restauração</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* COLUNA 1: EXPORTAR DADOS */}
-                <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-blue-500/50 transition-colors">
-                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Exportar Dados</h4>
-                    <div className="flex flex-col gap-2">
-                        {/* BOBINAS MÃE (USANDO EXPORT LOCAL) */}
-                        <Button variant="secondary" onClick={() => { const data = filteredMotherList.map(m => ({ "ID Rastreio": m.id, "Lote": m.code, "NF": m.nf||'-', "Material": m.material, "Largura": m.width, "Peso": m.weight, "Filial": m.branch||'MATRIZ', "Tipo": m.type||'-', "Status": m.status, "Data": m.date })); exportToCSV(data, 'relatorio_mae_completo'); }} className="text-xs w-full h-9"><Download size={14}/> Bobinas Mãe</Button>
-                        {/* BOBINAS 2 */}
-                        <Button variant="secondary" onClick={() => { const data = filteredB2List.map(c => ({ "ID": c.id, "Cód": c.b2Code, "Desc": c.b2Name, "Peso": c.weight, "Status": c.status, "Mãe": c.motherCode })); exportToCSV(data, 'relatorio_b2'); }} className="text-xs w-full h-9"><Download size={14}/> Bobinas 2</Button>
-                        {/* PRODUÇÃO */}
-                        <Button variant="secondary" onClick={() => { const data = safeProd.map(l => ({ "Lote": l.id, "Prod": l.productName, "Qtd": l.pieces, "Data": l.date, "Mãe": l.motherCode })); exportToCSV(data, 'relatorio_prod'); }} className="text-xs w-full h-9"><Download size={14}/> Histórico Produção</Button>
-                    </div>
-                </div>
-
-                {/* COLUNA 2: IMPORTAR BACKUP */}
-                <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 hover:border-amber-500/50 transition-colors">
-                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Importar Backup</h4>
-                    {/* ... dentro da área de Backup e Restauração ... */}
-{/* --- ÁREA DE PERIGO (ESCONDIDA) --- */}
-{/* --- ÁREA DE PERIGO (ESCONDIDA) --- */}
-{false && (
-  <div className="mt-6 p-4 bg-red-900/20 border border-red-500/50 rounded-xl">
-    <h4 className="text-red-400 font-bold text-sm uppercase mb-2 flex items-center gap-2">
-      ⚠️ Área de Perigo: Migração Inicial
-    </h4>
-    <p className="text-xs text-gray-400 mb-4">
-      Use isto apenas UMA VEZ para subir seu arquivo .json local para o servidor do Firebase.
-    </p>
-    
-    <div className="relative">
-      <input 
-        type="file" 
-        accept=".json" 
-        className="hidden" 
-        id="upload-json-db"
-        onChange={handleUploadJSONToFirebase} 
-      />
-      <label 
-        htmlFor="upload-json-db" 
-        className="w-full h-10 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg flex items-center justify-center cursor-pointer transition-colors shadow-lg"
-      >
-        <Upload size={18} className="mr-2"/> Selecionar JSON e Enviar para Nuvem
-      </label>
-    </div>
-  </div>
-)}
-                </div>
-              </div>
-            </Card>
+            
           </div>
         );
     } catch (err) {
@@ -4136,6 +3843,7 @@ const handleFullRestore = (e) => {
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
     return (
+
         <div className="space-y-6 pb-20 animate-fade-in">
             <div className="flex justify-between items-center mb-6">
                 <div>
@@ -4371,205 +4079,1028 @@ const handleFullRestore = (e) => {
 
 
 const renderB2DynamicReport = () => {
-    // 1. PREPARAÇÃO DOS DADOS (JOIN DAS TABELAS)
-    const enrichedData = childCoils.map(b2 => {
-        const mother = motherCoils.find(m => m.code === b2.motherCode) || { material: 'Desconhecido', entryDate: '-' };
-        const prodLog = productionLogs.find(log => log.childIds && log.childIds.includes(b2.id));
+  // --- 1. PREPARAÇÃO SEGURA ---
+  const safeChild = Array.isArray(childCoils) ? childCoils : [];
+  const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
+  const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
+  const safeMotherCatalog = Array.isArray(INITIAL_MOTHER_CATALOG)
+    ? INITIAL_MOTHER_CATALOG
+    : [];
 
-        return {
-            ...b2,
-            motherMaterial: mother.material,
-            motherEntryDate: mother.entryDate || mother.date,
-            consumptionDate: prodLog ? prodLog.date : null,
-            productFinal: prodLog ? `${prodLog.productCode} - ${prodLog.productName}` : null,
-            productionBatchId: prodLog ? prodLog.id : null
-        };
-    });
+  // --- 2. ENRIQUECER B2 COM INFO DA BOBINA MÃE + CONSUMO ---
+  const enrichedData = safeChild.map((b2) => {
+    const mother =
+      safeMother.find((m) => String(m.code) === String(b2.motherCode)) || {
+        material: "Desconhecido",
+        entryDate: "-",
+      };
 
-    // 2. FILTRAGEM PRÉVIA (Busca Global)
-    const search = b2ReportSearch.toLowerCase();
-    const filteredRaw = enrichedData.filter(item => 
-        item.b2Code.toLowerCase().includes(search) || 
-        item.b2Name.toLowerCase().includes(search) ||
-        String(item.motherCode).includes(search)
+    const prodLog = safeProd.find(
+      (log) => Array.isArray(log.childIds) && log.childIds.includes(b2.id)
     );
 
-    // 3. AGRUPAMENTO POR CÓDIGO (A MÁGICA ACONTECE AQUI)
-    const groupedData = filteredRaw.reduce((acc, item) => {
-        const code = item.b2Code;
-        if (!acc[code]) {
-            acc[code] = {
-                code: code,
-                name: item.b2Name,
-                totalItems: 0,
-                stockCount: 0,
-                stockWeight: 0,
-                consumedCount: 0,
-                consumedWeight: 0,
-                items: [] // Guarda os itens individuais aqui dentro
-            };
-        }
-        
-        acc[code].items.push(item);
-        acc[code].totalItems++;
-        
-        if (item.status === 'stock') {
-            acc[code].stockCount++;
-            acc[code].stockWeight += item.weight;
-        } else {
-            acc[code].consumedCount++;
-            acc[code].consumedWeight += item.weight;
-        }
-        
-        return acc;
-    }, {});
+    const motherCatalogMatch = safeMotherCatalog.find(
+      (m) => String(m.code) === String(b2.motherCode)
+    );
 
-    // Transforma objeto em array para exibir
-    const groupsList = Object.values(groupedData).sort((a, b) => a.code.localeCompare(b.code));
+    return {
+      ...b2,
+      motherMaterial: mother.material,
+      motherEntryDate: mother.entryDate || mother.date,
+      consumptionDate: prodLog ? prodLog.date : null,
+      productFinal: prodLog
+        ? `${prodLog.productCode} - ${prodLog.productName}`
+        : null,
+      productionBatchId: prodLog ? prodLog.id : null,
 
-    // Totais Gerais para o Cabeçalho
-    const totalStockWeight = groupsList.reduce((acc, g) => acc + g.stockWeight, 0);
-    const totalConsumedWeight = groupsList.reduce((acc, g) => acc + g.consumedWeight, 0);
+      // chave: espessura e tipo sempre baseados na MP
+      thickness: motherCatalogMatch?.thickness ?? null,
+      type: motherCatalogMatch?.type ?? null,
+    };
+  });
 
-    return (
-      <div className="space-y-6 pb-20 animate-fade-in">
-         
-         {/* CABEÇALHO */}
-         <div className="flex flex-col md:flex-row justify-between items-end gap-4 bg-gray-800 p-4 rounded-xl border border-gray-700">
-            <div>
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                    <List size={24} className="text-indigo-500"/> Relatório Consolidado B2
-                </h2>
-                <p className="text-sm text-gray-400">Visão agrupada por código. Clique para detalhar.</p>
-            </div>
-            
-            <div className="relative w-full md:w-64">
-                <Search className="absolute left-3 top-2.5 text-gray-500" size={16}/>
-                <input 
-                    type="text" 
-                    placeholder="Buscar código..." 
-                    value={b2ReportSearch}
-                    onChange={e => setB2ReportSearch(e.target.value)}
-                    className="w-full bg-gray-900 border border-gray-600 rounded-lg pl-9 py-2 text-sm text-white outline-none focus:border-indigo-500"
-                />
-            </div>
-         </div>
+  // --- 3. OPÇÕES DE FILTRO (ESPESSURA / TIPO) ---
+  const thicknessOptions = Array.from(
+    new Set(enrichedData.map((i) => i.thickness).filter(Boolean))
+  ).sort((a, b) => {
+    const pa = parseFloat(String(a).replace(",", ".")) || 0;
+    const pb = parseFloat(String(b).replace(",", ".")) || 0;
+    return pa - pb;
+  });
 
-         {/* CARDS DE RESUMO */}
-         <div className="grid grid-cols-2 gap-4">
-             <Card className="bg-emerald-900/20 border-emerald-500/30 py-3 px-4">
-                 <span className="text-xs text-emerald-400 font-bold uppercase">Saldo em Estoque</span>
-                 <div className="text-2xl font-bold text-white">{totalStockWeight.toLocaleString('pt-BR')} <span className="text-sm font-normal text-gray-400">kg</span></div>
-             </Card>
-             <Card className="bg-gray-700/20 border-gray-600/30 py-3 px-4">
-                 <span className="text-xs text-gray-400 font-bold uppercase">Total Consumido (Filtrado)</span>
-                 <div className="text-2xl font-bold text-gray-300">{totalConsumedWeight.toLocaleString('pt-BR')} <span className="text-sm font-normal text-gray-500">kg</span></div>
-             </Card>
-         </div>
+  const typeOptions = Array.from(
+    new Set(enrichedData.map((i) => i.type).filter(Boolean))
+  ).sort();
 
-         {/* LISTA AGRUPADA */}
-         <Card className="flex-1 overflow-hidden p-0">
-            <div className="overflow-x-auto max-h-[600px] custom-scrollbar-dark">
-                <table className="w-full text-sm text-left text-gray-300">
-                    <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10 uppercase text-xs">
-                        <tr>
-                            <th className="p-4">Código</th>
-                            <th className="p-4">Descrição</th>
-                            <th className="p-4 text-center">Bobinas</th>
-                            <th className="p-4 text-right text-emerald-400">Peso Estoque</th>
-                            <th className="p-4 text-right text-gray-500">Peso Baixado</th>
-                            <th className="p-4 text-center">Ver</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-700">
-                        {groupsList.map(group => {
-                            const isExpanded = expandedGroupCode === group.code;
-                            return (
-                                <React.Fragment key={group.code}>
-                                    {/* LINHA MESTRA (GRUPO) */}
-                                    <tr 
-                                        className={`hover:bg-gray-700/50 cursor-pointer transition-colors ${isExpanded ? 'bg-indigo-900/20 border-l-4 border-indigo-500' : ''}`}
-                                        onClick={() => setExpandedGroupCode(isExpanded ? null : group.code)}
-                                    >
-                                        <td className="p-4 font-bold text-white font-mono text-base">{group.code}</td>
-                                        <td className="p-4 text-gray-300 font-medium">{group.name}</td>
-                                        <td className="p-4 text-center">
-                                            <span className="bg-gray-800 px-2 py-1 rounded text-xs font-bold border border-gray-600">
-                                                {group.stockCount} / {group.totalItems}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-right font-bold text-emerald-400 text-lg">
-                                            {group.stockWeight > 0 ? group.stockWeight.toLocaleString('pt-BR') : '-'}
-                                        </td>
-                                        <td className="p-4 text-right text-gray-500 font-mono">
-                                            {group.consumedWeight > 0 ? group.consumedWeight.toLocaleString('pt-BR') : '-'}
-                                        </td>
-                                        <td className="p-4 text-center text-indigo-400">
-                                            {isExpanded ? <ChevronRight className="rotate-90 transition-transform"/> : <ChevronRight className="transition-transform"/>}
-                                        </td>
-                                    </tr>
-                                    
-                                    {/* LINHA DETALHADA (LISTA DE BOBINAS) */}
-                                    {isExpanded && (
-                                        <tr>
-                                            <td colSpan="6" className="bg-gray-900/50 p-0">
-                                                <div className="p-4 border-t border-indigo-900/50 animate-fade-in">
-                                                    <table className="w-full text-xs text-left text-gray-400">
-                                                        <thead className="text-indigo-300 border-b border-gray-700">
-                                                            <tr>
-                                                                <th className="pb-2">Data Entrada</th>
-                                                                <th className="pb-2">Origem (Mãe)</th>
-                                                                <th className="pb-2">ID Rastreio</th>
-                                                                <th className="pb-2 text-right">Peso</th>
-                                                                <th className="pb-2 text-center">Status</th>
-                                                                <th className="pb-2">Destino / Consumo</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-gray-800">
-                                                            {group.items.map((item, idx) => (
-                                                                <tr key={idx} className="hover:bg-gray-800/50">
-                                                                    <td className="py-2">{item.createdAt}</td>
-                                                                    <td className="py-2">
-                                                                        <div className="font-bold text-gray-300">{item.motherCode}</div>
-                                                                        <div className="text-[10px] truncate max-w-[200px]">{item.motherMaterial}</div>
-                                                                    </td>
-                                                                    <td className="py-2 font-mono text-indigo-200">{item.id}</td>
-                                                                    <td className="py-2 text-right font-bold text-white">{item.weight} kg</td>
-                                                                    <td className="py-2 text-center">
-                                                                        {item.status === 'stock' 
-                                                                            ? <span className="text-emerald-500 font-bold">ESTOQUE</span>
-                                                                            : <span className="text-gray-600">BAIXADO</span>
-                                                                        }
-                                                                    </td>
-                                                                    <td className="py-2">
-                                                                        {item.status === 'consumed' ? (
-                                                                            <div>
-                                                                                <div className="text-white font-bold">{item.consumptionDate}</div>
-                                                                                <div className="text-indigo-300 truncate max-w-[250px]">{item.productFinal}</div>
-                                                                            </div>
-                                                                        ) : (
-                                                                            <span className="text-gray-600 italic">-</span>
-                                                                        )}
-                                                                    </td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                </React.Fragment>
-                            );
-                        })}
-                    </tbody>
-                </table>
-                {groupsList.length === 0 && <div className="p-8 text-center text-gray-500">Nenhum registro encontrado.</div>}
-            </div>
-         </Card>
+  // --- 4. FILTRAGEM PRÉVIA (BUSCA + ESPESSURA + TIPO) ---
+  const search = (b2ReportSearch || "").toLowerCase();
+
+  const filteredRaw = enrichedData.filter((item) => {
+    const matchesSearch =
+      item.b2Code?.toLowerCase().includes(search) ||
+      item.b2Name?.toLowerCase().includes(search) ||
+      String(item.motherCode || "").includes(search);
+
+    const matchesThickness =
+      !b2ThicknessFilter ||
+      b2ThicknessFilter === "all" ||
+      String(item.thickness) === String(b2ThicknessFilter);
+
+    const matchesType =
+      !b2TypeFilter ||
+      b2TypeFilter === "all" ||
+      String(item.type) === String(b2TypeFilter);
+
+    return matchesSearch && matchesThickness && matchesType;
+  });
+
+  // --- 5. AGRUPAMENTO POR CÓDIGO B2 ---
+  const groupedData = filteredRaw.reduce((acc, item) => {
+    const code = item.b2Code;
+    if (!code) return acc;
+
+    if (!acc[code]) {
+      acc[code] = {
+        code: code,
+        name: item.b2Name,
+        totalItems: 0,
+        stockCount: 0,
+        stockWeight: 0,
+        consumedCount: 0,
+        consumedWeight: 0,
+        items: [],
+      };
+    }
+
+    acc[code].items.push(item);
+    acc[code].totalItems++;
+
+    const w = Number(item.weight) || 0;
+    if (item.status === "stock") {
+      acc[code].stockCount++;
+      acc[code].stockWeight += w;
+    } else {
+      acc[code].consumedCount++;
+      acc[code].consumedWeight += w;
+    }
+
+    return acc;
+  }, {});
+
+  const groupsList = Object.values(groupedData).sort((a, b) =>
+    a.code.localeCompare(b.code)
+  );
+
+  // Totais gerais
+  const totalStockWeight = groupsList.reduce(
+    (acc, g) => acc + (Number(g.stockWeight) || 0),
+    0
+  );
+  const totalConsumedWeight = groupsList.reduce(
+    (acc, g) => acc + (Number(g.consumedWeight) || 0),
+    0
+  );
+
+  // --- 6. RENDER ---
+  return (
+    <div className="space-y-6 pb-20 animate-fade-in">
+      {/* CABEÇALHO */}
+      <div className="flex flex-col gap-4 bg-gray-800 p-4 rounded-xl border border-gray-700 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <List size={24} className="text-indigo-500" /> Relatório Consolidado
+            B2
+          </h2>
+          <p className="text-sm text-gray-400">
+            Visão agrupada por código B2. Clique em uma linha para detalhar as
+            bobinas individuais.
+          </p>
+        </div>
+
+        <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto md:items-center">
+          {/* Busca */}
+          <div className="relative flex-1 md:w-64">
+            <Search
+              className="absolute left-3 top-2.5 text-gray-500"
+              size={16}
+            />
+            <input
+              type="text"
+              placeholder="Buscar código, descrição ou mãe..."
+              value={b2ReportSearch}
+              onChange={(e) => setB2ReportSearch(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-600 rounded-lg pl-9 py-2 text-sm text-white outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          {/* Filtro Espessura */}
+          <div className="md:w-36">
+            <select
+              value={b2ThicknessFilter || "all"}
+              onChange={(e) => setB2ThicknessFilter(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
+            >
+              <option value="all">Espessura</option>
+              {thicknessOptions.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Filtro Tipo */}
+          <div className="md:w-32">
+            <select
+              value={b2TypeFilter || "all"}
+              onChange={(e) => setB2TypeFilter(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
+            >
+              <option value="all">Tipo</option>
+              {typeOptions.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
+
+      {/* CARDS DE RESUMO */}
+      <div className="grid grid-cols-2 gap-4">
+        <Card className="bg-emerald-900/20 border-emerald-500/30 py-3 px-4">
+          <span className="text-xs text-emerald-400 font-bold uppercase">
+            Saldo em Estoque
+          </span>
+          <div className="text-2xl font-bold text-white">
+            {totalStockWeight.toLocaleString("pt-BR")}{" "}
+            <span className="text-sm font-normal text-gray-400">kg</span>
+          </div>
+        </Card>
+        <Card className="bg-gray-700/20 border-gray-600/30 py-3 px-4">
+          <span className="text-xs text-gray-400 font-bold uppercase">
+            Total Consumido (Filtrado)
+          </span>
+          <div className="text-2xl font-bold text-gray-300">
+            {totalConsumedWeight.toLocaleString("pt-BR")}{" "}
+            <span className="text-sm font-normal text-gray-500">kg</span>
+          </div>
+        </Card>
+      </div>
+
+      {/* LISTA AGRUPADA */}
+      <Card className="flex-1 overflow-hidden p-0">
+        <div className="overflow-x-auto max-h-[600px] custom-scrollbar-dark">
+          <table className="w-full text-sm text-left text-gray-300">
+            <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10 uppercase text-xs">
+              <tr>
+                <th className="p-4">Código</th>
+                <th className="p-4">Descrição</th>
+                <th className="p-4 text-center">Bobinas</th>
+                <th className="p-4 text-right text-emerald-400">
+                  Peso Estoque
+                </th>
+                <th className="p-4 text-right text-gray-500">Peso Baixado</th>
+                <th className="p-4 text-center">Ver</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700">
+              {groupsList.map((group) => {
+                const isExpanded = expandedGroupCode === group.code;
+
+                return (
+                  <React.Fragment key={group.code}>
+                    {/* LINHA MESTRA */}
+                    <tr
+                      className={`hover:bg-gray-700/50 cursor-pointer transition-colors ${
+                        isExpanded
+                          ? "bg-indigo-900/20 border-l-4 border-indigo-500"
+                          : ""
+                      }`}
+                      onClick={() =>
+                        setExpandedGroupCode(
+                          isExpanded ? null : group.code
+                        )
+                      }
+                    >
+                      <td className="p-4 font-bold text-white font-mono text-base">
+                        {group.code}
+                      </td>
+                      <td className="p-4 text-gray-300 font-medium">
+                        {group.name}
+                      </td>
+                      <td className="p-4 text-center">
+                        <span className="bg-gray-800 px-2 py-1 rounded text-xs font-bold border border-gray-600">
+                          {group.stockCount} / {group.totalItems}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right font-bold text-emerald-400 text-lg">
+                        {group.stockWeight > 0
+                          ? group.stockWeight.toLocaleString("pt-BR")
+                          : "-"}
+                      </td>
+                      <td className="p-4 text-right text-gray-500 font-mono">
+                        {group.consumedWeight > 0
+                          ? group.consumedWeight.toLocaleString("pt-BR")
+                          : "-"}
+                      </td>
+                      <td className="p-4 text-center text-indigo-400">
+                        {isExpanded ? (
+                          <ChevronRight className="rotate-90 transition-transform" />
+                        ) : (
+                          <ChevronRight className="transition-transform" />
+                        )}
+                      </td>
+                    </tr>
+
+                    {/* LINHA DETALHADA */}
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={6} className="bg-gray-900/50 p-0">
+                          <div className="p-4 border-t border-indigo-900/50 animate-fade-in">
+                            <table className="w-full text-xs text-left text-gray-400">
+                              <thead className="text-indigo-300 border-b border-gray-700">
+                                <tr>
+                                  <th className="pb-2">Data Entrada</th>
+                                  <th className="pb-2">Origem (Mãe)</th>
+                                  <th className="pb-2">ID Rastreio</th>
+                                  <th className="pb-2 text-right">
+                                    Peso
+                                  </th>
+                                  <th className="pb-2 text-center">
+                                    Status
+                                  </th>
+                                  <th className="pb-2">
+                                    Destino / Consumo
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-800">
+                                {group.items.map((item, idx) => (
+                                  <tr
+                                    key={idx}
+                                    className="hover:bg-gray-800/50"
+                                  >
+                                    <td className="py-2">
+                                      {item.createdAt}
+                                    </td>
+                                    <td className="py-2">
+                                      <div className="font-bold text-gray-300">
+                                        {item.motherCode}
+                                      </div>
+                                      <div className="text-[10px] truncate max-w-[200px]">
+                                        {item.motherMaterial}
+                                      </div>
+                                    </td>
+                                    <td className="py-2 font-mono text-indigo-200">
+                                      {item.id}
+                                    </td>
+                                    <td className="py-2 text-right font-bold text-white">
+                                      {item.weight} kg
+                                    </td>
+                                    <td className="py-2 text-center">
+                                      {item.status === "stock" ? (
+                                        <span className="text-emerald-500 font-bold">
+                                          ESTOQUE
+                                        </span>
+                                      ) : (
+                                        <span className="text-gray-600">
+                                          BAIXADO
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="py-2">
+                                      {item.status === "consumed" ? (
+                                        <div>
+                                          <div className="text-white font-bold">
+                                            {item.consumptionDate}
+                                          </div>
+                                          <div className="text-indigo-300 truncate max-w-[250px]">
+                                            {item.productFinal}
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <span className="text-gray-600 italic">
+                                          -
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+
+              {groupsList.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="p-8 text-center text-gray-500"
+                  >
+                    Nenhum registro encontrado para os filtros atuais.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+
+
+//RENDER LEANDRO TESTEEEEE
+
+
+const renderRawMaterialRequirement = () => {
+  // --- 0. PREPARAÇÃO SEGURA ---
+  const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
+  const safeChild = Array.isArray(childCoils) ? childCoils : [];
+  const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
+  const safeCatalog = Array.isArray(productCatalog) ? productCatalog : [];
+  const safeMotherCatalog = Array.isArray(INITIAL_MOTHER_CATALOG)
+    ? INITIAL_MOTHER_CATALOG
+    : [];
+
+  // --- 1. ENRIQUECER B2 COM CONSUMO E motherCode/catalog ---
+  const enrichedChild = safeChild.map((b2) => {
+    const prodLog = safeProd.find(
+      (log) => Array.isArray(log.childIds) && log.childIds.includes(b2.id)
     );
+    const catalogMatch = safeCatalog.find((p) => p.b2Code === b2.b2Code);
+
+    return {
+      ...b2,
+      motherCode: b2.motherCode || catalogMatch?.motherCode || null,
+      consumptionDate: prodLog ? prodLog.date : null,
+    };
+  });
+
+  // --- 2. JANELA DE ANÁLISE ---
+  const horizon = Number(mpHorizonDays) || 30;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - horizon);
+
+  const parseDate = (d) => {
+    if (!d) return null;
+    if (d.includes('/')) {
+      const [dd, mm, yy] = d.split('/');
+      return new Date(`${yy}-${mm}-${dd}`);
+    }
+    if (d.includes('-')) return new Date(d);
+    return null;
   };
+
+  // --- 3. AGRUPAMENTO POR MP ---
+  const mpMap = new Map();
+
+  const ensureMp = (code) => {
+    if (!code) return null;
+    if (!mpMap.has(code)) {
+      const catMother = safeMotherCatalog.find((m) => m.code === code);
+      const catProd = safeCatalog.find((p) => p.motherCode === code);
+
+      mpMap.set(code, {
+        motherCode: code,
+        material:
+          catMother?.description ||
+          catMother?.name ||
+          catProd?.motherName ||
+          catProd?.name ||
+          `MP ${code}`,
+        thickness: catMother?.thickness || catProd?.thickness || null,
+        type: catMother?.type || catProd?.type || null,
+
+        motherStockWeight: 0,
+        b2StockWeight: 0,
+        windowConsumptionWeight: 0,
+        totalCoilsMother: 0,
+        totalCoilsB2: 0,
+      });
+    }
+    return mpMap.get(code);
+  };
+
+  // 3.1 Estoque de bobina mãe
+  safeMother.forEach((m) => {
+    const code = m.code;
+    const entry = ensureMp(code);
+    if (!entry) return;
+
+    const w = Number(m.weight) || 0;
+    const status = m.status || 'stock';
+
+    if (status === 'stock') {
+      entry.motherStockWeight += w;
+      entry.totalCoilsMother += 1;
+    }
+  });
+
+  // 3.2 Estoque/consumo de B2
+  enrichedChild.forEach((b2) => {
+    const code = b2.motherCode;
+    const entry = ensureMp(code);
+    if (!entry) return;
+
+    const w = Number(b2.weight) || 0;
+    const status = b2.status || 'stock';
+
+    if (status === 'stock') {
+      entry.b2StockWeight += w;
+      entry.totalCoilsB2 += 1;
+    } else {
+      const d = parseDate(b2.consumptionDate);
+      if (d && d >= cutoff) {
+        entry.windowConsumptionWeight += w;
+      }
+    }
+  });
+
+  // --- 4. LISTA + MÉTRICAS ---
+  const baseList = Array.from(mpMap.values());
+
+  const mpList = baseList.map((mp) => {
+    const available = mp.motherStockWeight + mp.b2StockWeight;
+    const windowCons = mp.windowConsumptionWeight;
+    const dailyAvg = horizon > 0 ? windowCons / horizon : 0;
+    const projectedNeed = dailyAvg * horizon;
+    const coverageDays = dailyAvg > 0 ? available / dailyAvg : Infinity;
+    const shortage = Math.max(0, projectedNeed - available);
+
+    return {
+      ...mp,
+      available,
+      dailyAvg,
+      projectedNeed,
+      coverageDays,
+      shortage,
+    };
+  });
+
+  // --- 4.1 OPÇÕES DE FILTRO (ESPESSURA / TIPO) ---
+  const thicknessOptions = Array.from(
+    new Set(mpList.map((m) => m.thickness).filter(Boolean))
+  ).sort((a, b) => {
+    const pa = parseFloat(String(a).replace(',', '.')) || 0;
+    const pb = parseFloat(String(b).replace(',', '.')) || 0;
+    return pa - pb;
+  });
+
+  const typeOptions = Array.from(
+    new Set(mpList.map((m) => m.type).filter(Boolean))
+  ).sort();
+
+  // --- 5. FILTRO + ORDENAÇÃO ---
+  const search = mpNeedSearch.toLowerCase();
+
+  const filteredMp = mpList
+    .filter((mp) => {
+      // filtro espessura
+      if (mpFilterThickness !== 'all' && mp.thickness !== mpFilterThickness) {
+        return false;
+      }
+      // filtro tipo
+      if (mpFilterType !== 'all' && mp.type !== mpFilterType) {
+        return false;
+      }
+      // filtro texto
+      if (!search) return true;
+      return (
+        String(mp.motherCode).toLowerCase().includes(search) ||
+        String(mp.material).toLowerCase().includes(search)
+      );
+    })
+    .sort((a, b) => (b.shortage || 0) - (a.shortage || 0));
+
+  // Totais
+  const totalAvailable = filteredMp.reduce((acc, m) => acc + m.available, 0);
+  const totalShortage = filteredMp.reduce((acc, m) => acc + m.shortage, 0);
+
+  const formatKg = (v) =>
+    v && v > 0
+      ? v.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+      : '0';
+
+  const formatDays = (d) => {
+    if (!isFinite(d)) return '∞';
+    return d.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+  };
+
+  // --- 6. MP SELECIONADA + CENÁRIOS ---
+  const selectedMp =
+    filteredMp.find((m) => m.motherCode === selectedMpCode) || null;
+
+  let scenarioDaily = selectedMp ? selectedMp.dailyAvg : 0;
+  if (mpScenarioMode === 'manual' && mpManualDaily) {
+    scenarioDaily = Number(mpManualDaily) || 0;
+  }
+  if (mpScenarioMode === 'file' && mpFileDaily != null) {
+    scenarioDaily = mpFileDaily;
+  }
+
+  const scenarioCoverage =
+    selectedMp && scenarioDaily > 0
+      ? selectedMp.available / scenarioDaily
+      : Infinity;
+
+  const scenarioNeed =
+    selectedMp && scenarioDaily > 0
+      ? Math.max(0, scenarioDaily * mpManualDays - selectedMp.available)
+      : 0;
+
+  // --- 7. UPLOAD CSV ---
+  const handleMpFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = String(ev.target?.result || '');
+      const lines = text
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+
+      if (lines.length < 2) return;
+
+      let total = 0;
+      const daySet = new Set();
+
+      lines.slice(1).forEach((line) => {
+        const parts = line.split(/[;,]/);
+        if (parts.length < 2) return;
+        const date = parts[0];
+        const raw = parts[1].replace(',', '.');
+        const val = parseFloat(raw);
+        if (!isNaN(val)) {
+          total += val;
+          daySet.add(date);
+        }
+      });
+
+      const days = daySet.size || 1;
+      const daily = total / days;
+
+      setMpFileDaily(daily);
+      setMpScenarioMode('file');
+    };
+    reader.readAsText(file, 'utf-8');
+  };
+
+  // --- 8. RENDER ---
+  return (
+    <div className="space-y-6 pb-20 animate-fade-in">
+      {/* CABEÇALHO */}
+      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 bg-gray-800 p-4 rounded-xl border border-gray-700">
+        <div>
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <Factory className="text-indigo-400" size={22} />
+            Análise de Necessidade de Matéria-Prima
+          </h2>
+          <p className="text-sm text-gray-400">
+            Calcula consumo médio dos últimos {horizon} dias e compara com o
+            estoque disponível (Bobina Mãe + B2 em estoque). Clique em uma MP
+            na tabela para simular cenários.
+          </p>
+        </div>
+
+        <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto md:items-center">
+          {/* Busca */}
+          <div className="relative flex-1 md:w-64">
+            <Search
+              className="absolute left-3 top-2.5 text-gray-500"
+              size={16}
+            />
+            <input
+              type="text"
+              placeholder="Buscar MP ou material..."
+              value={mpNeedSearch}
+              onChange={(e) => setMpNeedSearch(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-600 rounded-lg pl-9 py-2 text-sm text-white outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          {/* Janela em dias */}
+          <div className="md:w-40">
+            <select
+              value={mpHorizonDays}
+              onChange={(e) => setMpHorizonDays(Number(e.target.value))}
+              className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
+            >
+              <option value={7}>Últimos 7 dias</option>
+              <option value={15}>Últimos 15 dias</option>
+              <option value={30}>Últimos 30 dias</option>
+              <option value={60}>Últimos 60 dias</option>
+              <option value={90}>Últimos 90 dias</option>
+            </select>
+          </div>
+
+          {/* Filtro Espessura */}
+          <div className="md:w-32">
+            <select
+              value={mpFilterThickness}
+              onChange={(e) => setMpFilterThickness(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
+            >
+              <option value="all">Espessura</option>
+              {thicknessOptions.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Filtro Tipo */}
+          <div className="md:w-32">
+            <select
+              value={mpFilterType}
+              onChange={(e) => setMpFilterType(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
+            >
+              <option value="all">Tipo</option>
+              {typeOptions.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* CARDS RESUMO */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-emerald-900/20 border-emerald-500/30 py-3 px-4">
+          <span className="text-xs text-emerald-400 font-bold uppercase">
+            Estoque disponível (Mãe + B2)
+          </span>
+          <div className="text-2xl font-bold text-white">
+            {formatKg(totalAvailable)}{' '}
+            <span className="text-sm font-normal text-gray-400">kg</span>
+          </div>
+        </Card>
+
+        <Card className="bg-amber-900/20 border-amber-500/40 py-3 px-4">
+          <span className="text-xs text-amber-400 font-bold uppercase">
+            Necessidade (janela filtrada)
+          </span>
+          <div className="text-2xl font-bold text-amber-200">
+            {formatKg(totalShortage)}{' '}
+            <span className="text-sm font-normal text-gray-400">kg</span>
+          </div>
+        </Card>
+
+        <Card className="bg-gray-800/60 border-gray-600/40 py-3 px-4">
+          <span className="text-xs text-gray-300 font-bold uppercase">
+            Itens críticos
+          </span>
+          <div className="text-2xl font-bold text-white">
+            {filteredMp.filter((m) => m.shortage > 0).length}
+            <span className="text-sm font-normal text-gray-400"> códigos</span>
+          </div>
+        </Card>
+      </div>
+
+      {/* PAINEL DE SIMULAÇÃO – FULL WIDTH */}
+      <Card className="bg-gray-900/80 border border-gray-700/60 p-4 flex flex-col gap-4">
+        {!selectedMp ? (
+          <div className="text-sm text-gray-400">
+            Selecione um código de matéria-prima na tabela abaixo para analisar
+            consumo, cobertura e simular cenários.
+          </div>
+        ) : (
+          <>
+            {/* Cabeçalho MP */}
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+              <div>
+                <div className="text-xs font-semibold text-gray-400 uppercase">
+                  Matéria-prima selecionada
+                </div>
+                <div className="mt-1">
+                  <div className="text-lg font-mono font-bold text-white">
+                    {selectedMp.motherCode}
+                  </div>
+                  <div className="text-xs text-gray-400 max-w-[420px] truncate">
+                    {selectedMp.material}
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-right">
+                <div className="text-[10px] uppercase text-gray-400">
+                  Estoque disponível
+                </div>
+                <div className="text-2xl font-bold text-emerald-400">
+                  {formatKg(selectedMp.available)}{' '}
+                  <span className="text-xs text-gray-500">kg</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modo de cenário */}
+            <div className="mt-2">
+              <div className="text-xs font-semibold text-gray-400 mb-2 uppercase">
+                Modo de cenário
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setMpScenarioMode('historical')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                    mpScenarioMode === 'historical'
+                      ? 'bg-indigo-600 text-white border-indigo-400'
+                      : 'border-gray-600 text-gray-300 hover:bg-gray-800'
+                  }`}
+                >
+                  Histórico
+                </button>
+                <button
+                  onClick={() => setMpScenarioMode('manual')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                    mpScenarioMode === 'manual'
+                      ? 'bg-emerald-600 text-white border-emerald-400'
+                      : 'border-gray-600 text-gray-300 hover:bg-gray-800'
+                  }`}
+                >
+                  Manual
+                </button>
+                <button
+                  onClick={() => setMpScenarioMode('file')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                    mpScenarioMode === 'file'
+                      ? 'bg-amber-600 text-white border-amber-400'
+                      : 'border-gray-600 text-gray-300 hover:bg-gray-800'
+                  }`}
+                >
+                  Arquivo CSV
+                </button>
+              </div>
+            </div>
+
+            {/* Formulário do cenário */}
+            <div className="mt-3 space-y-3">
+              {mpScenarioMode === 'historical' && (
+                <div className="text-sm text-gray-300 space-y-1">
+                  <div>
+                    Consumo médio real (últimos {horizon} dias):
+                    <span className="font-semibold text-white ml-1">
+                      {formatKg(selectedMp.dailyAvg)} kg/dia
+                    </span>
+                  </div>
+                  <div>
+                    Cobertura com esse consumo:
+                    <span className="font-semibold text-emerald-400 ml-1">
+                      {formatDays(selectedMp.coverageDays)} dias
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {mpScenarioMode === 'manual' && (
+                <div className="space-y-2">
+                  <div className="flex flex-col md:flex-row gap-2">
+                    <div className="flex-1">
+                      <label className="text-xs text-gray-400">
+                        Consumo diário (kg/dia)
+                      </label>
+                      <input
+                        type="number"
+                        value={mpManualDaily}
+                        onChange={(e) => setMpManualDaily(e.target.value)}
+                        className="mt-1 w-full bg-gray-900 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-white outline-none focus:border-emerald-500"
+                        placeholder={
+                          selectedMp.dailyAvg
+                            ? selectedMp.dailyAvg.toFixed(1)
+                            : '0'
+                        }
+                      />
+                    </div>
+                    <div className="w-full md:w-32">
+                      <label className="text-xs text-gray-400">
+                        Horizonte (dias)
+                      </label>
+                      <input
+                        type="number"
+                        value={mpManualDays}
+                        onChange={(e) =>
+                          setMpManualDays(Number(e.target.value))
+                        }
+                        className="mt-1 w-full bg-gray-900 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-white outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-gray-500">
+                    Dica: use o histórico como referência e testa cenários mais
+                    agressivos.
+                  </p>
+                </div>
+              )}
+
+              {mpScenarioMode === 'file' && (
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">
+                      Arquivo CSV de consumo (data;kg)
+                    </label>
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      onChange={handleMpFileUpload}
+                      className="text-xs text-gray-300"
+                    />
+                  </div>
+                  {mpFileDaily != null && (
+                    <div className="text-xs text-gray-300">
+                      Média diária calculada a partir do arquivo:{' '}
+                      <span className="font-semibold text-white">
+                        {formatKg(mpFileDaily)} kg/dia
+                      </span>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-gray-500">
+                    Formato esperado: primeira coluna data, segunda coluna
+                    consumo em kg. Ex:{' '}
+                    <code>01/12/2025;1234,5</code>
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Resultado do cenário */}
+            <div className="border-t border-gray-700 pt-3 text-sm space-y-1">
+              <div className="flex justify-between">
+                <span className="text-gray-400">
+                  Consumo usado no cenário:
+                </span>
+                <span className="font-semibold text-white">
+                  {formatKg(scenarioDaily)} kg/dia
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-gray-400">
+                  Cobertura com esse cenário:
+                </span>
+                <span className="font-semibold text-emerald-400">
+                  {formatDays(scenarioCoverage)} dias
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-gray-400">
+                  Necessidade para {mpManualDays} dias:
+                </span>
+                <span className="font-semibold text-rose-300">
+                  {scenarioNeed > 0 ? `${formatKg(scenarioNeed)} kg` : '-'}
+                </span>
+              </div>
+
+              <div className="text-[11px] text-gray-500 mt-1">
+                {scenarioNeed > 0
+                  ? 'Essa é a quantidade estimada que precisaria ser comprada para garantir o horizonte escolhido.'
+                  : 'Com o cenário atual, o estoque cobre o horizonte informado.'}
+              </div>
+            </div>
+          </>
+        )}
+      </Card>
+
+      {/* TABELA – FULL WIDTH */}
+      <Card className="flex-1 overflow-hidden p-0">
+        <div className="overflow-x-auto max-h-[600px] custom-scrollbar-dark">
+          <table className="w-full text-sm text-left text-gray-300">
+            <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10 uppercase text-xs">
+              <tr>
+                <th className="p-3">Código MP</th>
+                <th className="p-3">Material</th>
+                <th className="p-3 text-right">Est. Mãe</th>
+                <th className="p-3 text-right">B2 em Est.</th>
+                <th className="p-3 text-right">Estoque Total</th>
+                <th className="p-3 text-right">Consumo {horizon}d</th>
+                <th className="p-3 text-right">Média Dia</th>
+                <th className="p-3 text-right">Cobertura (dias)</th>
+                <th className="p-3 text-right text-rose-300">Necessidade</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700">
+              {filteredMp.map((mp) => {
+                const critical = mp.shortage > 0;
+                const warn = !critical && mp.coverageDays < horizon;
+
+                return (
+                  <tr
+                    key={mp.motherCode}
+                    onClick={() => setSelectedMpCode(mp.motherCode)}
+                    className={
+                      'cursor-pointer transition-colors border-l-2 ' +
+                      (critical
+                        ? 'bg-rose-900/10 hover:bg-rose-900/20 border-rose-500/60'
+                        : warn
+                        ? 'bg-amber-900/10 hover:bg-amber-900/20 border-amber-500/40'
+                        : 'hover:bg-gray-800/40 border-transparent') +
+                      (selectedMpCode === mp.motherCode
+                        ? ' ring-2 ring-purple-500/60'
+                        : '')
+                    }
+                  >
+                    <td className="p-3 font-mono font-bold text-white">
+                      {mp.motherCode}
+                    </td>
+                    <td className="p-3 text-gray-300 max-w-[260px] truncate">
+                      {mp.material}
+                    </td>
+                    <td className="p-3 text-right">
+                      {formatKg(mp.motherStockWeight)}
+                    </td>
+                    <td className="p-3 text-right">
+                      {formatKg(mp.b2StockWeight)}
+                    </td>
+                    <td className="p-3 text-right font-semibold text-white">
+                      {formatKg(mp.available)}
+                    </td>
+                    <td className="p-3 text-right text-gray-300">
+                      {formatKg(mp.windowConsumptionWeight)}
+                    </td>
+                    <td className="p-3 text-right text-gray-300">
+                      {formatKg(mp.dailyAvg)}
+                    </td>
+                    <td className="p-3 text-right">
+                      {formatDays(mp.coverageDays)}
+                    </td>
+                    <td className="p-3 text-right font-bold text-rose-300">
+                      {mp.shortage > 0 ? formatKg(mp.shortage) : '-'}
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {filteredMp.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="p-6 text-center text-gray-500">
+                    Nenhum código de matéria-prima encontrado para os filtros
+                    atuais.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+
+
 
 
 
@@ -4577,6 +5108,7 @@ const renderB2DynamicReport = () => {
   // --- RETURN FINAL ---
 
   // --- FUNÇÃO ESPECIAL: CARGA INICIAL (JSON -> FIREBASE) ---
+
   const handleUploadJSONToFirebase = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -4653,6 +5185,14 @@ const renderB2DynamicReport = () => {
   };
   return (
     <div className="flex h-screen bg-[#0f172a] font-sans text-gray-100 overflow-hidden">
+
+      <input 
+        type="file" 
+        ref={importFullBackupRef} 
+        style={{ display: 'none' }} // Ele fica invisível propositalmente
+        accept=".json" 
+        onChange={handleFullRestore} 
+      />
       
       {/* Mobile Overlay */}
       <div className={`fixed inset-0 z-30 bg-black/50 md:hidden ${isSidebarOpen ? 'block' : 'hidden'}`} onClick={() => setSidebarOpen(false)}></div>
@@ -4693,6 +5233,7 @@ const renderB2DynamicReport = () => {
              <Truck size={20} className={activeTab === 'shipping' ? "text-amber-400" : "group-hover:text-amber-400 transition-colors"}/> <span className="font-medium">Expedição</span>
            </button>
 
+           
            <button onClick={() => { setActiveTab('reports'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'reports' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <FileText size={20} className={activeTab === 'reports' ? "text-rose-400" : "group-hover:text-rose-400 transition-colors"}/> <span className="font-medium">Relatórios</span>
            </button>
@@ -4705,8 +5246,39 @@ const renderB2DynamicReport = () => {
                 <PieChart size={20} className={activeTab === 'indicators' ? "text-cyan-400" : "group-hover:text-cyan-400 transition-colors"}/> <span className="font-medium">BI & Gráficos</span>
             </button>
 
+            <button 
+            onClick={() => { 
+              setActiveTab('mpNeed'); 
+              setSidebarOpen(false); 
+            }} 
+            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group 
+              ${activeTab === 'mpNeed' 
+                ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30 shadow-inner' 
+                : 'text-gray-400 hover:bg-white/5 hover:text-white'
+              }`}
+          >
+            <Factory 
+              size={20} 
+              className={activeTab === 'mpNeed' 
+                ? "text-purple-400" 
+                : "group-hover:text-purple-400 transition-colors"
+              } 
+            />
+            <span className="font-medium">Necessidade MP</span>
+          </button>
+
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mt-8 mb-4">Gestão</p>
 
+           <div className="mt-2 px-4">
+            <Button 
+                onClick={() => importFullBackupRef.current.click()} 
+                variant="secondary" 
+                className="w-full justify-start text-xs border-dashed border-gray-600 text-gray-400 hover:text-white"
+            >
+                <Upload size={16} className="mr-2"/> Restaurar Backup
+            </Button>
+          </div>
+          
            <div className="mt-8 px-4">
              <Button onClick={handleFullBackup} variant="success" className="w-full justify-start text-xs"><Archive size={16} className="mr-2"/> Backup Completo</Button>
            </div>
@@ -4718,17 +5290,6 @@ const renderB2DynamicReport = () => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden relative bg-[#111827]">
          
-         {/* 👇👇👇 AQUI ENTRA A BARRA DE STATUS 👇👇👇 */}
-         {/* <div className={`w-full py-1 px-4 text-center text-xs font-bold uppercase tracking-widest shadow-md z-20 flex justify-between items-center ${
-            currentFileName.includes('Salvo') ? 'bg-emerald-600 text-white' : 
-            currentFileName.includes('Carregado') ? 'bg-blue-600 text-white' : 'bg-amber-600 text-black'
-         }`}>
-            <span>STATUS DA BASE DE DADOS:</span>
-            <span className="font-black text-sm">{currentFileName}</span>
-            <span>{new Date().toLocaleTimeString()}</span>
-         </div> */}
-         {/* 👆👆👆 FIM DA BARRA 👆👆👆 */}
-
          <header className="h-16 md:h-20 bg-[#1f293b] shadow-lg flex items-center justify-between px-4 md:px-8 z-10 border-b border-gray-800 shrink-0">
             <div className="flex items-center gap-4">
               <button className="md:hidden p-2 text-gray-400 hover:text-white" onClick={() => setSidebarOpen(true)}><Menu size={24}/></button>
@@ -4759,6 +5320,8 @@ const renderB2DynamicReport = () => {
               {activeTab === 'reports' && renderReports()}
               {activeTab === 'b2report' && renderB2DynamicReport()}
               {activeTab === 'indicators' && renderIndicators()}
+              {activeTab === 'mpNeed' && renderRawMaterialRequirement()}
+
             </div>
          </main>
       </div>
@@ -4814,11 +5377,12 @@ const renderB2DynamicReport = () => {
         product={selectedGroupData}
         logs={
           selectedGroupData.context === 'CORTE'
-            ? cuttingLogs          // 🔹 quando veio de CORTE, usa os cortes
-            : productionLogs       // 🔹 padrão = produção
+            ? cuttingLogs          // Se veio do corte
+            : productionLogs       // Se veio da produção
         }
         onClose={() => setShowHistoryModal(false)}
-        onReprint={handleReprint}
+        // CORREÇÃO AQUI: O nome correto da função no seu App.jsx é 'handleReprintProduct'
+        onReprint={handleReprintProduct} 
       />
     )}
 
