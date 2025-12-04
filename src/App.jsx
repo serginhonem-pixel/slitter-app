@@ -38,7 +38,7 @@ import {
   FileText,
   History, LayoutDashboard,
   List,
-  LogOut, // <--- Este é o ÍCONE
+  LogOut, 
   Menu,
   Package,
   PieChart,
@@ -51,7 +51,8 @@ import {
   Truck,
   Upload,
   User,
-  X
+  X,
+  AlertTriangle,
 } from 'lucide-react';
 
 
@@ -680,6 +681,7 @@ export default function App() {
       type: '',
       entryDate: new Date().toISOString().split('T')[0] 
   });
+  const [mpLeadTime, setMpLeadTime] = useState(15);
   const [reportGroupData, setReportGroupData] = useState(null); // Para abrir o modal agrupado
   const [mpHorizonDays, setMpHorizonDays] = useState(30);       // janela de análise (dias)
   const [mpNeedSearch, setMpNeedSearch] = useState('');         // busca por código / material
@@ -4702,8 +4704,7 @@ const renderRawMaterialRequirement = () => {
 
   // --- 1. JANELA E CÁLCULOS BASE ---
   const horizon = Number(mpHorizonDays) || 30;
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - horizon);
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - horizon);
   const parseDate = (d) => {
     if (!d) return null;
     if (d.includes('/')) { const [dd, mm, yy] = d.split('/'); return new Date(`${yy}-${mm}-${dd}`); }
@@ -4711,16 +4712,15 @@ const renderRawMaterialRequirement = () => {
     return null;
   };
 
-  // --- 2. AGRUPAMENTO (Com captura de ITENS individuais) ---
+  // --- 2. AGRUPAMENTO (Com captura de ITENS) ---
   const groupMap = new Map();
   const ensureGroup = (type, thickness) => {
     const key = `${type}|${thickness}`;
     if (!groupMap.has(key)) {
       groupMap.set(key, { 
-          groupId: key, type, thickness, 
-          codesIncluded: new Set(), 
+          groupId: key, type, thickness, codesIncluded: new Set(), 
           motherStockWeight: 0, b2StockWeight: 0, windowConsumptionWeight: 0,
-          items: [] // <--- NOVO: Lista para guardar as bobinas detalhadas
+          items: [] 
       });
     }
     return groupMap.get(key);
@@ -4733,14 +4733,7 @@ const renderRawMaterialRequirement = () => {
     entry.codesIncluded.add(m.code);
     const w = Number(m.weight) || 0;
     entry.motherStockWeight += w;
-    // Guardar item detalhado
-    entry.items.push({ 
-        origin: 'Mãe', 
-        code: m.code, 
-        width: Number(m.width) || 0, 
-        weight: w,
-        desc: m.material || 'Bobina Mãe'
-    });
+    entry.items.push({ origin: 'Mãe', code: m.code, width: Number(m.width) || 0, weight: w });
   });
 
   safeChild.forEach(b2 => {
@@ -4753,17 +4746,9 @@ const renderRawMaterialRequirement = () => {
     const entry = ensureGroup(type, thickness);
     if (mCode) entry.codesIncluded.add(mCode);
     const w = Number(b2.weight) || 0;
-    
     if (b2.status === 'stock') {
         entry.b2StockWeight += w;
-        // Guardar item detalhado
-        entry.items.push({ 
-            origin: 'B2', 
-            code: b2.code || b2.b2Code, 
-            width: Number(b2.width) || 0, 
-            weight: w,
-            desc: b2.name || b2.b2Name || 'Bobina 2'
-        });
+        entry.items.push({ origin: 'B2', code: b2.code || b2.b2Code, width: Number(b2.width) || 0, weight: w });
     } else {
       const prodLog = safeProd.find(l => l.childIds?.includes(b2.id));
       const d = parseDate(prodLog ? prodLog.date : b2.consumptionDate);
@@ -4800,7 +4785,7 @@ const renderRawMaterialRequirement = () => {
   const formatDays = (d) => !isFinite(d) ? '∞' : d.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
   const formatMoney = (v) => v?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) || 'R$ 0,00';
 
-  // --- 5. LÓGICA DE SIMULAÇÃO ---
+  // --- 5. LÓGICA DE SIMULAÇÃO (Com Lead Time) ---
   const selectedGroup = filteredGroups.find(g => g.groupId === selectedMpCode);
   let scenarioDaily = 0;
   if (selectedGroup) {
@@ -4816,12 +4801,22 @@ const renderRawMaterialRequirement = () => {
       }
   }
 
+  // Definições de Meta e Prazos
   const targetDays = Number(mpTargetDays) || 30;
-  const idealStock = scenarioDaily * targetDays;
+  const leadTime = Number(mpLeadTime) || 0;
+  
+  const idealStock = scenarioDaily * targetDays; // Meta
   const currentAvailable = selectedGroup ? selectedGroup.available : 0;
+  
+  // Necessidade = Meta - Estoque
   const scenarioNeed = Math.max(0, idealStock - currentAvailable);
   const scenarioCoverage = scenarioDaily > 0 ? currentAvailable / scenarioDaily : Infinity;
   
+  // Lógica de Lead Time (Risco de Parada)
+  const isLeadTimeCritical = isFinite(scenarioCoverage) && scenarioCoverage < leadTime;
+  const daysUntilStockout = scenarioCoverage;
+  const daysLate = leadTime - scenarioCoverage;
+
   const simulatedPrice = Number(mpSimulatedPrice) || 0;
   const estimatedCost = scenarioNeed * simulatedPrice;
   const currentStockValue = currentAvailable * simulatedPrice;
@@ -4831,6 +4826,79 @@ const renderRawMaterialRequirement = () => {
       const today = new Date(); today.setDate(today.getDate() + Math.ceil(scenarioCoverage));
       ruptureDateStr = today.toLocaleDateString('pt-BR');
   }
+
+  // --- FUNÇÃO DE EXPORTAR PDF ---
+  const exportSimulationPDF = () => {
+    if (!selectedGroup) return;
+    // Importação dinâmica ou assumindo global 'jspdf'
+    import('jspdf').then(({ jsPDF }) => {
+        import('jspdf-autotable').then(({ default: autoTable }) => {
+            const doc = new jsPDF();
+            const today = new Date().toLocaleDateString('pt-BR');
+
+            // Header
+            doc.setFillColor(41, 128, 185); // Azul
+            doc.rect(0, 0, 210, 20, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(16);
+            doc.text("RELATÓRIO DE SOLICITAÇÃO DE COMPRA", 14, 13);
+            
+            // Info Básica
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(10);
+            doc.text(`Data Emissão: ${today}`, 14, 30);
+            doc.text(`Responsável: Controle de Produção`, 14, 35);
+
+            // Resumo do Material
+            doc.setFontSize(12);
+            doc.setFont(undefined, 'bold');
+            doc.text("1. MATERIAL SOLICITADO", 14, 45);
+            
+            const matData = [
+                ["Grupo / Tipo", selectedGroup.type],
+                ["Espessura", `${selectedGroup.thickness} mm`],
+                ["Quantidade Necessária", `${formatKg(scenarioNeed)} kg`],
+                ["Valor Estimado (Unit.)", formatMoney(simulatedPrice)],
+                ["Investimento Total", formatMoney(estimatedCost)]
+            ];
+            
+            autoTable(doc, {
+                startY: 50,
+                head: [['Item', 'Detalhe']],
+                body: matData,
+                theme: 'striped',
+                headStyles: { fillColor: [52, 73, 94] }
+            });
+
+            // Justificativa e Cenário
+            doc.text("2. JUSTIFICATIVA E CENÁRIO", 14, doc.lastAutoTable.finalY + 10);
+            const cenarioData = [
+                ["Estoque Atual", `${formatKg(currentAvailable)} kg`],
+                ["Ritmo de Consumo", `${formatKg(scenarioDaily)} kg/dia`],
+                ["Cobertura Atual", `${formatDays(scenarioCoverage)} dias`],
+                ["Meta de Cobertura", `${targetDays} dias`],
+                ["Prazo Fornecedor (Lead Time)", `${leadTime} dias`],
+                ["Status do Pedido", isLeadTimeCritical ? `CRÍTICO (Atrasado ${formatDays(daysLate)} dias)` : "OK (Dentro do prazo)"]
+            ];
+
+            autoTable(doc, {
+                startY: doc.lastAutoTable.finalY + 15,
+                head: [['Parâmetro', 'Valor']],
+                body: cenarioData,
+                theme: 'grid',
+                headStyles: { fillColor: isLeadTimeCritical ? [192, 57, 43] : [39, 174, 96] }
+            });
+
+            // Observações
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'normal');
+            doc.text("Observações:", 14, doc.lastAutoTable.finalY + 10);
+            doc.rect(14, doc.lastAutoTable.finalY + 12, 180, 20);
+
+            doc.save(`Solicitacao_Compra_${selectedGroup.type}_${selectedGroup.thickness}.pdf`);
+        });
+    }).catch(err => alert("Erro ao gerar PDF. Verifique se jsPDF está instalado."));
+  };
 
   // Upload
   const handleMpFileUpload = (e) => {
@@ -4850,11 +4918,11 @@ const renderRawMaterialRequirement = () => {
 
   return (
     <div className="space-y-6 pb-20 animate-fade-in">
-      {/* HEADER E KPIS (MANTIDOS IGUAIS) */}
+      {/* HEADER E FILTROS */}
       <div className="flex flex-col md:flex-row md:items-end gap-4 bg-gray-800 p-4 rounded-xl border border-gray-700">
         <div className="flex-1">
           <h2 className="text-xl font-bold text-white flex items-center gap-2"><Factory className="text-indigo-400" size={22}/> Simulação de Compras</h2>
-          <p className="text-sm text-gray-400">Planejamento de MP: Defina o ritmo de consumo e a meta de cobertura.</p>
+          <p className="text-sm text-gray-400">Simule compras considerando consumo, meta de estoque e lead time.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
             <input type="text" placeholder="Buscar..." value={mpNeedSearch} onChange={e=>setMpNeedSearch(e.target.value)} className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white w-40 outline-none focus:border-indigo-500"/>
@@ -4879,7 +4947,7 @@ const renderRawMaterialRequirement = () => {
         </Card>
       </div>
 
-      {/* SIMULAÇÃO DE COMPRA (MANTIDO, SÓ APARECE QUANDO SELECIONA) */}
+      {/* SIMULAÇÃO DE COMPRA */}
       <Card className="bg-gray-900/80 border border-gray-700/60 p-4 flex flex-col gap-4">
         {!selectedGroup ? (
           <div className="text-sm text-gray-400 text-center py-6">Selecione um grupo na tabela abaixo para ver os detalhes e simular.</div>
@@ -4893,9 +4961,15 @@ const renderRawMaterialRequirement = () => {
                 </div>
                 <div className="text-xs text-gray-500 mt-1">Agrupa {selectedGroup.uniqueCodesCount} códigos de MP</div>
               </div>
-              <div className="text-right">
-                <div className="text-xs uppercase text-gray-400">Estoque Atual</div>
-                <div className="text-2xl font-bold text-emerald-400">{formatKg(currentAvailable)} <span className="text-xs text-gray-500">kg</span></div>
+              <div className="flex flex-col items-end gap-2">
+                <div>
+                    <div className="text-xs uppercase text-gray-400 text-right">Estoque Atual</div>
+                    <div className="text-2xl font-bold text-emerald-400 text-right">{formatKg(currentAvailable)} <span className="text-xs text-gray-500">kg</span></div>
+                </div>
+                {/* BOTÃO PDF */}
+                <button onClick={exportSimulationPDF} className="flex items-center gap-2 bg-rose-700 hover:bg-rose-600 text-white px-3 py-1.5 rounded text-xs font-bold transition-colors shadow-lg shadow-rose-900/50">
+                    <FileText size={14}/> PDF DA SIMULAÇÃO
+                </button>
               </div>
             </div>
             <hr className="border-gray-700/50"/>
@@ -4920,50 +4994,56 @@ const renderRawMaterialRequirement = () => {
                                     </div>
                                 ) : (
                                     <>
-                                        <div>
-                                            <label className="text-xs text-gray-400 block mb-1">Demanda Período (kg)</label>
-                                            <input type="number" value={mpManualTotal} onChange={e=>setMpManualTotal(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white text-sm focus:border-indigo-500 outline-none"/>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-400 block mb-1">Dias do Período</label>
-                                            <input type="number" value={mpManualDays} onChange={e=>setMpManualDays(Number(e.target.value))} className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white text-sm focus:border-indigo-500 outline-none"/>
-                                        </div>
+                                        <div><label className="text-xs text-gray-400 block mb-1">Demanda Período (kg)</label><input type="number" value={mpManualTotal} onChange={e=>setMpManualTotal(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white text-sm focus:border-indigo-500 outline-none"/></div>
+                                        <div><label className="text-xs text-gray-400 block mb-1">Dias do Período</label><input type="number" value={mpManualDays} onChange={e=>setMpManualDays(Number(e.target.value))} className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white text-sm focus:border-indigo-500 outline-none"/></div>
                                     </>
                                 )}
                             </div>
                         </div>
                     )}
-                    <div className="grid grid-cols-2 gap-3">
+                    
+                    {/* INPUTS GERAIS: META, LEAD TIME, PREÇO */}
+                    <div className="grid grid-cols-3 gap-2">
                         <div className="bg-emerald-900/10 p-2 rounded border border-emerald-500/20">
-                            <label className="text-xs text-emerald-400 font-bold block mb-1">Meta Cobertura (Dias)</label>
-                            <input type="number" value={mpTargetDays} onChange={e=>setMpTargetDays(Number(e.target.value))} className="w-full bg-gray-900 border border-emerald-500/30 rounded p-2 text-white text-sm focus:border-emerald-400 outline-none text-center font-bold"/>
+                            <label className="text-[10px] text-emerald-400 font-bold block mb-1 uppercase">Meta Cobertura (Dias)</label>
+                            <input type="number" value={mpTargetDays} onChange={e=>setMpTargetDays(Number(e.target.value))} className="w-full bg-gray-900 border border-emerald-500/30 rounded p-1.5 text-white text-sm focus:border-emerald-400 outline-none text-center font-bold"/>
                         </div>
-                        <div>
-                            <label className="text-xs text-gray-400 block mb-1">Preço (R$/kg)</label>
-                            <div className="relative">
-                                <span className="absolute left-3 top-2 text-gray-500 text-sm">R$</span>
-                                <input type="number" value={mpSimulatedPrice} onChange={e=>setMpSimulatedPrice(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded p-2 pl-9 text-white text-sm focus:border-indigo-500 outline-none" placeholder="0.00"/>
-                            </div>
+                        <div className="bg-purple-900/10 p-2 rounded border border-purple-500/20">
+                            <label className="text-[10px] text-purple-300 font-bold block mb-1 uppercase">Prazo Fornecedor (Dias)</label>
+                            <input type="number" value={mpLeadTime} onChange={e=>setMpLeadTime(Number(e.target.value))} className="w-full bg-gray-900 border border-purple-500/30 rounded p-1.5 text-white text-sm focus:border-purple-400 outline-none text-center font-bold"/>
+                        </div>
+                        <div className="bg-gray-800 p-2 rounded border border-gray-600">
+                            <label className="text-[10px] text-gray-400 font-bold block mb-1 uppercase">Preço (R$/kg)</label>
+                            <input type="number" value={mpSimulatedPrice} onChange={e=>setMpSimulatedPrice(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded p-1.5 text-white text-sm focus:border-indigo-500 outline-none text-center"/>
                         </div>
                     </div>
                 </div>
+
+                {/* PAINEL DE RESULTADOS */}
                 <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50 flex flex-col justify-between">
                     <div>
                         <div className="flex justify-between items-end mb-4 border-b border-gray-700 pb-2">
                              <div><span className="text-gray-400 text-xs block uppercase">Ritmo Calculado</span><span className="text-white font-bold text-xl">{formatKg(scenarioDaily)} <span className="text-xs font-normal text-gray-500">kg/dia</span></span></div>
                              <div className="text-right"><span className="text-gray-400 text-xs block uppercase">Esgotamento Previsto</span><span className={`${scenarioCoverage < targetDays ? 'text-rose-400' : 'text-emerald-400'} font-bold text-xl`}>{ruptureDateStr}</span></div>
                         </div>
+                        
+                        {/* ALERTA DE LEAD TIME CRÍTICO */}
+                        {isLeadTimeCritical && (
+                             <div className="mb-4 bg-purple-900/30 border border-purple-500 text-purple-200 p-3 rounded flex items-center gap-3 animate-pulse">
+                                 <AlertTriangle size={24} className="text-purple-400" />
+                                 <div className="text-xs">
+                                     <strong className="block text-sm">RISCO DE PARADA DE FÁBRICA</strong>
+                                     O estoque atual dura <b>{formatDays(scenarioCoverage)} dias</b>, mas o fornecedor demora <b>{leadTime} dias</b>.
+                                 </div>
+                             </div>
+                        )}
+
                         <div className="grid grid-cols-2 gap-y-6 gap-x-4 text-sm mt-4">
                             <div><span className="text-gray-400 block text-xs uppercase mb-1">Estoque Ideal ({targetDays} dias)</span><span className="text-indigo-300 font-bold text-lg block">{formatKg(idealStock)} kg</span><span className="text-xs text-gray-500">Meta calculada</span></div>
                             <div><span className="text-gray-400 block text-xs uppercase mb-1">Falta Comprar</span><span className={`${scenarioNeed > 0 ? 'text-rose-400' : 'text-gray-500'} font-bold text-2xl block`}>{scenarioNeed > 0 ? formatKg(scenarioNeed) : 'OK'}</span><span className="text-xs text-gray-500">Gap de estoque</span></div>
                             <div><span className="text-gray-400 block text-xs uppercase mb-1">Valor em Estoque</span><span className="text-gray-300 font-mono font-bold">{formatMoney(currentStockValue)}</span></div>
                             <div><span className="text-gray-400 block text-xs uppercase mb-1">Investimento Necessário</span><span className="text-rose-300 font-mono font-bold text-lg">{scenarioNeed > 0 ? formatMoney(estimatedCost) : '-'}</span></div>
                         </div>
-                    </div>
-                    <div className="mt-6">
-                         <div className="flex justify-between text-xs mb-1"><span className="text-gray-400">Cobertura Atual: {formatDays(scenarioCoverage)} dias</span><span className="text-emerald-400 font-bold">Meta: {targetDays} dias</span></div>
-                         <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden relative"><div className={`h-3 rounded-full ${scenarioCoverage < targetDays ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, (scenarioCoverage / targetDays) * 100)}%` }}></div></div>
-                         {scenarioNeed > 0 && <div className="mt-2 text-center text-xs text-rose-400 bg-rose-900/20 py-1.5 rounded border border-rose-500/30 font-semibold animate-pulse">⚠ AUMENTAR ESTOQUE EM +{formatKg(scenarioNeed)} kg</div>}
                     </div>
                 </div>
             </div>
@@ -4991,7 +5071,7 @@ const renderRawMaterialRequirement = () => {
                 const critical = group.shortage > 0;
                 const isSelected = selectedMpCode === group.groupId;
                 
-                // Lógica de Agrupamento por Largura para o Detalhe
+                // Agrupamento para detalhe
                 const widthMap = new Map();
                 if (isSelected) {
                     group.items.forEach(item => {
@@ -5007,7 +5087,6 @@ const renderRawMaterialRequirement = () => {
 
                 return (
                   <React.Fragment key={group.groupId}>
-                      {/* LINHA PRINCIPAL */}
                       <tr onClick={()=>setSelectedMpCode(group.groupId)} className={`cursor-pointer transition-colors border-l-2 ${critical?'bg-rose-900/10 hover:bg-rose-900/20 border-rose-500/60':'hover:bg-gray-800/40 border-transparent'} ${isSelected?'bg-gray-800 ring-0 border-l-4 border-l-indigo-500':''}`}>
                         <td className="p-3 font-bold text-white">{group.type}</td>
                         <td className="p-3 text-gray-300 font-mono">{group.thickness}</td>
@@ -5017,8 +5096,6 @@ const renderRawMaterialRequirement = () => {
                         <td className="p-3 text-right font-medium">{formatDays(group.coverageDays)}</td>
                         <td className="p-3 text-right font-bold text-rose-300">{group.shortage>0?formatKg(group.shortage):'-'}</td>
                       </tr>
-                      
-                      {/* LINHA DE DETALHE (SÓ APARECE SE SELECIONADO) */}
                       {isSelected && (
                           <tr className="bg-gray-900/40 animate-fade-in">
                               <td colSpan={7} className="p-4 border-t border-gray-700/50 border-b border-gray-700 inset-shadow">
@@ -5033,23 +5110,17 @@ const renderRawMaterialRequirement = () => {
                                                   <th className="p-2 text-center text-emerald-700">Bob. Mãe</th>
                                                   <th className="p-2 text-center text-indigo-700">Bob. 2 (Slitter)</th>
                                                   <th className="p-2 text-right">Peso Total</th>
-                                                  <th className="p-2 text-gray-600">Códigos Vinculados</th>
+                                                  <th className="p-2 text-gray-600">Códigos</th>
                                               </tr>
                                           </thead>
                                           <tbody className="divide-y divide-gray-800 text-gray-300">
                                               {sortedWidths.map(w => (
                                                   <tr key={w.width} className="hover:bg-gray-800/50">
                                                       <td className="p-2 pl-4 font-bold text-white">{w.width} mm</td>
-                                                      <td className="p-2 text-center">
-                                                          {w.motherCount > 0 ? <span className="text-emerald-400 font-bold">{w.motherCount} un <span className="text-gray-600 font-normal">({formatKg(w.motherWeight)})</span></span> : <span className="text-gray-700">-</span>}
-                                                      </td>
-                                                      <td className="p-2 text-center">
-                                                          {w.b2Count > 0 ? <span className="text-indigo-400 font-bold">{w.b2Count} un <span className="text-gray-600 font-normal">({formatKg(w.b2Weight)})</span></span> : <span className="text-gray-700">-</span>}
-                                                      </td>
+                                                      <td className="p-2 text-center">{w.motherCount > 0 ? <span className="text-emerald-400 font-bold">{w.motherCount} un <span className="text-gray-600 font-normal">({formatKg(w.motherWeight)})</span></span> : <span className="text-gray-700">-</span>}</td>
+                                                      <td className="p-2 text-center">{w.b2Count > 0 ? <span className="text-indigo-400 font-bold">{w.b2Count} un <span className="text-gray-600 font-normal">({formatKg(w.b2Weight)})</span></span> : <span className="text-gray-700">-</span>}</td>
                                                       <td className="p-2 text-right font-mono text-white">{formatKg(w.motherWeight + w.b2Weight)}</td>
-                                                      <td className="p-2 text-gray-500 truncate max-w-[200px]" title={Array.from(w.codes).join(', ')}>
-                                                          {Array.from(w.codes).slice(0, 3).join(', ')}{w.codes.size > 3 ? ` +${w.codes.size - 3}` : ''}
-                                                      </td>
+                                                      <td className="p-2 text-gray-500 truncate max-w-[200px]" title={Array.from(w.codes).join(', ')}>{Array.from(w.codes).slice(0, 3).join(', ')}{w.codes.size > 3 ? ` +${w.codes.size - 3}` : ''}</td>
                                                   </tr>
                                               ))}
                                               {sortedWidths.length === 0 && <tr><td colSpan={5} className="p-3 text-center italic text-gray-600">Nenhum item em estoque para este grupo.</td></tr>}
