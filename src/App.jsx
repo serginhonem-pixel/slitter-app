@@ -685,6 +685,7 @@ export default function App() {
   const [mpNeedSearch, setMpNeedSearch] = useState('');         // busca por código / material
   const [selectedMpCode, setSelectedMpCode] = useState(null);   // MP clicada na tabela
   const [mpScenarioMode, setMpScenarioMode] = useState('historical'); // 'historical' | 'manual' | 'file'
+  const [mpSimulatedPrice, setMpSimulatedPrice] = useState('');
   const [mpManualDaily, setMpManualDaily] = useState('');       // kg/dia digitado
   const [mpManualDays, setMpManualDays] = useState(30);         // horizonte para simulação
   const [mpFileDaily, setMpFileDaily] = useState(null);         // média via arquivo
@@ -703,7 +704,10 @@ export default function App() {
   const [b2SearchQuery, setB2SearchQuery] = useState('');
   const [reportViewMode, setReportViewMode] = useState('GLOBAL'); // 'GLOBAL' ou 'MP_KARDEX'
   const [viewingMpDetails, setViewingMpDetails] = useState(null); // Armazena o código que está sendo visto
-
+  // Adicione junto com os outros estados (logo abaixo de mpManualDaily, por exemplo)
+  const [mpManualInputType, setMpManualInputType] = useState('daily'); // 'daily' ou 'total'
+  const [mpManualTotal, setMpManualTotal] = useState(''); // Para guardar o valor total
+  const [mpTargetDays, setMpTargetDays] = useState(45); // Meta de cobertura (ex: quero cobrir 45 dias)
   const [shipProduct, setShipProduct] = useState('');
   const [shipQty, setShipQty] = useState('');
   const [shipDest, setShipDest] = useState('COMETA');
@@ -3757,7 +3761,81 @@ const handleFullRestore = (e) => {
                {/* TABELA 2: B2 */}
                <Card className="h-[500px] flex flex-col overflow-hidden">
                  <div className="mb-4">
-                     <div className="flex justify-between items-center mb-2"><h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-indigo-500"/> Estoque B2</h3><div className="flex gap-2"><Button variant="secondary" onClick={() => { const data = filteredB2List.map(i => ({ code: i.code, name: i.name, count: `${i.count} bob (${i.weight}kg)` })); handleGeneratePDF('Estoque Bobina 2 (Slitter)', data); }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button><Button variant="secondary" onClick={() => { const data = filteredB2List.map(i => ({ "Código": i.code, "Descrição": i.name, "Tipo": i.type, "Qtd Bobinas": i.count, "Peso Total (kg)": i.weight })); exportToCSV(data, 'saldo_estoque_b2'); }} className="h-8 text-xs bg-indigo-900/20 text-indigo-400 border-indigo-900/50 hover:bg-indigo-900/40"><Download size={14}/> CSV</Button></div></div>
+                     <div className="flex justify-between items-center mb-2"><h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-indigo-500"/> Estoque B2</h3><div className="flex gap-2"><Button variant="secondary" onClick={() => { const data = filteredB2List.map(i => ({ code: i.code, name: i.name, count: `${i.count} bob (${i.weight}kg)` })); handleGeneratePDF('Estoque Bobina 2 (Slitter)', data); }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button><Button 
+  variant="secondary" 
+  onClick={() => {
+    // --- LISTA DE EMERGÊNCIA (Mantida para garantir os itens manuais) ---
+    const itensDeEmergencia = [
+        { b2Code: '85525C', b2Name: 'BOB 2 PERFIL UE 150X50X17X2,25', type: 'BQ', thickness: '2,25' },
+        { b2Code: '85510A', b2Name: 'BOB 2 PERFIL US 127X50X1,80', type: 'BQ', thickness: '1,80' }
+    ];
+
+    // FUNÇÃO AJUDANTE: Arruma o número pro Excel BR (Vírgula e 2 casas decimais)
+    const formatarPeso = (valor) => {
+        if (!valor && valor !== 0) return "0,00";
+        return Number(valor).toFixed(2).replace('.', ','); 
+    };
+
+    // 1. Mapeamento (Mantém números puros para cálculo)
+    const dadosCalculo = filteredB2List.map(i => {
+        const cleanCode = String(i.code).trim().toUpperCase();
+        
+        // Busca no catálogo ou na emergência
+        let catalogItem = productCatalog.find(p => String(p.b2Code || '').trim().toUpperCase() === cleanCode);
+        if (!catalogItem) {
+            catalogItem = itensDeEmergencia.find(p => String(p.b2Code).trim().toUpperCase() === cleanCode);
+        }
+        const itemSeguro = catalogItem || {};
+
+        return {
+            "Código": i.code,
+            "Descrição": itemSeguro.b2Name || i.name, 
+            "Tip": itemSeguro.type || "Indef.",
+            "Largura": itemSeguro.thickness ? String(itemSeguro.thickness).replace('.', ',') : "0", 
+            "Qtd Bobina": Number(i.count) || 0,
+            "PesoNum": Number(i.weight) || 0 // Campo temporário numérico para a soma funcionar
+        };
+    });
+
+    // 2. Calcula Totais (Usando os números puros)
+    const totaisPorTipo = dadosCalculo.reduce((acc, curr) => {
+        const tipo = curr["Tip"] || "Outros";
+        if (!acc[tipo]) acc[tipo] = 0;
+        acc[tipo] += curr["PesoNum"];
+        return acc;
+    }, {});
+
+    const totalGeralQtd = dadosCalculo.reduce((sum, item) => sum + item["Qtd Bobina"], 0);
+    const totalGeralPeso = dadosCalculo.reduce((sum, item) => sum + item["PesoNum"], 0);
+
+    // 3. Monta o CSV Final (Agora aplicando a formatação com vírgula)
+    const finalData = [
+        ...dadosCalculo.map(item => ({
+            "Código": item["Código"],
+            "Descrição": item["Descrição"],
+            "Tip": item["Tip"],
+            "Largura": item["Largura"],
+            "Qtd Bobina": item["Qtd Bobina"],
+            "Peso Total (kg)": formatarPeso(item["PesoNum"]) // <--- AQUI A MÁGICA
+        })),
+        // Linhas de Rodapé
+        { "Código": "", "Descrição": "", "Tip": "", "Largura": "", "Qtd Bobina": "", "Peso Total (kg)": "" },
+        { "Código": "", "Descrição": "TOTAL GERAL", "Tip": "", "Largura": "", "Qtd Bobina": totalGeralQtd, "Peso Total (kg)": formatarPeso(totalGeralPeso) },
+        { "Código": "", "Descrição": "", "Tip": "", "Largura": "", "Qtd Bobina": "", "Peso Total (kg)": "" }
+    ];
+
+    Object.keys(totaisPorTipo).sort().forEach(tipo => {
+        finalData.push({
+            "Código": "", "Descrição": "", "Tip": tipo, "Largura": "", "Qtd Bobina": "", "Peso Total (kg)": formatarPeso(totaisPorTipo[tipo])
+        });
+    });
+
+    exportToCSV(finalData, 'saldo_estoque_b2');
+}}
+  className="h-8 text-xs bg-indigo-900/20 text-indigo-400 border-indigo-900/50 hover:bg-indigo-900/40"
+>
+  <Download size={14}/> CSV
+</Button></div></div>
                      <div className="relative"><Search className="absolute left-2 top-2 text-gray-500" size={14}/><input type="text" placeholder="Buscar..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-indigo-500 outline-none" value={dashSearchB2} onChange={e => setDashSearchB2(e.target.value)} /></div>
                  </div>
                  <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
@@ -4591,630 +4669,400 @@ const renderRawMaterialRequirement = () => {
   const safeChild = Array.isArray(childCoils) ? childCoils : [];
   const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
   const safeCatalog = Array.isArray(productCatalog) ? productCatalog : [];
-  const safeMotherCatalog = Array.isArray(INITIAL_MOTHER_CATALOG)
-    ? INITIAL_MOTHER_CATALOG
-    : [];
+  const safeMotherCatalog = Array.isArray(INITIAL_MOTHER_CATALOG) ? INITIAL_MOTHER_CATALOG : [];
 
-  // --- 1. ENRIQUECER B2 COM CONSUMO E motherCode/catalog ---
-  const enrichedChild = safeChild.map((b2) => {
-    const prodLog = safeProd.find(
-      (log) => Array.isArray(log.childIds) && log.childIds.includes(b2.id)
-    );
-    const catalogMatch = safeCatalog.find((p) => p.b2Code === b2.b2Code);
+  // --- HELPER: Descobrir Tipo e Espessura ---
+  const getMaterialMetadata = (rawMotherCode, rawB2Code) => {
+    const cleanMother = rawMotherCode ? String(rawMotherCode).trim().toUpperCase() : null;
+    const cleanB2 = rawB2Code ? String(rawB2Code).trim().toUpperCase() : null;
+    let type = null; let thickness = null;
 
-    return {
-      ...b2,
-      motherCode: b2.motherCode || catalogMatch?.motherCode || null,
-      consumptionDate: prodLog ? prodLog.date : null,
-    };
-  });
+    if (cleanMother) {
+      const matchMother = safeMotherCatalog.find(m => String(m.code).trim().toUpperCase() === cleanMother);
+      if (matchMother) { type = matchMother.type; thickness = matchMother.thickness; }
+    }
+    if ((!type || !thickness) && cleanB2) {
+      let matchB2 = safeCatalog.find(p => String(p.b2Code).trim().toUpperCase() === cleanB2) || 
+                    safeCatalog.find(p => String(p.code).trim().toUpperCase() === cleanB2);
+      if (matchB2) {
+        if (!type) type = matchB2.type;
+        if (!thickness) thickness = matchB2.thickness || matchB2.width;
+        if (!type && matchB2.motherCode) {
+           const ref = safeMotherCatalog.find(m => String(m.code).trim().toUpperCase() === String(matchB2.motherCode).trim().toUpperCase());
+           if (ref) type = ref.type;
+        }
+      }
+    }
+    if ((!type || !thickness) && cleanMother) {
+       const matchAny = safeCatalog.find(p => String(p.motherCode).trim().toUpperCase() === cleanMother);
+       if (matchAny) { if (!type) type = matchAny.type; if (!thickness) thickness = matchAny.thickness; }
+    }
+    return { type: type ? String(type).toUpperCase() : 'OUTROS', thickness: thickness ? String(thickness).replace('.', ',') : '0' };
+  };
 
-  // --- 2. JANELA DE ANÁLISE ---
+  // --- 1. JANELA E CÁLCULOS BASE ---
   const horizon = Number(mpHorizonDays) || 30;
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - horizon);
-
   const parseDate = (d) => {
     if (!d) return null;
-    if (d.includes('/')) {
-      const [dd, mm, yy] = d.split('/');
-      return new Date(`${yy}-${mm}-${dd}`);
-    }
+    if (d.includes('/')) { const [dd, mm, yy] = d.split('/'); return new Date(`${yy}-${mm}-${dd}`); }
     if (d.includes('-')) return new Date(d);
     return null;
   };
 
-  // --- 3. AGRUPAMENTO POR MP ---
-  const mpMap = new Map();
-
-  const ensureMp = (code) => {
-    if (!code) return null;
-    if (!mpMap.has(code)) {
-      const catMother = safeMotherCatalog.find((m) => m.code === code);
-      const catProd = safeCatalog.find((p) => p.motherCode === code);
-
-      mpMap.set(code, {
-        motherCode: code,
-        material:
-          catMother?.description ||
-          catMother?.name ||
-          catProd?.motherName ||
-          catProd?.name ||
-          `MP ${code}`,
-        thickness: catMother?.thickness || catProd?.thickness || null,
-        type: catMother?.type || catProd?.type || null,
-
-        motherStockWeight: 0,
-        b2StockWeight: 0,
-        windowConsumptionWeight: 0,
-        totalCoilsMother: 0,
-        totalCoilsB2: 0,
+  // --- 2. AGRUPAMENTO (Com captura de ITENS individuais) ---
+  const groupMap = new Map();
+  const ensureGroup = (type, thickness) => {
+    const key = `${type}|${thickness}`;
+    if (!groupMap.has(key)) {
+      groupMap.set(key, { 
+          groupId: key, type, thickness, 
+          codesIncluded: new Set(), 
+          motherStockWeight: 0, b2StockWeight: 0, windowConsumptionWeight: 0,
+          items: [] // <--- NOVO: Lista para guardar as bobinas detalhadas
       });
     }
-    return mpMap.get(code);
+    return groupMap.get(key);
   };
 
-  // 3.1 Estoque de bobina mãe
-  safeMother.forEach((m) => {
-    const code = m.code;
-    const entry = ensureMp(code);
-    if (!entry) return;
-
+  safeMother.forEach(m => {
+    if (m.status !== 'stock') return;
+    const { type, thickness } = getMaterialMetadata(m.code, null);
+    const entry = ensureGroup(type, thickness);
+    entry.codesIncluded.add(m.code);
     const w = Number(m.weight) || 0;
-    const status = m.status || 'stock';
-
-    if (status === 'stock') {
-      entry.motherStockWeight += w;
-      entry.totalCoilsMother += 1;
-    }
+    entry.motherStockWeight += w;
+    // Guardar item detalhado
+    entry.items.push({ 
+        origin: 'Mãe', 
+        code: m.code, 
+        width: Number(m.width) || 0, 
+        weight: w,
+        desc: m.material || 'Bobina Mãe'
+    });
   });
 
-  // 3.2 Estoque/consumo de B2
-  enrichedChild.forEach((b2) => {
-    const code = b2.motherCode;
-    const entry = ensureMp(code);
-    if (!entry) return;
-
+  safeChild.forEach(b2 => {
+    let mCode = b2.motherCode;
+    if (!mCode) {
+        const cat = safeCatalog.find(p => String(p.b2Code) === String(b2.b2Code) || String(p.code) === String(b2.code));
+        if (cat) mCode = cat.motherCode;
+    }
+    const { type, thickness } = getMaterialMetadata(mCode, b2.b2Code);
+    const entry = ensureGroup(type, thickness);
+    if (mCode) entry.codesIncluded.add(mCode);
     const w = Number(b2.weight) || 0;
-    const status = b2.status || 'stock';
-
-    if (status === 'stock') {
-      entry.b2StockWeight += w;
-      entry.totalCoilsB2 += 1;
+    
+    if (b2.status === 'stock') {
+        entry.b2StockWeight += w;
+        // Guardar item detalhado
+        entry.items.push({ 
+            origin: 'B2', 
+            code: b2.code || b2.b2Code, 
+            width: Number(b2.width) || 0, 
+            weight: w,
+            desc: b2.name || b2.b2Name || 'Bobina 2'
+        });
     } else {
-      const d = parseDate(b2.consumptionDate);
-      if (d && d >= cutoff) {
-        entry.windowConsumptionWeight += w;
-      }
+      const prodLog = safeProd.find(l => l.childIds?.includes(b2.id));
+      const d = parseDate(prodLog ? prodLog.date : b2.consumptionDate);
+      if (d && d >= cutoff) entry.windowConsumptionWeight += w;
     }
   });
 
-  // --- 4. LISTA + MÉTRICAS ---
-  const baseList = Array.from(mpMap.values());
-
-  const mpList = baseList.map((mp) => {
-    const available = mp.motherStockWeight + mp.b2StockWeight;
-    const windowCons = mp.windowConsumptionWeight;
-    const dailyAvg = horizon > 0 ? windowCons / horizon : 0;
+  // --- 3. PROJEÇÃO LISTA ---
+  const groupList = Array.from(groupMap.values()).map(g => {
+    const available = g.motherStockWeight + g.b2StockWeight;
+    const dailyAvg = horizon > 0 ? g.windowConsumptionWeight / horizon : 0;
     const projectedNeed = dailyAvg * horizon;
-    const coverageDays = dailyAvg > 0 ? available / dailyAvg : Infinity;
     const shortage = Math.max(0, projectedNeed - available);
-
-    return {
-      ...mp,
-      available,
-      dailyAvg,
-      projectedNeed,
-      coverageDays,
-      shortage,
-    };
+    const coverageDays = dailyAvg > 0 ? available / dailyAvg : Infinity;
+    return { ...g, available, dailyAvg, projectedNeed, coverageDays, shortage, uniqueCodesCount: g.codesIncluded.size };
   });
 
-  // --- 4.1 OPÇÕES DE FILTRO (ESPESSURA / TIPO) ---
-  const thicknessOptions = Array.from(
-    new Set(mpList.map((m) => m.thickness).filter(Boolean))
-  ).sort((a, b) => {
-    const pa = parseFloat(String(a).replace(',', '.')) || 0;
-    const pb = parseFloat(String(b).replace(',', '.')) || 0;
-    return pa - pb;
-  });
-
-  const typeOptions = Array.from(
-    new Set(mpList.map((m) => m.type).filter(Boolean))
-  ).sort();
-
-  // --- 5. FILTRO + ORDENAÇÃO ---
+  // --- 4. FILTROS ---
+  const thicknessOptions = Array.from(new Set(groupList.map(g => g.thickness).filter(t => t !== '0'))).sort((a,b) => parseFloat(a.replace(',','.')) - parseFloat(b.replace(',','.')));
+  const typeOptions = Array.from(new Set(groupList.map(g => g.type).filter(t => t !== 'OUTROS'))).sort();
   const search = mpNeedSearch.toLowerCase();
+  const filteredGroups = groupList.filter(g => {
+    if (mpFilterThickness !== 'all' && g.thickness !== mpFilterThickness) return false;
+    if (mpFilterType !== 'all' && g.type !== mpFilterType) return false;
+    if (search && (!g.type.toLowerCase().includes(search) && !g.thickness.includes(search))) return false;
+    return true;
+  }).sort((a,b) => b.shortage - a.shortage);
 
-  const filteredMp = mpList
-    .filter((mp) => {
-      // filtro espessura
-      if (mpFilterThickness !== 'all' && mp.thickness !== mpFilterThickness) {
-        return false;
+  const totalAvailable = filteredGroups.reduce((acc, m) => acc + m.available, 0);
+  const totalShortage = filteredGroups.reduce((acc, m) => acc + m.shortage, 0);
+
+  // --- FORMATADORES ---
+  const formatKg = (v) => v?.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) || '0';
+  const formatDays = (d) => !isFinite(d) ? '∞' : d.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+  const formatMoney = (v) => v?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) || 'R$ 0,00';
+
+  // --- 5. LÓGICA DE SIMULAÇÃO ---
+  const selectedGroup = filteredGroups.find(g => g.groupId === selectedMpCode);
+  let scenarioDaily = 0;
+  if (selectedGroup) {
+      if (mpScenarioMode === 'historical') scenarioDaily = selectedGroup.dailyAvg;
+      else if (mpScenarioMode === 'file' && mpFileDaily != null) scenarioDaily = mpFileDaily;
+      else if (mpScenarioMode === 'manual') {
+          if (mpManualInputType === 'total') {
+              const period = Number(mpManualDays) || 1; 
+              scenarioDaily = (Number(mpManualTotal) || 0) / period;
+          } else {
+              scenarioDaily = Number(mpManualDaily) || 0;
+          }
       }
-      // filtro tipo
-      if (mpFilterType !== 'all' && mp.type !== mpFilterType) {
-        return false;
-      }
-      // filtro texto
-      if (!search) return true;
-      return (
-        String(mp.motherCode).toLowerCase().includes(search) ||
-        String(mp.material).toLowerCase().includes(search)
-      );
-    })
-    .sort((a, b) => (b.shortage || 0) - (a.shortage || 0));
-
-  // Totais
-  const totalAvailable = filteredMp.reduce((acc, m) => acc + m.available, 0);
-  const totalShortage = filteredMp.reduce((acc, m) => acc + m.shortage, 0);
-
-  const formatKg = (v) =>
-    v && v > 0
-      ? v.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
-      : '0';
-
-  const formatDays = (d) => {
-    if (!isFinite(d)) return '∞';
-    return d.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
-  };
-
-  // --- 6. MP SELECIONADA + CENÁRIOS ---
-  const selectedMp =
-    filteredMp.find((m) => m.motherCode === selectedMpCode) || null;
-
-  let scenarioDaily = selectedMp ? selectedMp.dailyAvg : 0;
-  if (mpScenarioMode === 'manual' && mpManualDaily) {
-    scenarioDaily = Number(mpManualDaily) || 0;
-  }
-  if (mpScenarioMode === 'file' && mpFileDaily != null) {
-    scenarioDaily = mpFileDaily;
   }
 
-  const scenarioCoverage =
-    selectedMp && scenarioDaily > 0
-      ? selectedMp.available / scenarioDaily
-      : Infinity;
+  const targetDays = Number(mpTargetDays) || 30;
+  const idealStock = scenarioDaily * targetDays;
+  const currentAvailable = selectedGroup ? selectedGroup.available : 0;
+  const scenarioNeed = Math.max(0, idealStock - currentAvailable);
+  const scenarioCoverage = scenarioDaily > 0 ? currentAvailable / scenarioDaily : Infinity;
+  
+  const simulatedPrice = Number(mpSimulatedPrice) || 0;
+  const estimatedCost = scenarioNeed * simulatedPrice;
+  const currentStockValue = currentAvailable * simulatedPrice;
+  
+  let ruptureDateStr = '-';
+  if (isFinite(scenarioCoverage) && scenarioCoverage > 0) {
+      const today = new Date(); today.setDate(today.getDate() + Math.ceil(scenarioCoverage));
+      ruptureDateStr = today.toLocaleDateString('pt-BR');
+  }
 
-  const scenarioNeed =
-    selectedMp && scenarioDaily > 0
-      ? Math.max(0, scenarioDaily * mpManualDays - selectedMp.available)
-      : 0;
-
-  // --- 7. UPLOAD CSV ---
+  // Upload
   const handleMpFileUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+    const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const text = String(ev.target?.result || '');
-      const lines = text
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(Boolean);
-
+      const lines = String(ev.target?.result || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       if (lines.length < 2) return;
-
-      let total = 0;
-      const daySet = new Set();
-
-      lines.slice(1).forEach((line) => {
-        const parts = line.split(/[;,]/);
-        if (parts.length < 2) return;
-        const date = parts[0];
-        const raw = parts[1].replace(',', '.');
-        const val = parseFloat(raw);
-        if (!isNaN(val)) {
-          total += val;
-          daySet.add(date);
-        }
+      let total = 0; const daySet = new Set();
+      lines.slice(1).forEach(l => {
+        const p = l.split(/[;,]/); if (p.length>=2) { const v = parseFloat(p[1].replace(',','.')); if(!isNaN(v)){ total+=v; daySet.add(p[0]); }}
       });
-
-      const days = daySet.size || 1;
-      const daily = total / days;
-
-      setMpFileDaily(daily);
-      setMpScenarioMode('file');
+      setMpFileDaily(total / (daySet.size||1)); setMpScenarioMode('file');
     };
     reader.readAsText(file, 'utf-8');
   };
 
-  // --- 8. RENDER ---
   return (
     <div className="space-y-6 pb-20 animate-fade-in">
-      {/* CABEÇALHO */}
-      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 bg-gray-800 p-4 rounded-xl border border-gray-700">
-        <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <Factory className="text-indigo-400" size={22} />
-            Análise de Necessidade de Matéria-Prima
-          </h2>
-          <p className="text-sm text-gray-400">
-            Calcula consumo médio dos últimos {horizon} dias e compara com o
-            estoque disponível (Bobina Mãe + B2 em estoque). Clique em uma MP
-            na tabela para simular cenários.
-          </p>
+      {/* HEADER E KPIS (MANTIDOS IGUAIS) */}
+      <div className="flex flex-col md:flex-row md:items-end gap-4 bg-gray-800 p-4 rounded-xl border border-gray-700">
+        <div className="flex-1">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2"><Factory className="text-indigo-400" size={22}/> Simulação de Compras</h2>
+          <p className="text-sm text-gray-400">Planejamento de MP: Defina o ritmo de consumo e a meta de cobertura.</p>
         </div>
-
-        <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto md:items-center">
-          {/* Busca */}
-          <div className="relative flex-1 md:w-64">
-            <Search
-              className="absolute left-3 top-2.5 text-gray-500"
-              size={16}
-            />
-            <input
-              type="text"
-              placeholder="Buscar MP ou material..."
-              value={mpNeedSearch}
-              onChange={(e) => setMpNeedSearch(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-600 rounded-lg pl-9 py-2 text-sm text-white outline-none focus:border-indigo-500"
-            />
-          </div>
-
-          {/* Janela em dias */}
-          <div className="md:w-40">
-            <select
-              value={mpHorizonDays}
-              onChange={(e) => setMpHorizonDays(Number(e.target.value))}
-              className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
-            >
-              <option value={7}>Últimos 7 dias</option>
-              <option value={15}>Últimos 15 dias</option>
-              <option value={30}>Últimos 30 dias</option>
-              <option value={60}>Últimos 60 dias</option>
-              <option value={90}>Últimos 90 dias</option>
-            </select>
-          </div>
-
-          {/* Filtro Espessura */}
-          <div className="md:w-32">
-            <select
-              value={mpFilterThickness}
-              onChange={(e) => setMpFilterThickness(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
-            >
-              <option value="all">Espessura</option>
-              {thicknessOptions.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Filtro Tipo */}
-          <div className="md:w-32">
-            <select
-              value={mpFilterType}
-              onChange={(e) => setMpFilterType(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
-            >
-              <option value="all">Tipo</option>
-              {typeOptions.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="flex gap-2 flex-wrap">
+            <input type="text" placeholder="Buscar..." value={mpNeedSearch} onChange={e=>setMpNeedSearch(e.target.value)} className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white w-40 outline-none focus:border-indigo-500"/>
+            <select value={mpHorizonDays} onChange={e=>setMpHorizonDays(Number(e.target.value))} className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white outline-none"><option value={30}>Ref: 30 dias</option><option value={60}>Ref: 60 dias</option><option value={90}>Ref: 90 dias</option></select>
+            <select value={mpFilterThickness} onChange={e=>setMpFilterThickness(e.target.value)} className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white outline-none"><option value="all">Espessura</option>{thicknessOptions.map(t=><option key={t} value={t}>{t}</option>)}</select>
+            <select value={mpFilterType} onChange={e=>setMpFilterType(e.target.value)} className="bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white outline-none"><option value="all">Tipo</option>{typeOptions.map(t=><option key={t} value={t}>{t}</option>)}</select>
         </div>
       </div>
 
-      {/* CARDS RESUMO */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="bg-emerald-900/20 border-emerald-500/30 py-3 px-4">
-          <span className="text-xs text-emerald-400 font-bold uppercase">
-            Estoque disponível (Mãe + B2)
-          </span>
-          <div className="text-2xl font-bold text-white">
-            {formatKg(totalAvailable)}{' '}
-            <span className="text-sm font-normal text-gray-400">kg</span>
-          </div>
+          <span className="text-xs text-emerald-400 font-bold uppercase">Estoque Agrupado</span>
+          <div className="text-2xl font-bold text-white">{formatKg(totalAvailable)} <span className="text-sm font-normal text-gray-400">kg</span></div>
         </Card>
-
         <Card className="bg-amber-900/20 border-amber-500/40 py-3 px-4">
-          <span className="text-xs text-amber-400 font-bold uppercase">
-            Necessidade (janela filtrada)
-          </span>
-          <div className="text-2xl font-bold text-amber-200">
-            {formatKg(totalShortage)}{' '}
-            <span className="text-sm font-normal text-gray-400">kg</span>
-          </div>
+          <span className="text-xs text-amber-400 font-bold uppercase">Necessidade Total (Ref. Padrão)</span>
+          <div className="text-2xl font-bold text-amber-200">{formatKg(totalShortage)} <span className="text-sm font-normal text-gray-400">kg</span></div>
         </Card>
-
         <Card className="bg-gray-800/60 border-gray-600/40 py-3 px-4">
-          <span className="text-xs text-gray-300 font-bold uppercase">
-            Itens críticos
-          </span>
-          <div className="text-2xl font-bold text-white">
-            {filteredMp.filter((m) => m.shortage > 0).length}
-            <span className="text-sm font-normal text-gray-400"> códigos</span>
-          </div>
+            <span className="text-xs text-gray-300 font-bold uppercase">Grupos Críticos</span>
+            <div className="text-2xl font-bold text-white">{filteredGroups.filter(m => m.shortage > 0).length} <span className="text-sm font-normal text-gray-400">grupos</span></div>
         </Card>
       </div>
 
-      {/* PAINEL DE SIMULAÇÃO – FULL WIDTH */}
+      {/* SIMULAÇÃO DE COMPRA (MANTIDO, SÓ APARECE QUANDO SELECIONA) */}
       <Card className="bg-gray-900/80 border border-gray-700/60 p-4 flex flex-col gap-4">
-        {!selectedMp ? (
-          <div className="text-sm text-gray-400">
-            Selecione um código de matéria-prima na tabela abaixo para analisar
-            consumo, cobertura e simular cenários.
-          </div>
+        {!selectedGroup ? (
+          <div className="text-sm text-gray-400 text-center py-6">Selecione um grupo na tabela abaixo para ver os detalhes e simular.</div>
         ) : (
           <>
-            {/* Cabeçalho MP */}
-            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div className="flex justify-between items-start">
               <div>
-                <div className="text-xs font-semibold text-gray-400 uppercase">
-                  Matéria-prima selecionada
+                <div className="flex items-center gap-3">
+                  <div className="text-3xl font-bold text-white">{selectedGroup.type}</div>
+                  <div className="px-3 py-1 bg-gray-800 rounded border border-gray-600 text-emerald-400 font-bold font-mono">{selectedGroup.thickness} mm</div>
                 </div>
-                <div className="mt-1">
-                  <div className="text-lg font-mono font-bold text-white">
-                    {selectedMp.motherCode}
-                  </div>
-                  <div className="text-xs text-gray-400 max-w-[420px] truncate">
-                    {selectedMp.material}
-                  </div>
-                </div>
+                <div className="text-xs text-gray-500 mt-1">Agrupa {selectedGroup.uniqueCodesCount} códigos de MP</div>
               </div>
-
               <div className="text-right">
-                <div className="text-[10px] uppercase text-gray-400">
-                  Estoque disponível
-                </div>
-                <div className="text-2xl font-bold text-emerald-400">
-                  {formatKg(selectedMp.available)}{' '}
-                  <span className="text-xs text-gray-500">kg</span>
-                </div>
+                <div className="text-xs uppercase text-gray-400">Estoque Atual</div>
+                <div className="text-2xl font-bold text-emerald-400">{formatKg(currentAvailable)} <span className="text-xs text-gray-500">kg</span></div>
               </div>
             </div>
-
-            {/* Modo de cenário */}
-            <div className="mt-2">
-              <div className="text-xs font-semibold text-gray-400 mb-2 uppercase">
-                Modo de cenário
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => setMpScenarioMode('historical')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                    mpScenarioMode === 'historical'
-                      ? 'bg-indigo-600 text-white border-indigo-400'
-                      : 'border-gray-600 text-gray-300 hover:bg-gray-800'
-                  }`}
-                >
-                  Histórico
-                </button>
-                <button
-                  onClick={() => setMpScenarioMode('manual')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                    mpScenarioMode === 'manual'
-                      ? 'bg-emerald-600 text-white border-emerald-400'
-                      : 'border-gray-600 text-gray-300 hover:bg-gray-800'
-                  }`}
-                >
-                  Manual
-                </button>
-                <button
-                  onClick={() => setMpScenarioMode('file')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                    mpScenarioMode === 'file'
-                      ? 'bg-amber-600 text-white border-amber-400'
-                      : 'border-gray-600 text-gray-300 hover:bg-gray-800'
-                  }`}
-                >
-                  Arquivo CSV
-                </button>
-              </div>
-            </div>
-
-            {/* Formulário do cenário */}
-            <div className="mt-3 space-y-3">
-              {mpScenarioMode === 'historical' && (
-                <div className="text-sm text-gray-300 space-y-1">
-                  <div>
-                    Consumo médio real (últimos {horizon} dias):
-                    <span className="font-semibold text-white ml-1">
-                      {formatKg(selectedMp.dailyAvg)} kg/dia
-                    </span>
-                  </div>
-                  <div>
-                    Cobertura com esse consumo:
-                    <span className="font-semibold text-emerald-400 ml-1">
-                      {formatDays(selectedMp.coverageDays)} dias
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {mpScenarioMode === 'manual' && (
-                <div className="space-y-2">
-                  <div className="flex flex-col md:flex-row gap-2">
-                    <div className="flex-1">
-                      <label className="text-xs text-gray-400">
-                        Consumo diário (kg/dia)
-                      </label>
-                      <input
-                        type="number"
-                        value={mpManualDaily}
-                        onChange={(e) => setMpManualDaily(e.target.value)}
-                        className="mt-1 w-full bg-gray-900 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-white outline-none focus:border-emerald-500"
-                        placeholder={
-                          selectedMp.dailyAvg
-                            ? selectedMp.dailyAvg.toFixed(1)
-                            : '0'
-                        }
-                      />
+            <hr className="border-gray-700/50"/>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                    <div className="flex gap-2">
+                        {['historical','manual','file'].map(m => (
+                            <button key={m} onClick={()=>setMpScenarioMode(m)} className={`px-3 py-1.5 rounded-full text-xs font-medium border capitalize ${mpScenarioMode===m?'bg-indigo-600 text-white border-indigo-400':'border-gray-600 text-gray-300 hover:bg-gray-800'}`}>{m==='historical'?'Histórico':m==='file'?'Arquivo CSV':'Manual'}</button>
+                        ))}
                     </div>
-                    <div className="w-full md:w-32">
-                      <label className="text-xs text-gray-400">
-                        Horizonte (dias)
-                      </label>
-                      <input
-                        type="number"
-                        value={mpManualDays}
-                        onChange={(e) =>
-                          setMpManualDays(Number(e.target.value))
-                        }
-                        className="mt-1 w-full bg-gray-900 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-white outline-none focus:border-emerald-500"
-                      />
+                    {mpScenarioMode === 'manual' && (
+                        <div className="bg-gray-800/40 p-3 rounded border border-gray-700/50 space-y-3">
+                            <div className="flex gap-2 text-xs mb-1">
+                                <button onClick={()=>setMpManualInputType('daily')} className={`flex-1 py-1 rounded transition-colors ${mpManualInputType==='daily'?'bg-indigo-500/20 text-indigo-300 border border-indigo-500/50':'text-gray-500 hover:text-gray-300 bg-gray-900'}`}>Por Taxa Diária</button>
+                                <button onClick={()=>setMpManualInputType('total')} className={`flex-1 py-1 rounded transition-colors ${mpManualInputType==='total'?'bg-indigo-500/20 text-indigo-300 border border-indigo-500/50':'text-gray-500 hover:text-gray-300 bg-gray-900'}`}>Por Demanda Total</button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                {mpManualInputType === 'daily' ? (
+                                    <div className="col-span-2">
+                                        <label className="text-xs text-gray-400 block mb-1">Consumo (kg/dia)</label>
+                                        <input type="number" value={mpManualDaily} onChange={e=>setMpManualDaily(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white text-sm focus:border-indigo-500 outline-none" placeholder={selectedGroup.dailyAvg.toFixed(0)}/>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div>
+                                            <label className="text-xs text-gray-400 block mb-1">Demanda Período (kg)</label>
+                                            <input type="number" value={mpManualTotal} onChange={e=>setMpManualTotal(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white text-sm focus:border-indigo-500 outline-none"/>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-400 block mb-1">Dias do Período</label>
+                                            <input type="number" value={mpManualDays} onChange={e=>setMpManualDays(Number(e.target.value))} className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white text-sm focus:border-indigo-500 outline-none"/>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-emerald-900/10 p-2 rounded border border-emerald-500/20">
+                            <label className="text-xs text-emerald-400 font-bold block mb-1">Meta Cobertura (Dias)</label>
+                            <input type="number" value={mpTargetDays} onChange={e=>setMpTargetDays(Number(e.target.value))} className="w-full bg-gray-900 border border-emerald-500/30 rounded p-2 text-white text-sm focus:border-emerald-400 outline-none text-center font-bold"/>
+                        </div>
+                        <div>
+                            <label className="text-xs text-gray-400 block mb-1">Preço (R$/kg)</label>
+                            <div className="relative">
+                                <span className="absolute left-3 top-2 text-gray-500 text-sm">R$</span>
+                                <input type="number" value={mpSimulatedPrice} onChange={e=>setMpSimulatedPrice(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded p-2 pl-9 text-white text-sm focus:border-indigo-500 outline-none" placeholder="0.00"/>
+                            </div>
+                        </div>
                     </div>
-                  </div>
-                  <p className="text-[11px] text-gray-500">
-                    Dica: use o histórico como referência e testa cenários mais
-                    agressivos.
-                  </p>
                 </div>
-              )}
-
-              {mpScenarioMode === 'file' && (
-                <div className="space-y-2">
-                  <div>
-                    <label className="text-xs text-gray-400 block mb-1">
-                      Arquivo CSV de consumo (data;kg)
-                    </label>
-                    <input
-                      type="file"
-                      accept=".csv,text/csv"
-                      onChange={handleMpFileUpload}
-                      className="text-xs text-gray-300"
-                    />
-                  </div>
-                  {mpFileDaily != null && (
-                    <div className="text-xs text-gray-300">
-                      Média diária calculada a partir do arquivo:{' '}
-                      <span className="font-semibold text-white">
-                        {formatKg(mpFileDaily)} kg/dia
-                      </span>
+                <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50 flex flex-col justify-between">
+                    <div>
+                        <div className="flex justify-between items-end mb-4 border-b border-gray-700 pb-2">
+                             <div><span className="text-gray-400 text-xs block uppercase">Ritmo Calculado</span><span className="text-white font-bold text-xl">{formatKg(scenarioDaily)} <span className="text-xs font-normal text-gray-500">kg/dia</span></span></div>
+                             <div className="text-right"><span className="text-gray-400 text-xs block uppercase">Esgotamento Previsto</span><span className={`${scenarioCoverage < targetDays ? 'text-rose-400' : 'text-emerald-400'} font-bold text-xl`}>{ruptureDateStr}</span></div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-y-6 gap-x-4 text-sm mt-4">
+                            <div><span className="text-gray-400 block text-xs uppercase mb-1">Estoque Ideal ({targetDays} dias)</span><span className="text-indigo-300 font-bold text-lg block">{formatKg(idealStock)} kg</span><span className="text-xs text-gray-500">Meta calculada</span></div>
+                            <div><span className="text-gray-400 block text-xs uppercase mb-1">Falta Comprar</span><span className={`${scenarioNeed > 0 ? 'text-rose-400' : 'text-gray-500'} font-bold text-2xl block`}>{scenarioNeed > 0 ? formatKg(scenarioNeed) : 'OK'}</span><span className="text-xs text-gray-500">Gap de estoque</span></div>
+                            <div><span className="text-gray-400 block text-xs uppercase mb-1">Valor em Estoque</span><span className="text-gray-300 font-mono font-bold">{formatMoney(currentStockValue)}</span></div>
+                            <div><span className="text-gray-400 block text-xs uppercase mb-1">Investimento Necessário</span><span className="text-rose-300 font-mono font-bold text-lg">{scenarioNeed > 0 ? formatMoney(estimatedCost) : '-'}</span></div>
+                        </div>
                     </div>
-                  )}
-                  <p className="text-[11px] text-gray-500">
-                    Formato esperado: primeira coluna data, segunda coluna
-                    consumo em kg. Ex:{' '}
-                    <code>01/12/2025;1234,5</code>
-                  </p>
+                    <div className="mt-6">
+                         <div className="flex justify-between text-xs mb-1"><span className="text-gray-400">Cobertura Atual: {formatDays(scenarioCoverage)} dias</span><span className="text-emerald-400 font-bold">Meta: {targetDays} dias</span></div>
+                         <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden relative"><div className={`h-3 rounded-full ${scenarioCoverage < targetDays ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, (scenarioCoverage / targetDays) * 100)}%` }}></div></div>
+                         {scenarioNeed > 0 && <div className="mt-2 text-center text-xs text-rose-400 bg-rose-900/20 py-1.5 rounded border border-rose-500/30 font-semibold animate-pulse">⚠ AUMENTAR ESTOQUE EM +{formatKg(scenarioNeed)} kg</div>}
+                    </div>
                 </div>
-              )}
-            </div>
-
-            {/* Resultado do cenário */}
-            <div className="border-t border-gray-700 pt-3 text-sm space-y-1">
-              <div className="flex justify-between">
-                <span className="text-gray-400">
-                  Consumo usado no cenário:
-                </span>
-                <span className="font-semibold text-white">
-                  {formatKg(scenarioDaily)} kg/dia
-                </span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className="text-gray-400">
-                  Cobertura com esse cenário:
-                </span>
-                <span className="font-semibold text-emerald-400">
-                  {formatDays(scenarioCoverage)} dias
-                </span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className="text-gray-400">
-                  Necessidade para {mpManualDays} dias:
-                </span>
-                <span className="font-semibold text-rose-300">
-                  {scenarioNeed > 0 ? `${formatKg(scenarioNeed)} kg` : '-'}
-                </span>
-              </div>
-
-              <div className="text-[11px] text-gray-500 mt-1">
-                {scenarioNeed > 0
-                  ? 'Essa é a quantidade estimada que precisaria ser comprada para garantir o horizonte escolhido.'
-                  : 'Com o cenário atual, o estoque cobre o horizonte informado.'}
-              </div>
             </div>
           </>
         )}
       </Card>
 
-      {/* TABELA – FULL WIDTH */}
+      {/* TABELA EXPANSÍVEL */}
       <Card className="flex-1 overflow-hidden p-0">
         <div className="overflow-x-auto max-h-[600px] custom-scrollbar-dark">
-          <table className="w-full text-sm text-left text-gray-300">
+          <table className="w-full text-sm text-left text-gray-300 border-collapse">
             <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10 uppercase text-xs">
               <tr>
-                <th className="p-3">Código MP</th>
-                <th className="p-3">Material</th>
-                <th className="p-3 text-right">Est. Mãe</th>
-                <th className="p-3 text-right">B2 em Est.</th>
-                <th className="p-3 text-right">Estoque Total</th>
-                <th className="p-3 text-right">Consumo {horizon}d</th>
-                <th className="p-3 text-right">Média Dia</th>
-                <th className="p-3 text-right">Cobertura (dias)</th>
+                <th className="p-3">Tipo</th>
+                <th className="p-3">Espessura</th>
+                <th className="p-3 text-center">Itens</th>
+                <th className="p-3 text-right">Total (kg)</th>
+                <th className="p-3 text-right">Média/Dia</th>
+                <th className="p-3 text-right">Cobertura</th>
                 <th className="p-3 text-right text-rose-300">Necessidade</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
-              {filteredMp.map((mp) => {
-                const critical = mp.shortage > 0;
-                const warn = !critical && mp.coverageDays < horizon;
+              {filteredGroups.map(group => {
+                const critical = group.shortage > 0;
+                const isSelected = selectedMpCode === group.groupId;
+                
+                // Lógica de Agrupamento por Largura para o Detalhe
+                const widthMap = new Map();
+                if (isSelected) {
+                    group.items.forEach(item => {
+                        const w = item.width || 0;
+                        if (!widthMap.has(w)) widthMap.set(w, { width: w, motherCount: 0, motherWeight: 0, b2Count: 0, b2Weight: 0, codes: new Set() });
+                        const wEntry = widthMap.get(w);
+                        wEntry.codes.add(item.code);
+                        if (item.origin === 'Mãe') { wEntry.motherCount++; wEntry.motherWeight += item.weight; }
+                        else { wEntry.b2Count++; wEntry.b2Weight += item.weight; }
+                    });
+                }
+                const sortedWidths = Array.from(widthMap.values()).sort((a,b) => b.width - a.width);
 
                 return (
-                  <tr
-                    key={mp.motherCode}
-                    onClick={() => setSelectedMpCode(mp.motherCode)}
-                    className={
-                      'cursor-pointer transition-colors border-l-2 ' +
-                      (critical
-                        ? 'bg-rose-900/10 hover:bg-rose-900/20 border-rose-500/60'
-                        : warn
-                        ? 'bg-amber-900/10 hover:bg-amber-900/20 border-amber-500/40'
-                        : 'hover:bg-gray-800/40 border-transparent') +
-                      (selectedMpCode === mp.motherCode
-                        ? ' ring-2 ring-purple-500/60'
-                        : '')
-                    }
-                  >
-                    <td className="p-3 font-mono font-bold text-white">
-                      {mp.motherCode}
-                    </td>
-                    <td className="p-3 text-gray-300 max-w-[260px] truncate">
-                      {mp.material}
-                    </td>
-                    <td className="p-3 text-right">
-                      {formatKg(mp.motherStockWeight)}
-                    </td>
-                    <td className="p-3 text-right">
-                      {formatKg(mp.b2StockWeight)}
-                    </td>
-                    <td className="p-3 text-right font-semibold text-white">
-                      {formatKg(mp.available)}
-                    </td>
-                    <td className="p-3 text-right text-gray-300">
-                      {formatKg(mp.windowConsumptionWeight)}
-                    </td>
-                    <td className="p-3 text-right text-gray-300">
-                      {formatKg(mp.dailyAvg)}
-                    </td>
-                    <td className="p-3 text-right">
-                      {formatDays(mp.coverageDays)}
-                    </td>
-                    <td className="p-3 text-right font-bold text-rose-300">
-                      {mp.shortage > 0 ? formatKg(mp.shortage) : '-'}
-                    </td>
-                  </tr>
+                  <React.Fragment key={group.groupId}>
+                      {/* LINHA PRINCIPAL */}
+                      <tr onClick={()=>setSelectedMpCode(group.groupId)} className={`cursor-pointer transition-colors border-l-2 ${critical?'bg-rose-900/10 hover:bg-rose-900/20 border-rose-500/60':'hover:bg-gray-800/40 border-transparent'} ${isSelected?'bg-gray-800 ring-0 border-l-4 border-l-indigo-500':''}`}>
+                        <td className="p-3 font-bold text-white">{group.type}</td>
+                        <td className="p-3 text-gray-300 font-mono">{group.thickness}</td>
+                        <td className="p-3 text-center text-xs text-gray-500 bg-gray-900/50 rounded">{group.uniqueCodesCount}</td>
+                        <td className="p-3 text-right font-bold text-white">{formatKg(group.available)}</td>
+                        <td className="p-3 text-right text-gray-400">{formatKg(group.dailyAvg)}</td>
+                        <td className="p-3 text-right font-medium">{formatDays(group.coverageDays)}</td>
+                        <td className="p-3 text-right font-bold text-rose-300">{group.shortage>0?formatKg(group.shortage):'-'}</td>
+                      </tr>
+                      
+                      {/* LINHA DE DETALHE (SÓ APARECE SE SELECIONADO) */}
+                      {isSelected && (
+                          <tr className="bg-gray-900/40 animate-fade-in">
+                              <td colSpan={7} className="p-4 border-t border-gray-700/50 border-b border-gray-700 inset-shadow">
+                                  <div className="flex items-center gap-2 mb-2 text-xs text-indigo-400 font-bold uppercase tracking-wider">
+                                      <List size={14}/> Detalhamento por Largura ({group.type} {group.thickness}mm)
+                                  </div>
+                                  <div className="overflow-hidden rounded-lg border border-gray-700 bg-gray-900/80">
+                                      <table className="w-full text-xs text-left">
+                                          <thead className="bg-gray-900 text-gray-500 uppercase font-bold">
+                                              <tr>
+                                                  <th className="p-2 pl-4">Largura</th>
+                                                  <th className="p-2 text-center text-emerald-700">Bob. Mãe</th>
+                                                  <th className="p-2 text-center text-indigo-700">Bob. 2 (Slitter)</th>
+                                                  <th className="p-2 text-right">Peso Total</th>
+                                                  <th className="p-2 text-gray-600">Códigos Vinculados</th>
+                                              </tr>
+                                          </thead>
+                                          <tbody className="divide-y divide-gray-800 text-gray-300">
+                                              {sortedWidths.map(w => (
+                                                  <tr key={w.width} className="hover:bg-gray-800/50">
+                                                      <td className="p-2 pl-4 font-bold text-white">{w.width} mm</td>
+                                                      <td className="p-2 text-center">
+                                                          {w.motherCount > 0 ? <span className="text-emerald-400 font-bold">{w.motherCount} un <span className="text-gray-600 font-normal">({formatKg(w.motherWeight)})</span></span> : <span className="text-gray-700">-</span>}
+                                                      </td>
+                                                      <td className="p-2 text-center">
+                                                          {w.b2Count > 0 ? <span className="text-indigo-400 font-bold">{w.b2Count} un <span className="text-gray-600 font-normal">({formatKg(w.b2Weight)})</span></span> : <span className="text-gray-700">-</span>}
+                                                      </td>
+                                                      <td className="p-2 text-right font-mono text-white">{formatKg(w.motherWeight + w.b2Weight)}</td>
+                                                      <td className="p-2 text-gray-500 truncate max-w-[200px]" title={Array.from(w.codes).join(', ')}>
+                                                          {Array.from(w.codes).slice(0, 3).join(', ')}{w.codes.size > 3 ? ` +${w.codes.size - 3}` : ''}
+                                                      </td>
+                                                  </tr>
+                                              ))}
+                                              {sortedWidths.length === 0 && <tr><td colSpan={5} className="p-3 text-center italic text-gray-600">Nenhum item em estoque para este grupo.</td></tr>}
+                                          </tbody>
+                                      </table>
+                                  </div>
+                              </td>
+                          </tr>
+                      )}
+                  </React.Fragment>
                 );
               })}
-
-              {filteredMp.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="p-6 text-center text-gray-500">
-                    Nenhum código de matéria-prima encontrado para os filtros
-                    atuais.
-                  </td>
-                </tr>
-              )}
+              {filteredGroups.length===0 && <tr><td colSpan={7} className="p-6 text-center text-gray-500">Nada encontrado.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -5222,8 +5070,6 @@ const renderRawMaterialRequirement = () => {
     </div>
   );
 };
-
-
 
 
 

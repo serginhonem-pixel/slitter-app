@@ -88,7 +88,7 @@ export const INITIAL_PRODUCT_CATALOG = [
     width: 140, 
     thickness: '3.00', 
     type: 'BQ', 
-    motherCode: '10863' // <--- Confirme se este é o código da mãe correto para este item
+    motherCode: '10863'
   },
   { 
     code: '00653M', 
@@ -98,6 +98,28 @@ export const INITIAL_PRODUCT_CATALOG = [
     width: 170, 
     thickness: '2.75', 
     type: 'BZ', 
-    motherCode: '10262' // <--- Confirme este também
+    motherCode: '10262'
   },
+  { 
+    code: '00675C', 
+    name: 'PERFIL UE 150X50X17X2,25', 
+    b2Code: '85525C', 
+    b2Name: 'BOB 2 PERFIL UE 150X50X17X2,25', 
+    width: 214, 
+    thickness: '2.25', 
+    type: 'BQ', 
+    motherCode: '10022' 
+  },
+  { 
+    code: '00660A', 
+    name: 'PERFIL US 127X50X1,80	BQ', 
+    b2Code: '85510A', 
+    b2Name: 'BOB 2 PERFIL US 127X50X1,80', 
+    width: 102, 
+    thickness: '2.25', 
+    type: 'BQ', 
+    motherCode: '10262' 
+  },
+
 ];
+
