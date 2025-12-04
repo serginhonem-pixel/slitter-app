@@ -1,44 +1,63 @@
-import React, { useState, useEffect, useRef } from 'react';
-import Button from './components/ui/Button';
 import { QRCodeSVG } from 'qrcode.react';
-import { db } from './services/api'; // Certifique-se de exportar 'db' no seu arquivo de configuração
-import { loadFromDb, saveToDb, deleteFromDb, updateInDb } from './services/api';
-import { 
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
-  ResponsiveContainer, AreaChart, Area, ComposedChart, 
-  PieChart as RechartsPie, // <--- O GRÁFICO AGORA SE CHAMA 'RechartsPie'
-  Pie, Cell 
-} from 'recharts'
+import backupData from "./backups/slitter-backup.json";
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend, // <--- O GRÁFICO AGORA SE CHAMA 'RechartsPie'
+  Pie,
+  PieChart as RechartsPie,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis, YAxis
+} from 'recharts';
+import Button from './components/ui/Button';
+import { db, deleteFromDb, loadFromDb, saveToDb, updateInDb } from './services/api'; // Certifique-se de exportar 'db' no seu arquivo de configuração
 
-import { 
-  collection, 
-  onSnapshot, 
-  query, 
-  orderBy, 
-  writeBatch, 
-  doc, 
-  setDoc 
+import {
+  collection,
+  doc,
+  onSnapshot,
+  writeBatch
 } from 'firebase/firestore';
 
 
 
 import {
-  Scissors, Factory, ScrollText, Plus, Trash2, Save, History, LayoutDashboard,
-  Package, AlertCircle, ChevronRight, TrendingDown, FileSpreadsheet, Settings,
-  Filter, CheckSquare, Tag, Search, Layers, CheckCircle, Info, RefreshCw,
-  List, X, Barcode, Link as LinkIcon, Edit, RotateCcw, FlaskConical, FileText,
-  Database, Scale, Download, Upload, HardDrive, 
-  PieChart, // <--- Este é o ÍCONE
-  Menu, LogOut, User, Activity, // <--- ADICIONEI O ACTIVITY AQUI
-  Home, Moon, FileInput, ChevronLeft, Printer, Eye, Truck, Archive, PenSquare,
-  FileJson, WifiOff 
+  Archive,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Edit,
+  Eye,
+  Factory,
+  FileText,
+  History, LayoutDashboard,
+  List,
+  LogOut, // <--- Este é o ÍCONE
+  Menu,
+  Package,
+  PieChart,
+  Plus,
+  Printer,
+  Scissors,
+  ScrollText,
+  Search,
+  Trash2,
+  Truck,
+  Upload,
+  User,
+  X
 } from 'lucide-react';
 
 
 
 import CutDetailsModal from './components/modals/CutDetailsModal';
-import ProductHistoryModal from './components/modals/ProductHistoryModal';
-import EditMotherCoilModal from './components/modals/ProductHistoryModal';
+import { default as EditMotherCoilModal, default as ProductHistoryModal } from './components/modals/ProductHistoryModal';
 
 // --- IMPORTAÇÃO DOS Catalogos ---
 
@@ -67,6 +86,99 @@ const PaginationControls = ({ currentPage, totalItems, itemsPerPage, onPageChang
       <div className="flex gap-2">
         <Button variant="secondary" onClick={() => onPageChange(Math.max(1, currentPage - 1))} disabled={currentPage === 1} className="px-3 py-1 h-8 text-xs"><ChevronLeft size={14} /> Anterior</Button>
         <Button variant="secondary" onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages} className="px-3 py-1 h-8 text-xs">Próxima <ChevronRight size={14} /></Button>
+      </div>
+    </div>
+  );
+};
+const DailyGlobalModal = ({ group, onClose }) => {
+  const { type, date, events, totalQty, totalWeight } = group;
+
+  const titleMap = {
+    'ENTRADA MP': 'Entradas de Matéria-Prima',
+    CORTE: 'Cortes Slitter',
+    PRODUÇÃO: 'Produção de PA',
+    EXPEDIÇÃO: 'Expedição de PA',
+  };
+
+  const title = titleMap[type] || type;
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-4xl max-h-[80vh] flex flex-col shadow-2xl">
+        <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+          <div>
+            <h3 className="text-white font-bold text-lg">{title}</h3>
+            <p className="text-gray-400 text-sm">
+              Dia {date} • {events.length} registro
+              {events.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-4 overflow-y-auto flex-1 custom-scrollbar-dark">
+          {events.length === 0 ? (
+            <div className="text-center text-gray-500 py-8">
+              Nenhum registro.
+            </div>
+          ) : (
+            <table className="w-full text-sm text-left text-gray-300">
+              <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                <tr>
+                  <th className="p-2">Código</th>
+                  <th className="p-2">Descrição</th>
+                  <th className="p-2 text-right">Qtd</th>
+                  <th className="p-2 text-right">Peso</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-700">
+                {events.map((e, idx) => (
+                  <tr key={idx} className="hover:bg-gray-700/50">
+                    <td className="p-2 font-mono text-xs text-blue-300">
+                      {e.id}
+                    </td>
+                    <td className="p-2 text-gray-300">
+                      {e.desc}
+                    </td>
+                    <td className="p-2 text-right text-gray-200">
+                      {e.qty}
+                    </td>
+                    <td className="p-2 text-right font-mono text-gray-300">
+                      {e.weight.toLocaleString
+                        ? e.weight.toLocaleString('pt-BR', {
+                            minimumFractionDigits: 1,
+                            maximumFractionDigits: 1,
+                          })
+                        : e.weight}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="p-3 border-t border-gray-700 bg-gray-900/50 flex justify-between items-center">
+          <span className="text-xs text-gray-500">
+            Total: {totalQty} registros •{' '}
+            {totalWeight.toLocaleString('pt-BR', {
+              minimumFractionDigits: 1,
+              maximumFractionDigits: 1,
+            })}{' '}
+            kg
+          </span>
+          <button
+            onClick={onClose}
+            className="px-4 py-1 text-xs bg-gray-700 hover:bg-white hover:text-black rounded"
+          >
+            Fechar
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -576,8 +688,7 @@ export default function App() {
   const [mpManualDaily, setMpManualDaily] = useState('');       // kg/dia digitado
   const [mpManualDays, setMpManualDays] = useState(30);         // horizonte para simulação
   const [mpFileDaily, setMpFileDaily] = useState(null);         // média via arquivo
-
-
+  const [selectedGlobalGroup, setSelectedGlobalGroup] = useState(null);
   const [selectedMotherForCut, setSelectedMotherForCut] = useState('');
   const [motherSearchQuery, setMotherSearchQuery] = useState('');
   const [tempChildCoils, setTempChildCoils] = useState([]);
@@ -654,58 +765,11 @@ export default function App() {
     return localStorage.getItem('currentFileName') || 'Nenhum arquivo carregado';
   });
 
-  // useEffect(() => {
-  //   localStorage.setItem('currentFileName', currentFileName);
-  // }, [currentFileName]);
-  // ----------------------------------------------------------------------
+  const USE_LOCAL_JSON = window.location.hostname === 'localhost';
+// true no npm run dev, false no build/Vercel
+
 
   const [productionDate, setProductionDate] = useState(new Date().toISOString().split('T')[0]);
-
-
-  // Salva no localStorage para não perder se der F5
-  // useEffect(() => {
-  //   localStorage.setItem('currentFileName', currentFileName);
-  // }, [currentFileName]);
-  //     const savedMother = localStorage.getItem('motherCoils');
-  //     const savedChild = localStorage.getItem('childCoils');
-  //     const savedLogs = localStorage.getItem('productionLogs');
-  //     const savedShipping = localStorage.getItem('shippingLogs');
-  //     const savedCatalog = localStorage.getItem('productCatalog');
-  //     const savedMotherCatalog = localStorage.getItem('motherCatalog');
-  //     const savedCutLogs = localStorage.getItem('cuttingLogs');
-  //     if (savedCutLogs) setCuttingLogs(JSON.parse(savedCutLogs));
-      
-
-  //     if (savedMother) setMotherCoils(JSON.parse(savedMother));
-  //     if (savedChild) setChildCoils(JSON.parse(savedChild));
-  //     if (savedLogs) setProductionLogs(JSON.parse(savedLogs));
-  //     if (savedShipping) setShippingLogs(JSON.parse(savedShipping));
-  //     if (savedMotherCatalog) {
-  //         const parsed = JSON.parse(savedMotherCatalog);
-  //         if (parsed.length > 0) setMotherCatalog(parsed); 
-  //         else setMotherCatalog(INITIAL_MOTHER_CATALOG);
-  //     } else { setMotherCatalog(INITIAL_MOTHER_CATALOG); }
-
-  //     if (savedCatalog) {
-  //       const parsedCatalog = JSON.parse(savedCatalog);
-  //       if (parsedCatalog.length < INITIAL_PRODUCT_CATALOG.length) {
-  //          setProductCatalog(INITIAL_PRODUCT_CATALOG);
-  //       } else {
-  //          setProductCatalog(parsedCatalog);
-  //       }
-  //     } else { setProductCatalog(INITIAL_PRODUCT_CATALOG); }
-  //   } catch (error) { console.error("Erro ao carregar dados:", error); }
-  // }, []);
-
-  // useEffect(() => {
-  //   localStorage.setItem('motherCoils', JSON.stringify(motherCoils));
-  //   localStorage.setItem('childCoils', JSON.stringify(childCoils));
-  //   localStorage.setItem('productionLogs', JSON.stringify(productionLogs));
-  //   localStorage.setItem('shippingLogs', JSON.stringify(shippingLogs));
-  //   localStorage.setItem('productCatalog', JSON.stringify(productCatalog));
-  //   localStorage.setItem('motherCatalog', JSON.stringify(motherCatalog));
-  //   localStorage.setItem('cuttingLogs', JSON.stringify(cuttingLogs));
-  // }, [motherCoils, childCoils, productionLogs, shippingLogs, productCatalog, motherCatalog]);
 
   useEffect(() => {
     if (newMotherCoil.code && motherCatalog.length > 0) {
@@ -734,62 +798,92 @@ export default function App() {
 
   // 1. CARREGAMENTO EM TEMPO REAL (Conexão Viva)
   useEffect(() => {
-    const unsubs = []; // Array para guardar as conexões abertas
+  if (USE_LOCAL_JSON) {
+    console.log("[DATA] Rodando com JSON local (sem Firebase)");
 
-    // Função auxiliar para criar o ouvinte
-    const setupListener = (collectionName, setter) => {
-      try {
-        // Cria a referência para a coleção
-        const q = collection(db, collectionName);
-        
-        // Inicia a escuta (onSnapshot)
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-          const data = snapshot.docs.map(doc => ({
+    const sortLogs = (arr = []) => {
+      return [...arr].sort((a, b) => {
+        const dateA = new Date(a.timestamp || a.date || 0).getTime();
+        const dateB = new Date(b.timestamp || b.date || 0).getTime();
+        return dateB - dateA;
+      });
+    };
+
+    setMotherCoils(backupData.motherCoils || []);
+    setChildCoils(backupData.childCoils || []);
+    setMotherCatalog(backupData.motherCatalog || []);
+    setProductCatalog(backupData.productCatalog || []);
+    setProductionLogs(sortLogs(backupData.productionLogs || []));
+    setCuttingLogs(sortLogs(backupData.cuttingLogs || []));
+    setShippingLogs(sortLogs(backupData.shippingLogs || []));
+
+    return;
+  }
+
+  // 2) MODO PRODUÇÃO -> usa Firebase normalmente
+  const unsubs = []; // conexões abertas, para limpar depois
+
+  const setupListener = (collectionName, setter) => {
+    try {
+      const q = collection(db, collectionName);
+
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const data = snapshot.docs.map((doc) => ({
             id: doc.id,
-            ...doc.data()
+            ...doc.data(),
           }));
 
-          // ORDENAÇÃO: Garante que os logs mais novos fiquem no topo
           if (collectionName.includes('Logs')) {
-             data.sort((a, b) => {
-                 // Tenta ordenar por data ou timestamp
-                 const dateA = new Date(a.timestamp || a.date || 0).getTime();
-                 const dateB = new Date(b.timestamp || b.date || 0).getTime();
-                 return dateB - dateA; // Decrescente (Mais novo primeiro)
-             });
+            data.sort((a, b) => {
+              const dateA = new Date(a.timestamp || a.date || 0).getTime();
+              const dateB = new Date(b.timestamp || b.date || 0).getTime();
+              return dateB - dateA;
+            });
           }
 
-          // Atualiza o estado da tela
           setter(data);
-          
-        }, (error) => {
-          console.error(`Erro de conexão com ${collectionName}:`, error);
-          // Se cair a conexão, tenta pegar do LocalStorage como emergência
+
           try {
-             const saved = localStorage.getItem(collectionName);
-             if (saved) setter(JSON.parse(saved));
-          } catch (e) { console.log('Erro no fallback local'); }
-        });
+            localStorage.setItem(collectionName, JSON.stringify(data));
+          } catch (e) {
+            console.log('Erro ao salvar cache local de', collectionName);
+          }
+        },
+        (error) => {
+          console.error(`Erro de conexão com ${collectionName}:`, error);
+          try {
+            const saved = localStorage.getItem(collectionName);
+            if (saved) setter(JSON.parse(saved));
+          } catch (e) {
+            console.log('Erro no fallback local de', collectionName);
+          }
+        }
+      );
 
-        unsubs.push(unsubscribe); // Guarda para limpar depois
+      unsubs.push(unsubscribe);
+    } catch (err) {
+      console.error(`Erro ao configurar listener para ${collectionName}:`, err);
+    }
+  };
 
-      } catch (err) {
-        console.error(`Erro ao configurar listener para ${collectionName}:`, err);
-      }
-    };
+  // aqui você liga todas as coleções que já usava no Firebase
+  setupListener('motherCoils', setMotherCoils);
+  setupListener('childCoils', setChildCoils);
+  setupListener('motherCatalog', setMotherCatalog);
+  setupListener('productCatalog', setProductCatalog);
+  setupListener('productionLogs', setProductionLogs);
+  setupListener('cuttingLogs', setCuttingLogs);
+  setupListener('shippingLogs', setShippingLogs);
 
-    // Configura os 5 ouvintes
-    setupListener('motherCoils', setMotherCoils);
-    setupListener('childCoils', setChildCoils);
-    setupListener('productionLogs', setProductionLogs);
-    setupListener('shippingLogs', setShippingLogs);
-    setupListener('cuttingLogs', setCuttingLogs);
+  return () => {
+    unsubs.forEach((u) => u && u());
+  };
+}, []);
 
-    // LIMPEZA: Quando fechar a tela, desliga as conexões para não travar o navegador
-    return () => {
-      unsubs.forEach(unsub => unsub());
-    };
-  }, []); // Roda apenas uma vez ao montar a tela
+
+ // Roda apenas uma vez ao montar a tela
 
   // 2. BACKUP LOCAL (Mantive igual, pois é uma segurança extra)
   useEffect(() => {
@@ -2383,34 +2477,11 @@ const makeKeyFromCut = (c, safeMother) => {
 
 
 
-  // Helper para abrir detalhes da Visão Geral
-  // Helper para abrir detalhes da Visão Geral
-const handleGlobalDetail = (item) => {
-  const type = item.type;
-
-  // 🔹 Produção / Expedição / Corte -> abre o MESMO modal de histórico
-  if (type === 'PRODUÇÃO' || type === 'EXPEDIÇÃO' || type === 'CORTE') {
-    if (typeof setSelectedGroupData === 'function') {
-      // code = item.id (pode ser código do PA, da bobina 2, etc.)
-      setSelectedGroupData({
-        code: item.id,
-        name: item.desc,
-        type: type,          // se o modal quiser diferenciar
-      });
-      setShowHistoryModal(true);
-    }
-    return;
-  }
-
-  // 🔹 Se você quiser, pode tratar ENTRADA MP aqui (abrir extrato MP, por ex.)
-  if (type === 'ENTRADA MP') {
-    alert("Por enquanto, ENTRADA MP não tem tela de detalhes. Veja na aba 'Extrato MP'.");
-    return;
-  }
-
-  // 🔹 Qualquer outro tipo futuro
-  alert('Sem detalhes configurados para esse tipo de evento.');
+const handleGlobalDetail = (group) => {
+  // group = { date, isoDate, type, events, totalQty, totalWeight }
+  setSelectedGlobalGroup(group);
 };
+
 
 
   // Arrays seguros
@@ -2567,8 +2638,9 @@ const handleGlobalDetail = (item) => {
   // =================================================================================
   // 3. VISÃO GERAL (GLOBAL)
   // =================================================================================
-  const rawGlobalEvents = [];
+    const rawGlobalEvents = [];
 
+  // ENTRADA MP
   safeMother.forEach((m) =>
     rawGlobalEvents.push({
       rawDate: m.date,
@@ -2580,17 +2652,30 @@ const handleGlobalDetail = (item) => {
     })
   );
 
-  safeCutting.forEach((c) =>
-    rawGlobalEvents.push({
-      rawDate: c.date,
-      type: 'CORTE',
-      id: c.motherCode || '?',
-      desc: 'Corte Slitter',
-      qty: safeNum(c.outputCount),
-      weight: safeNum(c.inputWeight),
-    })
-  );
+  // CORTE SLITTER
+  // CORTE – usado na LINHA DO TEMPO GLOBAL e no modal "Cortes Slitter"
+safeCutting.forEach((c) => {
+  rawGlobalEvents.push({
+    rawDate: c.date,
+    type: 'CORTE',
+    id: c.motherCode || '?',
 
+    // 👇 Prioridade de descrição:
+    // 1) generatedItems  -> produtos cortados (bobina 2 / telha)
+    // 2) motherMaterial  -> descrição da bobina mãe
+    // 3) fallback genérico
+    desc:
+      c.generatedItems ||
+      c.motherMaterial ||
+      'Corte Slitter',
+
+    qty: safeNum(c.outputCount) || 1,
+    weight: safeNum(c.inputWeight),
+  });
+});
+
+
+  // PRODUÇÃO PA
   safeProd.forEach((p) =>
     rawGlobalEvents.push({
       rawDate: p.date,
@@ -2599,9 +2684,10 @@ const handleGlobalDetail = (item) => {
       desc: p.productName || '-',
       qty: safeNum(p.pieces),
       weight: safeNum(p.weight),
-    })
+    })  
   );
 
+  // EXPEDIÇÃO PA
   safeShipping.forEach((s) =>
     rawGlobalEvents.push({
       rawDate: s.date,
@@ -2613,13 +2699,15 @@ const handleGlobalDetail = (item) => {
     })
   );
 
-  const globalTimeline = [];
+  // ---- AGRUPAMENTO POR DIA + TIPO ----
   const stats = { entradaKg: 0, corteKg: 0, prodPcs: 0, expPcs: 0 };
+  const globalGroupsMap = {};
 
   rawGlobalEvents.forEach((e) => {
     if (!e.rawDate) return;
-    const d = toISODate(e.rawDate);
-    if (d < reportStartDate || d > reportEndDate) return;
+
+    const iso = toISODate(e.rawDate);
+    if (iso < reportStartDate || iso > reportEndDate) return;
 
     if (reportSearch) {
       const term = reportSearch.toLowerCase();
@@ -2631,7 +2719,23 @@ const handleGlobalDetail = (item) => {
       if (!text.includes(term)) return;
     }
 
-    globalTimeline.push(e);
+    const key = `${iso}|${e.type}`;
+
+    if (!globalGroupsMap[key]) {
+      globalGroupsMap[key] = {
+        date: e.rawDate,
+        isoDate: iso,
+        type: e.type,
+        events: [],
+        totalQty: 0,
+        totalWeight: 0,
+      };
+    }
+
+    const group = globalGroupsMap[key];
+    group.events.push(e);
+    group.totalQty += e.qty;
+    group.totalWeight += e.weight;
 
     if (e.type === 'ENTRADA MP') stats.entradaKg += e.weight;
     if (e.type === 'CORTE') stats.corteKg += e.weight;
@@ -2639,9 +2743,11 @@ const handleGlobalDetail = (item) => {
     if (e.type === 'EXPEDIÇÃO') stats.expPcs += e.qty;
   });
 
-  globalTimeline.sort(
-    (a, b) => getTimestamp(b.rawDate) - getTimestamp(a.rawDate)
+  // Lista final, agrupada e ORDENADA (mais recente primeiro)
+  const globalTimeline = Object.values(globalGroupsMap).sort(
+    (a, b) => b.isoDate.localeCompare(a.isoDate)
   );
+
 
   // =================================================================================
   // 4. RESUMO PRODUÇÃO
@@ -2842,39 +2948,56 @@ const handleGlobalDetail = (item) => {
                 <tbody className="divide-y divide-gray-700">
                   {globalTimeline.length === 0 ? (
                     <tr>
-                      <td
-                        colSpan="6"
-                        className="p-8 text-center text-gray-500"
-                      >
+                      <td colSpan="6" className="p-8 text-center text-gray-500">
                         Nenhum registro no período.
                       </td>
                     </tr>
                   ) : (
-                    globalTimeline.map((e, idx) => (
+                    globalTimeline.map((g, idx) => (
                       <tr
                         key={idx}
                         className="hover:bg-gray-700/50 transition-colors"
                       >
                         <td className="p-3 text-xs text-gray-400 font-mono">
-                          {e.rawDate}
+                          {g.date}
                         </td>
                         <td
                           className={`p-3 font-bold text-xs ${getTypeColor(
-                            e.type
+                            g.type
                           )}`}
                         >
-                          {e.type}
+                          {g.type}
                         </td>
-                        <td className="p-3 text-white">{e.desc}</td>
+                        <td className="p-3 text-white">
+                          {g.type === 'ENTRADA MP' &&
+                            `Entradas de MP (${g.events.length} registro${
+                              g.events.length !== 1 ? 's' : ''
+                            })`}
+                          {g.type === 'CORTE' &&
+                            `Cortes Slitter (${g.events.length} registro${
+                              g.events.length !== 1 ? 's' : ''
+                            })`}
+                          {g.type === 'PRODUÇÃO' &&
+                            `Produções de PA (${g.events.length} registro${
+                              g.events.length !== 1 ? 's' : ''
+                            })`}
+                          {g.type === 'EXPEDIÇÃO' &&
+                            `Expedições de PA (${g.events.length} registro${
+                              g.events.length !== 1 ? 's' : ''
+                            })`}
+                        </td>
                         <td className="p-3 text-right text-gray-300">
-                          {e.qty}
+                          {g.totalQty}
                         </td>
                         <td className="p-3 text-right font-mono text-gray-300">
-                          {e.weight.toFixed(1)}
+                          {g.totalWeight.toLocaleString('pt-BR', {
+                            minimumFractionDigits: 1,
+                            maximumFractionDigits: 1,
+                          })}
                         </td>
                         <td className="p-3 text-center">
                           <button
-                            onClick={() => handleGlobalDetail(e)}
+                            onClick={() => handleGlobalDetail(g)}
                             className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs transition-colors flex items-center gap-2 mx-auto"
                           >
                             <Eye size={14} />
@@ -2883,6 +3006,7 @@ const handleGlobalDetail = (item) => {
                       </tr>
                     ))
                   )}
+
                 </tbody>
               </table>
             </div>
@@ -5372,23 +5496,37 @@ const renderRawMaterialRequirement = () => {
             onClose={() => setViewingProdDetails(null)} 
         />
       )}
+
+      {selectedGlobalGroup && (
+        <DailyGlobalModal
+          group={selectedGlobalGroup}
+          onClose={() => setSelectedGlobalGroup(null)}
+        />
+      )}
+
+
       {showHistoryModal && selectedGroupData && (
-      <ProductHistoryModal
-        product={selectedGroupData}
-        logs={
-          selectedGroupData.context === 'CORTE'
-            ? cuttingLogs          // Se veio do corte
-            : productionLogs       // Se veio da produção
-        }
-        onClose={() => setShowHistoryModal(false)}
-        // CORREÇÃO AQUI: O nome correto da função no seu App.jsx é 'handleReprintProduct'
-        onReprint={handleReprintProduct} 
-      />
-    )}
+  <ProductHistoryModal
+    product={selectedGroupData}
+    logs={
+      selectedGroupData.context === 'CORTE' ||
+      selectedGroupData.type === 'CORTE'
+        ? cuttingLogs          // cortes
+        : productionLogs       // produção
+    }
+    motherCoils={motherCoils}  // 👈 NOVO
+    onClose={() => setShowHistoryModal(false)}
+    onReprint={handleReprintProduct}
+  />
+)}
+
+
+
 
     </div>    
   );
 };
+
 // ==========================================================
 // COLE ISTO NO FINAL ABSOLUTO DO ARQUIVO (FORA DA FUNÇÃO APP)
 // ==========================================================

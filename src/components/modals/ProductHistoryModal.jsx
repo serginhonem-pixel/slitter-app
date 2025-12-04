@@ -1,8 +1,8 @@
-import React from 'react';
-import { X, Printer } from 'lucide-react';
+import { Printer } from 'lucide-react';
 import Button from '../ui/Button';
 
-const ProductHistoryModal = ({ product, logs, onClose, onReprint }) => {
+const ProductHistoryModal = ({ product, logs, motherCoils = [], onClose, onReprint }) => {
+
   if (!product) return null;
 
   const baseCode = String(product.code || '').trim();
@@ -10,41 +10,91 @@ const ProductHistoryModal = ({ product, logs, onClose, onReprint }) => {
   const safeLogs = Array.isArray(logs) ? logs : [];
 
   const getDateObj = (l) => {
-    if (l.timestamp) return new Date(l.timestamp);
-    if (l.date) {
-      if (typeof l.date === 'string' && l.date.includes('/')) {
-        const [d, m, y] = l.date.split('/');
-        return new Date(`${y}-${m}-${d}T12:00:00`);
-      }
-      return new Date(l.date);
+  // 1) Prioriza SEMPRE o campo "date" (que é o que aparece na tela)
+  if (l.date) {
+    if (typeof l.date === 'string' && l.date.includes('/')) {
+      // formato dd/mm/aaaa
+      const [d, m, y] = l.date.split('/');
+      return new Date(`${y}-${m}-${d}T12:00:00`);
     }
-    return new Date(0);
-  };
+    // se vier em outro formato, o Date tenta resolver
+    return new Date(l.date);
+  }
 
-  const history = safeLogs
-    .filter((l) => {
-      const lotId = String(l.id || '').trim();
-      const lotBase = lotId.includes('-')
-        ? lotId.split('-')[0]
-        : lotId;
+  // 2) Se não tiver "date", cai pro timestamp
+  if (l.timestamp) {
+    return new Date(l.timestamp);
+  }
 
-      const prodCode = String(l.productCode || '').trim();
+  // 3) Fallback bem antigo
+  return new Date(0);
+};
 
-      // 🔹 Se veio do contexto CORTE:
-      if (mode === 'CORTE') {
-        // normalmente os cortes usam o id base (ex: 10262, 10262-1, 10262-2...)
-        return lotBase === baseCode || prodCode === baseCode;
-      }
+const history = safeLogs
+  .filter((l) => {
+    const lotId   = String(l.id || '').trim();
+    const lotBase = lotId.includes('-') ? lotId.split('-')[0] : lotId;
 
-      // 🔹 Contexto padrão = PRODUÇÃO
-      return prodCode === baseCode;
-    })
-    .sort((a, b) => getDateObj(b) - getDateObj(a));
+    const prodCode   = String(l.productCode || '').trim();
+    const motherCode = String(l.motherCode  || '').trim();
+
+    if (mode === 'CORTE') {
+      // para os cortes de bobina mãe (ex: 10236, 10262 etc.)
+      return (
+        motherCode === baseCode ||
+        lotBase    === baseCode ||
+        prodCode   === baseCode
+      );
+    }
+
+    // PRODUÇÃO (produto acabado)
+    return prodCode === baseCode;
+  })
+  .sort((a, b) => getDateObj(b) - getDateObj(a)); // mais recente em cima
+
+
 
   const totalPieces = history.reduce(
-    (acc, curr) => acc + (curr.pieces || 0),
-    0
+  (acc, curr) => acc + (curr.pieces || 0),
+  0
+);
+  const safeMotherCoils = Array.isArray(motherCoils) ? motherCoils : [];
+const firstLog = history[0] || null;
+
+let materialInfo = '';
+
+if (mode === 'CORTE' && firstLog) {
+  // procura uma bobina mãe com o mesmo código
+  const mother = safeMotherCoils.find(
+    (m) => String(m.code || '').trim() === baseCode
   );
+
+  const desc =
+    mother?.material ||
+    firstLog.motherMaterial ||
+    firstLog.material ||
+    '';
+
+  const width =
+    mother?.width ||
+    firstLog.motherWidth ||
+    firstLog.width ||
+    '';
+
+  const weight =
+    firstLog.inputWeight ||
+    firstLog.weight ||
+    mother?.originalWeight ||
+    mother?.weight ||
+    '';
+
+  // monta a linha final
+  materialInfo = desc || `BOBINA ${baseCode}`;
+  if (width)  materialInfo += ` • ${width} mm`;
+  if (weight) materialInfo += ` • ${weight} kg`;
+}
+
+
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
@@ -55,13 +105,14 @@ const ProductHistoryModal = ({ product, logs, onClose, onReprint }) => {
             <p className="text-blue-400 text-sm font-bold">
               {product.code} - {product.name}
             </p>
+
+            {materialInfo && (
+              <p className="text-xs text-gray-400 mt-1">
+                {materialInfo}
+              </p>
+            )}
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white"
-          >
-            <X size={20} />
-          </button>
+          ...
         </div>
 
         <div className="p-4 overflow-y-auto flex-1 custom-scrollbar-dark">
