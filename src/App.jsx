@@ -1,6 +1,6 @@
 import { QRCodeSVG } from 'qrcode.react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import backupData from "./backups/slitter-backup.json";
-import React, { useEffect, useRef, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -13,9 +13,15 @@ import {
   PieChart as RechartsPie,
   ResponsiveContainer,
   Tooltip,
-  XAxis, YAxis
+  XAxis, YAxis,
+  ComposedChart
 } from 'recharts';
 import Button from './components/ui/Button';
+import IndicatorsDashboard from './components/modals/IndicatorsDashboard.jsx';
+
+
+import RawMaterialRequirement from "./components/modals/RawMaterialRequirement.jsx";
+
 import { db, deleteFromDb, loadFromDb, saveToDb, updateInDb } from './services/api'; // Certifique-se de exportar 'db' no seu arquivo de configuração
 
 import {
@@ -24,6 +30,9 @@ import {
   onSnapshot,
   writeBatch
 } from 'firebase/firestore';
+
+
+
 
 
 
@@ -2073,6 +2082,7 @@ export default function App() {
     const fullPacks = Math.floor(totalPcs / packStd);
     const rest = totalPcs % packStd;
 
+    
     return (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
         <div className="lg:col-span-7 flex flex-col gap-6">
@@ -3096,6 +3106,15 @@ safeCutting.forEach((c) => {
               </Button>
             </div>
           </div>
+          
+          <RawMaterialRequirement
+        motherCoils={motherCoils}
+        childCoils={childCoils}
+        productCatalog={productCatalog}
+        motherCatalog={INITIAL_MOTHER_CATALOG}
+      />
+
+
 
           <div className="flex-1 overflow-auto custom-scrollbar-dark px-4 pb-4">
             <table className="w-full text-sm text-left text-gray-300">
@@ -3558,6 +3577,7 @@ safeCutting.forEach((c) => {
     reader.readAsText(file);
   };
 
+
   // --- 3. RESTAURAR BACKUP COMPLETO ---
 const handleFullRestore = (e) => {
     const file = e.target.files[0];
@@ -3900,393 +3920,634 @@ const handleFullRestore = (e) => {
     }
   };
 
-  const renderIndicators = () => {
-    // --- 0. GUARD-RAILS / LISTAS SEGURAS --- // ***
-    const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
-    const safeChild = Array.isArray(childCoils) ? childCoils : [];
-    const safeCutting = Array.isArray(cuttingLogs) ? cuttingLogs : [];
-    const safeShipping = Array.isArray(shippingLogs) ? shippingLogs : [];
-    const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
+// --- AUXILIARES --- //
+const formatKgToT = (kg) => {
+  const t = (Number(kg) || 0) / 1000;
+  return `${t.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}t`;
+};
 
-    const totalRecords = safeMother.length + safeChild.length + safeProd.length; // ***
+const formatKg = (kg) => {
+  const v = Number(kg) || 0;
+  return `${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kg`;
+};
 
-    // --- 1. PREPARAÇÃO DOS DADOS --- //
+const formatPcs = (pcs) => {
+  const v = Number(pcs) || 0;
+  return `${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} pçs`;
+};
 
-    // Helpers globais de data // ***
-    const now = new Date();
-    const MS_PER_DAY = 1000 * 60 * 60 * 24;
-
-    const normalizeDateBR = (raw) => { // ***
-        if (!raw) return null;
-        let dateStr = String(raw).trim();
-
-        // Corta hora caso venha ISO (2025-12-03T10:15:00Z)
-        if (dateStr.length >= 10 && dateStr.includes('T')) {
-            dateStr = dateStr.slice(0, 10);
-        }
-
-        // yyyy-mm-dd
-        if (dateStr.includes('-')) {
-            const [y, m, d] = dateStr.split('-');
-            if (y && y.length === 4 && m && d) {
-                return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
-            }
-        }
-
-        // dd/mm/yyyy
-        if (dateStr.includes('/')) {
-            const [d, m, y] = dateStr.split('/');
-            if (d && m && y) {
-                return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y.padStart(4, '0')}`;
-            }
-        }
-
-        return null;
-    };
-
-    const getLast15Days = () => {
-        const dates = [];
-        const base = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // zera hora // ***
-        for (let i = 14; i >= 0; i--) {
-            const d = new Date(base);
-            d.setDate(base.getDate() - i);
-            dates.push(d.toLocaleDateString('pt-BR'));
-        }
-        return dates;
-    };
-
-    const groupByDate = (list, dateField, valueField) => {
-        const map = {};
-        list.forEach(item => {
-            const d = normalizeDateBR(item[dateField]);
-            if (!d) return;
-            const rawVal = item[valueField];
-            const val = Number(rawVal) || 0;
-            map[d] = (map[d] || 0) + val;
-        });
-        return map;
-    };
-
-    // A) FLUXO DE AÇO (15 DIAS)
-    const dateLabels = getLast15Days();
-    const entryMap = groupByDate(safeMother, 'date', 'weight');
-    const cutMap = groupByDate(safeCutting, 'date', 'inputWeight');
-
-    const flowData = dateLabels.map(date => ({
-        name: date.slice(0, 5),
-        entrada: entryMap[date] || 0,
-        consumo: cutMap[date] || 0,
-    }));
-
-    // B) AGING SIMPLIFICADO (O CLÁSSICO VERDE -> VERMELHO)
-    const calculateSimpleAging = (list, dateField, weightField) => {
-        const buckets = { '0-30': 0, '30-60': 0, '60-90': 0, '+90': 0 };
-
-        list.forEach(item => {
-            if (item.status !== 'stock') return;
-
-            const rawDate =
-                item[dateField] ||
-                item.date ||
-                item.createdAt;
-
-            const norm = normalizeDateBR(rawDate);
-            if (!norm) return;
-
-            const [d, m, y] = norm.split('/');
-            const entryDate = new Date(Number(y), Number(m) - 1, Number(d));
-            if (isNaN(entryDate.getTime())) return;
-
-            const diffDays = Math.max(
-                0,
-                Math.ceil((now - entryDate) / MS_PER_DAY)
-            );
-
-            const rawW = item[weightField] ?? item.weight ?? 0;
-            const weight = Number(rawW) || 0;
-
-            if (diffDays <= 30) buckets['0-30'] += weight;
-            else if (diffDays <= 60) buckets['30-60'] += weight;
-            else if (diffDays <= 90) buckets['60-90'] += weight;
-            else buckets['+90'] += weight;
-        });
-
-        // Retorna com as cores de alerta
-        return [
-            { name: '0-30 dias', peso: buckets['0-30'], fill: '#10b981' }, // Verde
-            { name: '30-60 dias', peso: buckets['30-60'], fill: '#3b82f6' }, // Azul
-            { name: '60-90 dias', peso: buckets['60-90'], fill: '#f59e0b' }, // Laranja
-            { name: '+90 dias', peso: buckets['+90'], fill: '#ef4444' }, // Vermelho
-        ];
-    };
-
-    const agingMother = calculateSimpleAging(safeMother, 'entryDate', 'remainingWeight');
-    const agingB2 = calculateSimpleAging(safeChild, 'createdAt', 'weight');
-
-    // C) DADOS GERAIS (ESTOQUE E EXPEDIÇÃO)
-    const stockByType = {};
-    safeMother.forEach(c => {
-        if (c.status === 'stock') {
-            const t = c.type || 'OUTROS';
-            const rawW = c.remainingWeight ?? c.weight ?? 0; // ***
-            const w = Number(rawW) || 0;
-            stockByType[t] = (stockByType[t] || 0) + w;
-        }
-    });
-
-    const typeData = Object.keys(stockByType)
-        .map(k => ({ name: k, value: stockByType[k] }))
-        .sort((a, b) => b.value - a.value);
-
-    const shippingDestMap = {};
-    safeShipping.forEach(l => {
-        const d = (l.destination || 'ND').toUpperCase();
-        if (!d.includes('AJUSTE')) {
-            const q = Number(l.quantity) || 0;
-            shippingDestMap[d] = (shippingDestMap[d] || 0) + q;
-        }
-    });
-
-    const shippingData = Object.keys(shippingDestMap)
-        .map(k => ({ name: k, value: shippingDestMap[k] }))
-        .sort((a, b) => b.value - a.value); // ***
-
-    const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+const CustomFlowTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    const entrada = payload.find(p => p.dataKey === 'entrada')?.value || 0;
+    const consumo = payload.find(p => p.dataKey === 'consumo')?.value || 0;
+    const saldo = payload.find(p => p.dataKey === 'saldo')?.value || 0;
 
     return (
-
-        <div className="space-y-6 pb-20 animate-fade-in">
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                        {/* ATENÇÃO AQUI: garante que esse componente é o ÍCONE, não o PieChart do Recharts */}
-                        <RechartsPie size={28} className="text-cyan-500" /> Dashboard Metalosa
-                    </h2>
-                    <p className="text-gray-400 text-sm">
-                        Visão tática baseada em {totalRecords} registros
-                    </p>
-                </div>
-            </div>
-
-            {/* 1. FLUXO DE AÇO (ÁREA) */}
-            <Card className="h-[400px] flex flex-col">
-                <h3 className="font-bold text-gray-200 mb-4 pl-2 border-l-4 border-blue-500">
-                    Fluxo de Aço: Entrada vs Consumo (15d)
-                </h3>
-                <div className="flex-1 w-full min-h-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={flowData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                            <defs>
-                                <linearGradient id="colorEntrada" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
-                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                                </linearGradient>
-                                <linearGradient id="colorConsumo" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
-                                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                                </linearGradient>
-                            </defs>
-                            <XAxis dataKey="name" stroke="#6b7280" tick={{ fill: '#9ca3af', fontSize: 12 }} />
-                            <YAxis stroke="#6b7280" tick={{ fill: '#9ca3af', fontSize: 12 }} />
-                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                            <Tooltip
-                                contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }}
-                                formatter={(value, name) => {
-                                    const v = Number(value) || 0;
-                                    return [`${v.toLocaleString('pt-BR')} kg`, name === 'entrada' ? 'Entrada' : 'Entrada'];
-                                }}
-                            />
-                            <Legend verticalAlign="top" height={36} />
-                            <Area
-                                type="monotone"
-                                dataKey="entrada"
-                                name="Entrada (kg)"
-                                stroke="#3b82f6"
-                                fillOpacity={1}
-                                fill="url(#colorEntrada)" 
-                            />
-                            <Area
-                                type="monotone"
-                                dataKey="consumo"
-                                name="Consumo (kg)"
-                                stroke="#ef4444"
-                                fillOpacity={1}
-                                fill="url(#colorConsumo)"
-                            />
-                        </AreaChart>
-                    </ResponsiveContainer>
-                </div>
-            </Card>
-
-            {/* 2. AGING SIMPLIFICADO (LADO A LADO) */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* AGING MP */}
-                <Card className="h-[300px] flex flex-col">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-bold text-gray-200 pl-2 border-l-4 border-purple-500">
-                            Aging: Bobinas Mãe
-                        </h3>
-                        <span className="text-xs text-purple-400 bg-purple-900/20 px-2 py-1 rounded">
-                            Matéria Prima
-                        </span>
-                    </div>
-                    <div className="flex-1 w-full min-h-0">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={agingMother} layout="vertical" margin={{ left: 20 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
-                                <XAxis
-                                    type="number"
-                                    stroke="#9ca3af"
-                                    tickFormatter={(val) => `${((Number(val) || 0) / 1000).toFixed(0)}t`}
-                                />
-                                <YAxis dataKey="name" type="category" stroke="#fff" width={80} tick={{ fontSize: 11 }} />
-                                <Tooltip
-                                    cursor={{ fill: '#ffffff10' }}
-                                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
-                                    formatter={(value) => {
-                                        const v = Number(value) || 0;
-                                        return [`${v.toLocaleString('pt-BR')} kg`, 'Peso'];
-                                    }}
-                                />
-                                <Bar dataKey="peso" radius={[0, 4, 4, 0]} barSize={40}>
-                                    {agingMother.map((entry, index) => (
-                                        <Cell key={`cell-mother-${index}`} fill={entry.fill} />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </Card>
-
-                {/* AGING B2 */}
-                <Card className="h-[300px] flex flex-col">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-bold text-gray-200 pl-2 border-l-4 border-indigo-500">
-                            Aging: Bobinas Slitter (B2)
-                        </h3>
-                        <span className="text-xs text-indigo-400 bg-indigo-900/20 px-2 py-1 rounded">
-                            Em Processo
-                        </span>
-                    </div>
-                    <div className="flex-1 w-full min-h-0">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={agingB2} layout="vertical" margin={{ left: 20 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
-                                <XAxis
-                                    type="number"
-                                    stroke="#9ca3af"
-                                    tickFormatter={(val) => `${((Number(val) || 0) / 1000).toFixed(0)}t`}
-                                />
-                                <YAxis dataKey="name" type="category" stroke="#fff" width={80} tick={{ fontSize: 11 }} />
-                                <Tooltip
-                                    cursor={{ fill: '#ffffff10' }}
-                                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
-                                    formatter={(value) => {
-                                        const v = Number(value) || 0;
-                                        return [`${v.toLocaleString('pt-BR')} kg`, 'Peso'];
-                                    }}
-                                />
-                                <Bar dataKey="peso" radius={[0, 4, 4, 0]} barSize={40}>
-                                    {agingB2.map((entry, index) => (
-                                        <Cell key={`cell-b2-${index}`} fill={entry.fill} />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </Card>
-            </div>
-
-            {/* 3. TOTAIS E EXPEDIÇÃO */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* ESTOQUE TOTAL POR TIPO */}
-                <Card className="h-[300px] flex flex-col">
-                    <h3 className="font-bold text-gray-200 mb-4 pl-2 border-l-4 border-blue-500">
-                        Estoque MP por Tipo (kg)
-                    </h3>
-                    <div className="flex-1 w-full min-h-0">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={typeData} layout="vertical" margin={{ left: 20, right: 30 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
-                                <XAxis
-                                    type="number"
-                                    stroke="#9ca3af"
-                                    tickFormatter={(val) => `${((Number(val) || 0) / 1000).toFixed(0)}t`}
-                                />
-                                <YAxis
-                                    dataKey="name"
-                                    type="category"
-                                    stroke="#fff"
-                                    width={60}
-                                    tick={{ fontSize: 12, fontWeight: 'bold' }}
-                                />
-                                <Tooltip
-                                    cursor={{ fill: '#ffffff10' }}
-                                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
-                                    formatter={(value) => {
-                                        const v = Number(value) || 0;
-                                        return [`${v.toLocaleString('pt-BR')} kg`, 'Peso'];
-                                    }}
-                                />
-                                <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={25}>
-                                    {typeData.map((entry, index) => (
-                                        <Cell key={`cell-type-${index}`} fill={COLORS[index % COLORS.length]} />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </Card>
-
-                {/* EXPEDIÇÃO */}
-                <Card className="h-[300px] flex flex-col">
-                    <h3 className="font-bold text-gray-200 mb-4 pl-2 border-l-4 border-amber-500">
-                        Expedição (Cometa vs Serra)
-                    </h3>
-                    <div className="flex-1 w-full min-h-0 flex items-center justify-center">
-                        {shippingData.length === 0 ? ( // ***
-                            <span className="text-gray-500 text-sm">
-                                Sem dados de expedição no período.
-                            </span>
-                        ) : (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <RechartsPie>
-                                    <Pie
-                                        data={shippingData}
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={60}
-                                        outerRadius={80}
-                                        paddingAngle={5}
-                                        dataKey="value"
-                                    >
-                                        {shippingData.map((entry, index) => (
-                                            <Cell
-                                                key={`cell-ship-${index}`}
-                                                fill={COLORS[index % COLORS.length]}
-                                            />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: '#1f2937',
-                                            borderColor: '#374151',
-                                        }}
-                                        formatter={(value, name) => {
-                                            const v = Number(value) || 0;
-                                            return [`${v.toLocaleString('pt-BR')} pcs`, name];
-                                        }}
-                                    />
-                                    <Legend verticalAlign="bottom" height={36} />
-                                </RechartsPie>
-                            </ResponsiveContainer>
-                        )}
-                    </div>
-                </Card>
-            </div>
-        </div>
+      <div className="bg-gray-900/90 p-3 border border-gray-700 rounded shadow-xl text-sm text-white">
+        <p className="font-bold mb-1">{label}</p>
+        <p className="text-blue-400">Entrada: {formatKg(entrada)}</p>
+        <p className="text-red-400">Consumo: {formatKg(consumo)}</p>
+        <p className={`mt-1 font-bold ${saldo >= 0 ? 'text-green-400' : 'text-yellow-400'}`}>
+          Saldo Acumulado: {formatKg(saldo)}
+        </p>
+      </div>
     );
+  }
+  return null;
 };
+
+// ================== DASHBOARD ================== //
+// const IndicatorsDashboard = () => {
+//   // estados dos filtros
+//   const [filterType, setFilterType] = useState('ALL');   // tipo de MP
+//   const [windowDays, setWindowDays] = useState(15);      // 15 / 30 / 60 dias
+
+//   // listas seguras
+//   const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
+//   const safeChild = Array.isArray(childCoils) ? childCoils : [];
+//   const safeCutting = Array.isArray(cuttingLogs) ? cuttingLogs : [];
+//   const safeShipping = Array.isArray(shippingLogs) ? shippingLogs : [];
+//   const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
+
+//   const totalRecords = safeMother.length + safeChild.length + safeProd.length;
+
+//   const now = new Date();
+//   const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+//   const normalizeDateBR = (raw) => {
+//     if (!raw) return null;
+//     let dateStr = String(raw).trim();
+
+//     if (dateStr.length >= 10 && dateStr.includes('T')) {
+//       dateStr = dateStr.slice(0, 10);
+//     }
+
+//     if (dateStr.includes('-')) {
+//       const [y, m, d] = dateStr.split('-');
+//       if (y && y.length === 4 && m && d) {
+//         return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+//       }
+//     }
+
+//     if (dateStr.includes('/')) {
+//       const [d, m, y] = dateStr.split('/');
+//       if (d && m && y) {
+//         return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y.padStart(4, '0')}`;
+//       }
+//     }
+
+//     return null;
+//   };
+
+//   const getLastNDays = (days) => {
+//     const dates = [];
+//     const base = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+//     for (let i = days - 1; i >= 0; i--) {
+//       const d = new Date(base);
+//       d.setDate(base.getDate() - i);
+//       dates.push({
+//         dateBR: d.toLocaleDateString('pt-BR'),
+//         dateObj: d,
+//       });
+//     }
+//     return dates;
+//   };
+
+//   const groupByDate = (list, dateField, valueField) => {
+//     const map = {};
+//     list.forEach(item => {
+//       const d = normalizeDateBR(item[dateField]);
+//       if (!d) return;
+//       const rawVal = item[valueField];
+//       const val = Number(rawVal) || 0;
+//       map[d] = (map[d] || 0) + val;
+//     });
+//     return map;
+//   };
+
+//   // ========= FILTROS DE BASE ========= //
+
+//   // tipos distintos de MP em estoque
+//   const typeOptions = useMemo(() => {
+//     const stockOnly = safeMother.filter(c => c.status === 'stock');
+//     const set = new Set(
+//       stockOnly.map(c => (c.type || 'OUTROS'))
+//     );
+//     return Array.from(set).sort();
+//   }, [safeMother]);
+
+//   // bobinas mãe em estoque filtradas por tipo
+//   const filteredMotherStock = useMemo(
+//     () =>
+//       safeMother.filter(c => {
+//         if (c.status !== 'stock') return false;
+//         const t = c.type || 'OUTROS';
+//         if (filterType === 'ALL') return true;
+//         return t === filterType;
+//       }),
+//     [safeMother, filterType]
+//   );
+
+//   // bobinas mãe (todas) filtradas por tipo para o fluxo de entrada
+//   const filteredMotherForFlow = useMemo(
+//     () =>
+//       safeMother.filter(c => {
+//         const t = c.type || 'OUTROS';
+//         if (filterType === 'ALL') return true;
+//         return t === filterType;
+//       }),
+//     [safeMother, filterType]
+//   );
+
+//   const lastDays = useMemo(
+//     () => getLastNDays(windowDays),
+//     [windowDays]
+//   );
+//   const dateLabels = lastDays.map(d => d.dateBR);
+
+//   // ========= A) FLUXO DE AÇO ========= //
+
+//   const entryMap = groupByDate(filteredMotherForFlow, 'entryDate', 'weight');
+//   const cutMap = groupByDate(safeCutting, 'date', 'inputWeight');
+
+//   let saldoAcumulado = 0;
+//   const flowData = dateLabels.map(dateBR => {
+//     const entrada = entryMap[dateBR] || 0;
+//     const consumo = cutMap[dateBR] || 0;
+//     saldoAcumulado += (entrada - consumo);
+//     return {
+//       name: dateBR.slice(0, 5),
+//       dateBR,
+//       entrada,
+//       consumo,
+//       saldo: saldoAcumulado,
+//       saldoDiario: entrada - consumo,
+//     };
+//   });
+
+//   // ========= B) AGING ========= //
+
+//   const calculateSimpleAging = (list, dateField, weightField) => {
+//     const buckets = { '0-30': 0, '30-60': 0, '60-90': 0, '+90': 0 };
+//     const bucketsRaw = { '0-30': 0, '30-60': 0, '60-90': 0, '+90': 0 };
+
+//     list.forEach(item => {
+//       if (item.status !== 'stock' && item.status !== 'in_process') return;
+
+//       const rawDate =
+//         item[dateField] ||
+//         item.date ||
+//         item.createdAt;
+
+//       const norm = normalizeDateBR(rawDate);
+//       if (!norm) return;
+
+//       const [d, m, y] = norm.split('/');
+//       const entryDate = new Date(Number(y), Number(m) - 1, Number(d));
+//       if (isNaN(entryDate.getTime())) return;
+
+//       const diffDays = Math.max(
+//         0,
+//         Math.ceil((now - entryDate) / MS_PER_DAY)
+//       );
+
+//       const rawW = item[weightField] ?? item.weight ?? 0;
+//       const weight = Number(rawW) || 0;
+
+//       let bucketKey;
+//       if (diffDays <= 30) bucketKey = '0-30';
+//       else if (diffDays <= 60) bucketKey = '30-60';
+//       else if (diffDays <= 90) bucketKey = '60-90';
+//       else bucketKey = '+90';
+
+//       buckets[bucketKey] += weight;
+//       bucketsRaw[bucketKey] += weight;
+//     });
+
+//     const data = [
+//       { name: '0-30 dias', peso: buckets['0-30'], fill: '#10b981' },
+//       { name: '30-60 dias', peso: buckets['30-60'], fill: '#3b82f6' },
+//       { name: '60-90 dias', peso: buckets['60-90'], fill: '#f59e0b' },
+//       { name: '+90 dias', peso: buckets['+90'], fill: '#ef4444' },
+//     ];
+
+//     const totalWeight = Object.values(bucketsRaw).reduce((sum, w) => sum + w, 0);
+
+//     return { data, bucketsRaw, totalWeight };
+//   };
+
+//   const {
+//     data: agingMother,
+//     bucketsRaw: bucketsMother,
+//     totalWeight: estoqueTotalKg,
+//   } = calculateSimpleAging(
+//     filteredMotherStock,
+//     'entryDate',
+//     'remainingWeight'
+//   );
+
+//   const {
+//     data: agingB2,
+//     totalWeight: totalB2Kg,
+//   } = calculateSimpleAging(
+//     safeChild.filter(c => c.status === 'in_process'),
+//     'createdAt',
+//     'weight'
+//   );
+
+//   // ========= C) ESTOQUE POR TIPO ========= //
+
+//   const stockByType = {};
+//   filteredMotherStock.forEach(c => {
+//     const t = c.type || 'OUTROS';
+//     const rawW = c.remainingWeight ?? c.weight ?? 0;
+//     const w = Number(rawW) || 0;
+//     stockByType[t] = (stockByType[t] || 0) + w;
+//   });
+
+//   const typeData = Object.keys(stockByType)
+//     .map(k => ({ name: k, value: stockByType[k] }))
+//     .sort((a, b) => b.value - a.value);
+
+//   // ========= D) EXPEDIÇÃO (JANELA) ========= //
+
+//   const shippingDestMap = {};
+//   safeShipping.forEach(l => {
+//     const logDate = normalizeDateBR(l.date);
+//     if (!logDate || !dateLabels.includes(logDate)) return;
+
+//     const d = (l.destination || 'ND').toUpperCase();
+//     if (!d.includes('AJUSTE')) {
+//       const q = Number(l.quantity) || 0;
+//       shippingDestMap[d] = (shippingDestMap[d] || 0) + q;
+//     }
+//   });
+
+//   const shippingData = Object.keys(shippingDestMap)
+//     .map(k => ({ name: k, value: shippingDestMap[k] }))
+//     .sort((a, b) => b.value - a.value);
+
+//   // ========= KPIs ========= //
+
+//   const consumoTotalJanela = flowData.reduce((acc, curr) => acc + curr.consumo, 0);
+//   const consumoMedioDiario = windowDays > 0 ? (consumoTotalJanela / windowDays) : 0;
+
+//   const estoqueTotalT = formatKgToT(estoqueTotalKg).replace('t', '');
+
+//   const coberturaEstoqueDiasNum =
+//     consumoMedioDiario > 0 ? (estoqueTotalKg / consumoMedioDiario) : null;
+
+//   const coberturaEstoqueDias = coberturaEstoqueDiasNum != null
+//     ? coberturaEstoqueDiasNum.toFixed(1)
+//     : 'N/A';
+
+//   const pesoMais90 = bucketsMother['+90'] || 0;
+//   const percentualMais90 = estoqueTotalKg > 0
+//     ? ((pesoMais90 / estoqueTotalKg) * 100).toFixed(1)
+//     : 0;
+
+//   const totalB2T = formatKgToT(totalB2Kg).replace('t', '');
+
+//   const expedicaoTotalJanela = shippingData.reduce((acc, curr) => acc + curr.value, 0);
+
+//   // ========= COMPONENTES VISUAIS ========= //
+
+//   const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '' }) => (
+//     <div className="bg-gray-800 p-4 rounded-lg shadow-lg flex flex-col justify-between h-28">
+//       <p className="text-sm font-medium text-gray-400">{title}</p>
+//       <div className="flex items-end justify-between">
+//         <span className={`text-4xl font-extrabold ${color}`}>
+//           {value}
+//         </span>
+//         <span className="text-lg font-semibold text-gray-500 ml-2">{unit}</span>
+//       </div>
+//       {subText && <p className="text-xs text-gray-500 mt-1">{subText}</p>}
+//     </div>
+//   );
+
+//   const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+//   // ========= RENDER ========= //
+
+//   return (
+//     <div className="space-y-6 pb-20 animate-fade-in">
+//       {/* Título + filtros */}
+//       <div className="flex justify-between items-center mb-6">
+//         <div>
+//           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+//             <PieChart size={28} className="text-cyan-500" /> Dashboard Tático PCP
+//           </h2>
+//           <p className="text-gray-400 text-sm">
+//             Visão tática baseada em {totalRecords.toLocaleString('pt-BR')} registros
+//           </p>
+//         </div>
+
+//         <div className="flex gap-4">
+//           {/* Filtro por Tipo MP */}
+//           <select
+//             className="bg-gray-700 text-white p-2 rounded text-sm border border-gray-600"
+//             value={filterType}
+//             onChange={(e) => setFilterType(e.target.value)}
+//           >
+//             <option value="ALL">Todos os Tipos</option>
+//             {typeOptions.map(t => (
+//               <option key={t} value={t}>{t}</option>
+//             ))}
+//           </select>
+
+//           {/* Filtro Janela de Tempo */}
+//           <select
+//             className="bg-gray-700 text-white p-2 rounded text-sm border border-gray-600"
+//             value={windowDays}
+//             onChange={(e) => setWindowDays(Number(e.target.value))}
+//           >
+//             <option value={15}>Últimos 15 dias</option>
+//             <option value={30}>Últimos 30 dias</option>
+//             <option value={60}>Últimos 60 dias</option>
+//           </select>
+//         </div>
+//       </div>
+
+//       {/* KPIs */}
+//       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+//         <KpiCard
+//           title="Estoque MP"
+//           value={estoqueTotalT}
+//           unit="t"
+//           color="text-blue-400"
+//           subText={`Total de ${formatKg(estoqueTotalKg)}`}
+//         />
+//         <KpiCard
+//           title="Consumo Médio"
+//           value={consumoMedioDiario.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+//           unit="kg/dia"
+//           color="text-indigo-400"
+//           subText={`Total de ${formatKg(consumoTotalJanela)} em ${windowDays}d`}
+//         />
+//         <KpiCard
+//           title="Cobertura"
+//           value={coberturaEstoqueDias}
+//           unit="dias"
+//           color={
+//             coberturaEstoqueDiasNum == null
+//               ? 'text-gray-400'
+//               : coberturaEstoqueDiasNum > 60
+//                 ? 'text-green-400'
+//                 : coberturaEstoqueDiasNum > 30
+//                   ? 'text-yellow-400'
+//                   : 'text-red-400'
+//           }
+//           subText="Estoque / Consumo Médio"
+//         />
+//         <KpiCard
+//           title="% Estoque > 90d"
+//           value={percentualMais90}
+//           unit="%"
+//           color={percentualMais90 > 5 ? 'text-red-400' : percentualMais90 > 1 ? 'text-yellow-400' : 'text-green-400'}
+//           subText={`Peso: ${formatKgToT(pesoMais90)}`}
+//         />
+//         <KpiCard
+//           title="B2 em Processo"
+//           value={totalB2T}
+//           unit="t"
+//           color="text-purple-400"
+//           subText={`Total de ${formatKg(totalB2Kg)}`}
+//         />
+//         <KpiCard
+//           title={`Expedição (${windowDays}d)`}
+//           value={expedicaoTotalJanela.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+//           unit="pçs"
+//           color="text-amber-400"
+//           subText={`Média: ${(expedicaoTotalJanela / windowDays || 0).toFixed(0)} pçs/dia`}
+//         />
+//       </div>
+
+//       {/* Fluxo de Aço */}
+//       <div className="bg-gray-800 p-4 rounded-lg shadow-lg h-[450px] flex flex-col">
+//         <h3 className="font-bold text-gray-200 mb-4 pl-2 border-l-4 border-blue-500">
+//           Fluxo de Aço: Entrada vs Consumo ({windowDays}d)
+//         </h3>
+//         <div className="flex-1 w-full min-h-0">
+//           <ResponsiveContainer width="100%" height="100%">
+//             <ComposedChart data={flowData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+//               <defs>
+//                 <linearGradient id="colorEntrada" x1="0" y1="0" x2="0" y2="1">
+//                   <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
+//                   <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+//                 </linearGradient>
+//                 <linearGradient id="colorConsumo" x1="0" y1="0" x2="0" y2="1">
+//                   <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
+//                   <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+//                 </linearGradient>
+//               </defs>
+//               <XAxis dataKey="name" stroke="#6b7280" tick={{ fill: '#9ca3af', fontSize: 12 }} />
+//               <YAxis
+//                 yAxisId="left"
+//                 stroke="#6b7280"
+//                 tick={{ fill: '#9ca3af', fontSize: 12 }}
+//                 tickFormatter={(val) => formatKgToT(val)}
+//               />
+//               <YAxis
+//                 yAxisId="right"
+//                 orientation="right"
+//                 stroke="#f59e0b"
+//                 tick={{ fill: '#f59e0b', fontSize: 12 }}
+//                 tickFormatter={(val) => formatKgToT(val)}
+//               />
+//               <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+//               <Tooltip content={<CustomFlowTooltip />} />
+//               <Legend verticalAlign="top" height={36} />
+
+//               <Area
+//                 yAxisId="left"
+//                 type="monotone"
+//                 dataKey="entrada"
+//                 name="Entrada (kg)"
+//                 stroke="#3b82f6"
+//                 fillOpacity={1}
+//                 fill="url(#colorEntrada)"
+//               />
+//               <Area
+//                 yAxisId="left"
+//                 type="monotone"
+//                 dataKey="consumo"
+//                 name="Consumo (kg)"
+//                 stroke="#ef4444"
+//                 fillOpacity={1}
+//                 fill="url(#colorConsumo)"
+//               />
+//               <Bar
+//                 yAxisId="right"
+//                 dataKey="saldoDiario"
+//                 name="Saldo Diário (kg)"
+//                 fill="#f59e0b"
+//                 barSize={5}
+//               />
+//             </ComposedChart>
+//           </ResponsiveContainer>
+//         </div>
+//       </div>
+
+//       {/* Aging / Estoque por Tipo / Expedição */}
+//       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+//         {/* Aging MP */}
+//         <div className="bg-gray-800 p-4 rounded-lg shadow-lg h-[350px] flex flex-col">
+//           <div className="flex justify-between items-center mb-4">
+//             <h3 className="font-bold text-gray-200 pl-2 border-l-4 border-purple-500">
+//               Aging: Bobinas Mãe (MP)
+//             </h3>
+//             <span className="text-xs text-purple-400 bg-purple-900/20 px-2 py-1 rounded">
+//               {filterType === 'ALL' ? 'Todos os tipos' : `Tipo ${filterType}`}
+//             </span>
+//           </div>
+//           <div className="flex-1 w-full min-h-0">
+//             <ResponsiveContainer width="100%" height="100%">
+//               <BarChart data={agingMother} layout="vertical" margin={{ left: 20 }}>
+//                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
+//                 <XAxis
+//                   type="number"
+//                   stroke="#9ca3af"
+//                   tickFormatter={(val) => formatKgToT(val)}
+//                 />
+//                 <YAxis dataKey="name" type="category" stroke="#fff" width={80} tick={{ fontSize: 11 }} />
+//                 <Tooltip
+//                   cursor={{ fill: '#ffffff10' }}
+//                   contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
+//                   formatter={(value) => [`${formatKg(value)}`, 'Peso']}
+//                 />
+//                 <Bar dataKey="peso" radius={[0, 4, 4, 0]} barSize={20}>
+//                   {agingMother.map((entry, index) => (
+//                     <Cell key={`cell-mother-${index}`} fill={entry.fill} />
+//                   ))}
+//                 </Bar>
+//               </BarChart>
+//             </ResponsiveContainer>
+//           </div>
+//         </div>
+
+//         {/* Estoque MP por Tipo */}
+//         <div className="bg-gray-800 p-4 rounded-lg shadow-lg h-[350px] flex flex-col">
+//           <h3 className="font-bold text-gray-200 mb-4 pl-2 border-l-4 border-blue-500">
+//             Estoque MP por Tipo (Top 5)
+//           </h3>
+//           <div className="flex-1 w-full min-h-0">
+//             <ResponsiveContainer width="100%" height="100%">
+//               <BarChart data={typeData.slice(0, 5)} layout="vertical" margin={{ left: 20, right: 30 }}>
+//                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
+//                 <XAxis
+//                   type="number"
+//                   stroke="#9ca3af"
+//                   tickFormatter={(val) => formatKgToT(val)}
+//                 />
+//                 <YAxis
+//                   dataKey="name"
+//                   type="category"
+//                   stroke="#fff"
+//                   width={60}
+//                   tick={{ fontSize: 12, fontWeight: 'bold' }}
+//                 />
+//                 <Tooltip
+//                   cursor={{ fill: '#ffffff10' }}
+//                   contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
+//                   formatter={(value) => [`${formatKg(value)}`, 'Peso']}
+//                 />
+//                 <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={25}>
+//                   {typeData.slice(0, 5).map((entry, index) => (
+//                     <Cell key={`cell-type-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+//                   ))}
+//                 </Bar>
+//               </BarChart>
+//             </ResponsiveContainer>
+//           </div>
+//         </div>
+
+//         {/* Aging B2 + Expedição */}
+//         <div className="space-y-6">
+//           {/* Aging B2 */}
+//           <div className="bg-gray-800 p-4 rounded-lg shadow-lg h-[163px] flex flex-col">
+//             <div className="flex justify-between items-center mb-2">
+//               <h3 className="font-bold text-gray-200 pl-2 border-l-4 border-indigo-500 text-sm">
+//                 Aging: Bobinas Slitter (B2)
+//               </h3>
+//               <span className="text-xs text-indigo-400 bg-indigo-900/20 px-2 py-1 rounded">
+//                 Em Processo
+//               </span>
+//             </div>
+//             <div className="flex-1 w-full min-h-0">
+//               <ResponsiveContainer width="100%" height="100%">
+//                 <BarChart data={agingB2} layout="vertical" margin={{ left: 0, right: 10, top: 0, bottom: 0 }}>
+//                   <XAxis type="number" hide tickFormatter={(val) => formatKgToT(val)} />
+//                   <YAxis dataKey="name" type="category" stroke="#fff" width={60} tick={{ fontSize: 10 }} />
+//                   <Tooltip
+//                     cursor={{ fill: '#ffffff10' }}
+//                     contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
+//                     formatter={(value) => [`${formatKg(value)}`, 'Peso']}
+//                   />
+//                   <Bar dataKey="peso" radius={[0, 4, 4, 0]} barSize={10}>
+//                     {agingB2.map((entry, index) => (
+//                       <Cell key={`cell-b2-${index}`} fill={entry.fill} />
+//                     ))}
+//                   </Bar>
+//                 </BarChart>
+//               </ResponsiveContainer>
+//             </div>
+//           </div>
+
+//           {/* Expedição por destino */}
+//           <div className="bg-gray-800 p-4 rounded-lg shadow-lg h-[163px] flex flex-col">
+//             <h3 className="font-bold text-gray-200 mb-2 pl-2 border-l-4 border-amber-500 text-sm">
+//               Expedição por Destino ({windowDays}d)
+//             </h3>
+//             <div className="flex-1 w-full min-h-0 flex items-center justify-center">
+//               {shippingData.length === 0 ? (
+//                 <span className="text-gray-500 text-sm">
+//                   Sem dados de expedição no período.
+//                 </span>
+//               ) : (
+//                 <ResponsiveContainer width="100%" height="100%">
+//                   <RechartsPie>
+//                     <Pie
+//                       data={shippingData}
+//                       cx="50%"
+//                       cy="50%"
+//                       innerRadius={30}
+//                       outerRadius={50}
+//                       paddingAngle={2}
+//                       dataKey="value"
+//                       labelLine={false}
+//                       label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+//                     >
+//                       {shippingData.map((entry, index) => (
+//                         <Cell
+//                           key={`cell-ship-${index}`}
+//                           fill={PIE_COLORS[index % PIE_COLORS.length]}
+//                         />
+//                       ))}
+//                     </Pie>
+//                     <Tooltip
+//                       contentStyle={{
+//                         backgroundColor: '#1f2937',
+//                         borderColor: '#374151',
+//                       }}
+//                       formatter={(value, name) => [`${formatPcs(value)}`, name]}
+//                     />
+//                     <Legend
+//                       layout="horizontal"
+//                       verticalAlign="bottom"
+//                       align="center"
+//                       wrapperStyle={{ fontSize: '10px' }}
+//                     />
+//                   </RechartsPie>
+//                 </ResponsiveContainer>
+//               )}
+//             </div>
+//           </div>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// };
+
 
 
 const renderB2DynamicReport = () => {
@@ -4671,425 +4932,425 @@ const renderB2DynamicReport = () => {
 
 //RENDER LEANDRO TESTEEEEE
 
-const renderRawMaterialRequirement = () => {
-  // --- 1. FORMATADORES (DEFINIDOS PRIMEIRO PARA EVITAR ERRO) ---
-  const formatKg = (v) => v?.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) || '0';
-  const formatMoney = (v) => v?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) || 'R$ 0,00';
-  const formatDate = (d) => d ? new Date(d).toLocaleDateString('pt-BR') : '-';
-  const formatDays = (d) => !isFinite(d) ? '∞' : d.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+// const renderRawMaterialRequirement = () => {
+//   // --- 1. FORMATADORES (DEFINIDOS PRIMEIRO PARA EVITAR ERRO) ---
+//   const formatKg = (v) => v?.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) || '0';
+//   const formatMoney = (v) => v?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) || 'R$ 0,00';
+//   const formatDate = (d) => d ? new Date(d).toLocaleDateString('pt-BR') : '-';
+//   const formatDays = (d) => !isFinite(d) ? '∞' : d.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
 
-  // --- 2. VARIÁVEIS DE EXIBIÇÃO (INICIALIZADAS) ---
-  // Isso evita que o código quebre se nada estiver selecionado
-  let scenarioDaily = 0;
-  let idealStock = 0;
-  let purchaseNeed = 0;
-  let investment = 0;
-  let stockValue = 0;
-  let ruptureDateStr = 'Sem risco';
-  let deadlineDateStr = '-';
-  let isLeadTimeCritical = false;
-  let dailyStatement = [];
-  let activeOrders = [];
-  // Variáveis do Gráfico
-  let graphPoints = '';
-  let graphArea = '';
-  let graphZeroY = 0;
-  let graphZeroPercent = 0;
-  let graphH = 220; 
-  let graphW = 1000;
-  let graphPointsData = []; // Dados para o tooltip
+//   // --- 2. VARIÁVEIS DE EXIBIÇÃO (INICIALIZADAS) ---
+//   // Isso evita que o código quebre se nada estiver selecionado
+//   let scenarioDaily = 0;
+//   let idealStock = 0;
+//   let purchaseNeed = 0;
+//   let investment = 0;
+//   let stockValue = 0;
+//   let ruptureDateStr = 'Sem risco';
+//   let deadlineDateStr = '-';
+//   let isLeadTimeCritical = false;
+//   let dailyStatement = [];
+//   let activeOrders = [];
+//   // Variáveis do Gráfico
+//   let graphPoints = '';
+//   let graphArea = '';
+//   let graphZeroY = 0;
+//   let graphZeroPercent = 0;
+//   let graphH = 220; 
+//   let graphW = 1000;
+//   let graphPointsData = []; // Dados para o tooltip
 
-  // --- 3. DADOS E HELPER ---
-  const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
-  const safeChild = Array.isArray(childCoils) ? childCoils : [];
-  const safeCatalog = Array.isArray(productCatalog) ? productCatalog : [];
-  const safeMotherCatalog = Array.isArray(INITIAL_MOTHER_CATALOG) ? INITIAL_MOTHER_CATALOG : [];
+//   // --- 3. DADOS E HELPER ---
+//   const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
+//   const safeChild = Array.isArray(childCoils) ? childCoils : [];
+//   const safeCatalog = Array.isArray(productCatalog) ? productCatalog : [];
+//   const safeMotherCatalog = Array.isArray(INITIAL_MOTHER_CATALOG) ? INITIAL_MOTHER_CATALOG : [];
 
-  const getMaterialMetadata = (rawMotherCode, rawB2Code) => {
-    const cleanMother = rawMotherCode ? String(rawMotherCode).trim().toUpperCase() : null;
-    const cleanB2 = rawB2Code ? String(rawB2Code).trim().toUpperCase() : null;
-    let type = null; let thickness = null;
+//   const getMaterialMetadata = (rawMotherCode, rawB2Code) => {
+//     const cleanMother = rawMotherCode ? String(rawMotherCode).trim().toUpperCase() : null;
+//     const cleanB2 = rawB2Code ? String(rawB2Code).trim().toUpperCase() : null;
+//     let type = null; let thickness = null;
 
-    if (cleanMother) {
-      const matchMother = safeMotherCatalog.find(m => String(m.code).trim().toUpperCase() === cleanMother);
-      if (matchMother) { type = matchMother.type; thickness = matchMother.thickness; }
-    }
-    if ((!type || !thickness) && cleanB2) {
-      let matchB2 = safeCatalog.find(p => String(p.b2Code).trim().toUpperCase() === cleanB2) || 
-                    safeCatalog.find(p => String(p.code).trim().toUpperCase() === cleanB2);
-      if (matchB2) {
-        if (!type) type = matchB2.type;
-        if (!thickness) thickness = matchB2.thickness || matchB2.width;
-        if (!type && matchB2.motherCode) {
-           const ref = safeMotherCatalog.find(m => String(m.code).trim().toUpperCase() === String(matchB2.motherCode).trim().toUpperCase());
-           if (ref) type = ref.type;
-        }
-      }
-    }
-    return { type: type ? String(type).toUpperCase() : 'OUTROS', thickness: thickness ? String(thickness).replace('.', ',') : '0' };
-  };
+//     if (cleanMother) {
+//       const matchMother = safeMotherCatalog.find(m => String(m.code).trim().toUpperCase() === cleanMother);
+//       if (matchMother) { type = matchMother.type; thickness = matchMother.thickness; }
+//     }
+//     if ((!type || !thickness) && cleanB2) {
+//       let matchB2 = safeCatalog.find(p => String(p.b2Code).trim().toUpperCase() === cleanB2) || 
+//                     safeCatalog.find(p => String(p.code).trim().toUpperCase() === cleanB2);
+//       if (matchB2) {
+//         if (!type) type = matchB2.type;
+//         if (!thickness) thickness = matchB2.thickness || matchB2.width;
+//         if (!type && matchB2.motherCode) {
+//            const ref = safeMotherCatalog.find(m => String(m.code).trim().toUpperCase() === String(matchB2.motherCode).trim().toUpperCase());
+//            if (ref) type = ref.type;
+//         }
+//       }
+//     }
+//     return { type: type ? String(type).toUpperCase() : 'OUTROS', thickness: thickness ? String(thickness).replace('.', ',') : '0' };
+//   };
 
-  // --- 4. AGRUPAMENTO ---
-  const groupMap = new Map();
-  const ensureGroup = (type, thickness) => {
-    const key = `${type}|${thickness}`;
-    if (!groupMap.has(key)) {
-      groupMap.set(key, { 
-          groupId: key, type, thickness, codesIncluded: new Set(), 
-          motherStockWeight: 0, b2StockWeight: 0, items: [] 
-      });
-    }
-    return groupMap.get(key);
-  };
+//   // --- 4. AGRUPAMENTO ---
+//   const groupMap = new Map();
+//   const ensureGroup = (type, thickness) => {
+//     const key = `${type}|${thickness}`;
+//     if (!groupMap.has(key)) {
+//       groupMap.set(key, { 
+//           groupId: key, type, thickness, codesIncluded: new Set(), 
+//           motherStockWeight: 0, b2StockWeight: 0, items: [] 
+//       });
+//     }
+//     return groupMap.get(key);
+//   };
 
-  safeMother.forEach(m => {
-    if (m.status !== 'stock') return;
-    const { type, thickness } = getMaterialMetadata(m.code, null);
-    const entry = ensureGroup(type, thickness);
-    entry.codesIncluded.add(m.code);
-    const w = Number(m.weight) || 0;
-    entry.motherStockWeight += w;
-    entry.items.push({ origin: 'Mãe', code: m.code, width: Number(m.width)||0, weight: w });
-  });
+//   safeMother.forEach(m => {
+//     if (m.status !== 'stock') return;
+//     const { type, thickness } = getMaterialMetadata(m.code, null);
+//     const entry = ensureGroup(type, thickness);
+//     entry.codesIncluded.add(m.code);
+//     const w = Number(m.weight) || 0;
+//     entry.motherStockWeight += w;
+//     entry.items.push({ origin: 'Mãe', code: m.code, width: Number(m.width)||0, weight: w });
+//   });
 
-  safeChild.forEach(b2 => {
-    if (b2.status !== 'stock') return;
-    let mCode = b2.motherCode;
-    if (!mCode) {
-        const cat = safeCatalog.find(p => String(p.b2Code) === String(b2.b2Code));
-        if (cat) mCode = cat.motherCode;
-    }
-    const { type, thickness } = getMaterialMetadata(mCode, b2.b2Code);
-    const entry = ensureGroup(type, thickness);
-    if (mCode) entry.codesIncluded.add(mCode);
-    const w = Number(b2.weight) || 0;
-    entry.b2StockWeight += w;
-    entry.items.push({ origin: 'B2', code: b2.b2Code||b2.code, width: Number(b2.width)||0, weight: w });
-  });
+//   safeChild.forEach(b2 => {
+//     if (b2.status !== 'stock') return;
+//     let mCode = b2.motherCode;
+//     if (!mCode) {
+//         const cat = safeCatalog.find(p => String(p.b2Code) === String(b2.b2Code));
+//         if (cat) mCode = cat.motherCode;
+//     }
+//     const { type, thickness } = getMaterialMetadata(mCode, b2.b2Code);
+//     const entry = ensureGroup(type, thickness);
+//     if (mCode) entry.codesIncluded.add(mCode);
+//     const w = Number(b2.weight) || 0;
+//     entry.b2StockWeight += w;
+//     entry.items.push({ origin: 'B2', code: b2.b2Code||b2.code, width: Number(b2.width)||0, weight: w });
+//   });
 
-  const groupList = Array.from(groupMap.values()).map(g => ({
-      ...g,
-      available: g.motherStockWeight + g.b2StockWeight,
-      uniqueCodesCount: g.codesIncluded.size
-  }));
+//   const groupList = Array.from(groupMap.values()).map(g => ({
+//       ...g,
+//       available: g.motherStockWeight + g.b2StockWeight,
+//       uniqueCodesCount: g.codesIncluded.size
+//   }));
 
-  // Filtros
-  const search = mpNeedSearch.toLowerCase();
-  const filteredGroups = groupList.filter(g => {
-    if (mpFilterThickness !== 'all' && g.thickness !== mpFilterThickness) return false;
-    if (mpFilterType !== 'all' && g.type !== mpFilterType) return false;
-    if (search && (!g.type.toLowerCase().includes(search) && !g.thickness.includes(search))) return false;
-    return true;
-  }).sort((a,b) => b.available - a.available);
+//   // Filtros
+//   const search = mpNeedSearch.toLowerCase();
+//   const filteredGroups = groupList.filter(g => {
+//     if (mpFilterThickness !== 'all' && g.thickness !== mpFilterThickness) return false;
+//     if (mpFilterType !== 'all' && g.type !== mpFilterType) return false;
+//     if (search && (!g.type.toLowerCase().includes(search) && !g.thickness.includes(search))) return false;
+//     return true;
+//   }).sort((a,b) => b.available - a.available);
 
-  // --- 5. LÓGICA DE SIMULAÇÃO (Se grupo selecionado) ---
-  const selectedGroup = filteredGroups.find(g => g.groupId === selectedMpCode);
+//   // --- 5. LÓGICA DE SIMULAÇÃO (Se grupo selecionado) ---
+//   const selectedGroup = filteredGroups.find(g => g.groupId === selectedMpCode);
   
-  if (selectedGroup) {
-      // 5.1 Taxa Diária
-      if (mpScenarioMode === 'manual') {
-          if (mpManualInputType === 'total') {
-              const total = Number(mpManualTotal) || 0;
-              const days = Number(mpManualDays) || 1;
-              scenarioDaily = total / days;
-          } else {
-              scenarioDaily = Number(mpManualDaily) || 0;
-          }
-      } else if (mpScenarioMode === 'file' && mpFileDaily) {
-          scenarioDaily = mpFileDaily;
-      }
+//   if (selectedGroup) {
+//       // 5.1 Taxa Diária
+//       if (mpScenarioMode === 'manual') {
+//           if (mpManualInputType === 'total') {
+//               const total = Number(mpManualTotal) || 0;
+//               const days = Number(mpManualDays) || 1;
+//               scenarioDaily = total / days;
+//           } else {
+//               scenarioDaily = Number(mpManualDaily) || 0;
+//           }
+//       } else if (mpScenarioMode === 'file' && mpFileDaily) {
+//           scenarioDaily = mpFileDaily;
+//       }
 
-      // 5.2 Parâmetros
-      const price = Number(mpSimulatedPrice) || 0;
-      const targetDays = Number(mpTargetDays) || 90;
-      const leadTime = Number(mpLeadTime) || 30;
+//       // 5.2 Parâmetros
+//       const price = Number(mpSimulatedPrice) || 0;
+//       const targetDays = Number(mpTargetDays) || 90;
+//       const leadTime = Number(mpLeadTime) || 30;
       
-      activeOrders = mpIncomingOrders.filter(o => o.groupId === selectedMpCode);
-      const totalIncoming = activeOrders.reduce((acc,o) => acc + o.qty, 0);
+//       activeOrders = mpIncomingOrders.filter(o => o.groupId === selectedMpCode);
+//       const totalIncoming = activeOrders.reduce((acc,o) => acc + o.qty, 0);
       
-      // 5.3 Metas Financeiras
-      idealStock = scenarioDaily * targetDays;
-      purchaseNeed = Math.max(0, idealStock - (selectedGroup.available + totalIncoming));
-      investment = purchaseNeed * price;
-      stockValue = selectedGroup.available * price;
+//       // 5.3 Metas Financeiras
+//       idealStock = scenarioDaily * targetDays;
+//       purchaseNeed = Math.max(0, idealStock - (selectedGroup.available + totalIncoming));
+//       investment = purchaseNeed * price;
+//       stockValue = selectedGroup.available * price;
 
-      // 5.4 Datas Críticas
-      const today = new Date();
-      if (isFinite(scenarioDaily) && scenarioDaily > 0) {
-          const daysCovered = (selectedGroup.available + totalIncoming) / scenarioDaily;
-          const rDate = new Date(); rDate.setDate(today.getDate() + Math.ceil(daysCovered));
-          ruptureDateStr = rDate.toLocaleDateString('pt-BR');
+//       // 5.4 Datas Críticas
+//       const today = new Date();
+//       if (isFinite(scenarioDaily) && scenarioDaily > 0) {
+//           const daysCovered = (selectedGroup.available + totalIncoming) / scenarioDaily;
+//           const rDate = new Date(); rDate.setDate(today.getDate() + Math.ceil(daysCovered));
+//           ruptureDateStr = rDate.toLocaleDateString('pt-BR');
           
-          // Data Limite = Ruptura - Lead Time
-          const deadline = new Date(rDate);
-          deadline.setDate(deadline.getDate() - leadTime);
-          deadlineDateStr = deadline.toLocaleDateString('pt-BR');
+//           // Data Limite = Ruptura - Lead Time
+//           const deadline = new Date(rDate);
+//           deadline.setDate(deadline.getDate() - leadTime);
+//           deadlineDateStr = deadline.toLocaleDateString('pt-BR');
           
-          // Verifica se já passou da data limite
-          const daysToDeadline = (deadline - today) / (1000 * 60 * 60 * 24);
-          if (daysToDeadline < 0) isLeadTimeCritical = true;
-      }
+//           // Verifica se já passou da data limite
+//           const daysToDeadline = (deadline - today) / (1000 * 60 * 60 * 24);
+//           if (daysToDeadline < 0) isLeadTimeCritical = true;
+//       }
 
-      // 5.5 Motor do Gráfico (Evolução Dia a Dia)
-      const simulationHorizon = targetDays + 15; // Até a meta + margem
-      let currentBalance = selectedGroup.available;
-      let firstStockoutDate = null;
-      let maxStock = currentBalance || 1000;
-      let minStock = currentBalance || 0;
+//       // 5.5 Motor do Gráfico (Evolução Dia a Dia)
+//       const simulationHorizon = targetDays + 15; // Até a meta + margem
+//       let currentBalance = selectedGroup.available;
+//       let firstStockoutDate = null;
+//       let maxStock = currentBalance || 1000;
+//       let minStock = currentBalance || 0;
 
-      for (let i = 0; i <= simulationHorizon; i++) {
-          const simDate = new Date();
-          simDate.setDate(today.getDate() + i);
+//       for (let i = 0; i <= simulationHorizon; i++) {
+//           const simDate = new Date();
+//           simDate.setDate(today.getDate() + i);
           
-          const inflows = activeOrders.filter(o => {
-              const d = new Date(o.date);
-              return d.getDate() === simDate.getDate() && d.getMonth() === simDate.getMonth();
-          });
-          const inflowQty = inflows.reduce((acc, o) => acc + o.qty, 0);
+//           const inflows = activeOrders.filter(o => {
+//               const d = new Date(o.date);
+//               return d.getDate() === simDate.getDate() && d.getMonth() === simDate.getMonth();
+//           });
+//           const inflowQty = inflows.reduce((acc, o) => acc + o.qty, 0);
 
-          currentBalance += inflowQty;
-          if (i > 0) currentBalance -= scenarioDaily;
+//           currentBalance += inflowQty;
+//           if (i > 0) currentBalance -= scenarioDaily;
 
-          if (currentBalance < 0 && !firstStockoutDate) firstStockoutDate = new Date(simDate);
-          if (currentBalance > maxStock) maxStock = currentBalance;
-          if (currentBalance < minStock) minStock = currentBalance;
+//           if (currentBalance < 0 && !firstStockoutDate) firstStockoutDate = new Date(simDate);
+//           if (currentBalance > maxStock) maxStock = currentBalance;
+//           if (currentBalance < minStock) minStock = currentBalance;
 
-          dailyStatement.push({ dayIndex: i, date: simDate, balance: currentBalance, inflow: inflowQty });
-      }
+//           dailyStatement.push({ dayIndex: i, date: simDate, balance: currentBalance, inflow: inflowQty });
+//       }
 
-      // 5.6 Cálculos SVG
-      const range = (maxStock - minStock) || 1;
-      const padding = range * 0.1;
-      const gMax = maxStock + padding;
-      const gMin = minStock - padding;
-      const gRange = gMax - gMin;
+//       // 5.6 Cálculos SVG
+//       const range = (maxStock - minStock) || 1;
+//       const padding = range * 0.1;
+//       const gMax = maxStock + padding;
+//       const gMin = minStock - padding;
+//       const gRange = gMax - gMin;
 
-      const getX = (i) => (i / (dailyStatement.length - 1 || 1)) * graphW;
-      const getY = (val) => {
-          const y = graphH - ((val - gMin) / gRange) * graphH;
-          return isNaN(y) ? graphH : y;
-      };
+//       const getX = (i) => (i / (dailyStatement.length - 1 || 1)) * graphW;
+//       const getY = (val) => {
+//           const y = graphH - ((val - gMin) / gRange) * graphH;
+//           return isNaN(y) ? graphH : y;
+//       };
 
-      graphPoints = dailyStatement.map((d, i) => `${getX(i)},${getY(d.balance)}`).join(' ');
-      graphArea = `${graphPoints} L ${graphW},${graphH} L 0,${graphH} Z`;
-      graphZeroY = getY(0);
+//       graphPoints = dailyStatement.map((d, i) => `${getX(i)},${getY(d.balance)}`).join(' ');
+//       graphArea = `${graphPoints} L ${graphW},${graphH} L 0,${graphH} Z`;
+//       graphZeroY = getY(0);
       
-      if (gMin >= 0) graphZeroPercent = 1; 
-      else if (gMax <= 0) graphZeroPercent = 0; 
-      else graphZeroPercent = (gMax / gRange);
+//       if (gMin >= 0) graphZeroPercent = 1; 
+//       else if (gMax <= 0) graphZeroPercent = 0; 
+//       else graphZeroPercent = (gMax / gRange);
       
-      // Dados para renderizar o tooltip e marcadores
-      graphPointsData = dailyStatement.map((d, i) => ({
-          x: getX(i),
-          y: getY(d.balance),
-          ...d
-      }));
-  }
+//       // Dados para renderizar o tooltip e marcadores
+//       graphPointsData = dailyStatement.map((d, i) => ({
+//           x: getX(i),
+//           y: getY(d.balance),
+//           ...d
+//       }));
+//   }
 
-  // Handlers
-  const handleAddOrder = () => {
-      if (!selectedMpCode || !mpOrderQty || !mpOrderDate) return;
-      setMpIncomingOrders([...mpIncomingOrders, { id: Date.now(), groupId: selectedMpCode, date: mpOrderDate, qty: Number(mpOrderQty) }]);
-      setMpOrderQty(''); setMpOrderDate('');
-  };
+//   // Handlers
+//   const handleAddOrder = () => {
+//       if (!selectedMpCode || !mpOrderQty || !mpOrderDate) return;
+//       setMpIncomingOrders([...mpIncomingOrders, { id: Date.now(), groupId: selectedMpCode, date: mpOrderDate, qty: Number(mpOrderQty) }]);
+//       setMpOrderQty(''); setMpOrderDate('');
+//   };
 
-  const exportSimulationPDF = () => {
-    if (!selectedGroup) return;
-    import('jspdf').then(({ jsPDF }) => {
-        import('jspdf-autotable').then(({ default: autoTable }) => {
-            const doc = new jsPDF();
-            doc.setFillColor(41, 128, 185); doc.rect(0, 0, 210, 25, 'F');
-            doc.setTextColor(255, 255, 255); doc.setFontSize(16); doc.text("MRP - PLANEJAMENTO DE COMPRAS", 14, 16);
+//   const exportSimulationPDF = () => {
+//     if (!selectedGroup) return;
+//     import('jspdf').then(({ jsPDF }) => {
+//         import('jspdf-autotable').then(({ default: autoTable }) => {
+//             const doc = new jsPDF();
+//             doc.setFillColor(41, 128, 185); doc.rect(0, 0, 210, 25, 'F');
+//             doc.setTextColor(255, 255, 255); doc.setFontSize(16); doc.text("MRP - PLANEJAMENTO DE COMPRAS", 14, 16);
             
-            doc.setTextColor(0,0,0); doc.setFontSize(11); doc.text("1. CENÁRIO", 14, 40);
-            const summary = [
-                ["Item", `${selectedGroup.type} ${selectedGroup.thickness}mm`],
-                ["Estoque Atual", `${formatKg(selectedGroup.available)} kg`],
-                ["Consumo Diário", `${formatKg(scenarioDaily)} kg/dia`],
-                ["Data Esgotamento", ruptureDateStr],
-                ["Falta Comprar", `${formatKg(purchaseNeed)} kg`],
-                ["Investimento", formatMoney(investment)]
-            ];
-            autoTable(doc, { startY: 45, body: summary, theme: 'grid' });
-            doc.save(`MRP_${selectedGroup.type}.pdf`);
-        });
-    });
-  };
+//             doc.setTextColor(0,0,0); doc.setFontSize(11); doc.text("1. CENÁRIO", 14, 40);
+//             const summary = [
+//                 ["Item", `${selectedGroup.type} ${selectedGroup.thickness}mm`],
+//                 ["Estoque Atual", `${formatKg(selectedGroup.available)} kg`],
+//                 ["Consumo Diário", `${formatKg(scenarioDaily)} kg/dia`],
+//                 ["Data Esgotamento", ruptureDateStr],
+//                 ["Falta Comprar", `${formatKg(purchaseNeed)} kg`],
+//                 ["Investimento", formatMoney(investment)]
+//             ];
+//             autoTable(doc, { startY: 45, body: summary, theme: 'grid' });
+//             doc.save(`MRP_${selectedGroup.type}.pdf`);
+//         });
+//     });
+//   };
 
-  return (
-    <div className="space-y-6 pb-20 animate-fade-in">
-      <div className="flex gap-4 bg-gray-800 p-4 rounded-xl border border-gray-700 items-end">
-        <div className="flex-1"><h2 className="text-xl font-bold text-white flex gap-2"><TrendingUp className="text-indigo-400"/> MRP & Planejamento</h2></div>
-        <input type="text" placeholder="Buscar..." value={mpNeedSearch} onChange={e=>setMpNeedSearch(e.target.value)} className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white w-40"/>
-        <select value={mpFilterThickness} onChange={e=>setMpFilterThickness(e.target.value)} className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="all">Espessura</option>{[...new Set(groupList.map(g=>g.thickness))].sort().map(t=><option key={t}>{t}</option>)}</select>
-        <select value={mpFilterType} onChange={e=>setMpFilterType(e.target.value)} className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="all">Tipo</option>{[...new Set(groupList.map(g=>g.type))].sort().map(t=><option key={t}>{t}</option>)}</select>
-      </div>
+//   return (
+//     <div className="space-y-6 pb-20 animate-fade-in">
+//       <div className="flex gap-4 bg-gray-800 p-4 rounded-xl border border-gray-700 items-end">
+//         <div className="flex-1"><h2 className="text-xl font-bold text-white flex gap-2"><TrendingUp className="text-indigo-400"/> MRP & Planejamento</h2></div>
+//         <input type="text" placeholder="Buscar..." value={mpNeedSearch} onChange={e=>setMpNeedSearch(e.target.value)} className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white w-40"/>
+//         <select value={mpFilterThickness} onChange={e=>setMpFilterThickness(e.target.value)} className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="all">Espessura</option>{[...new Set(groupList.map(g=>g.thickness))].sort().map(t=><option key={t}>{t}</option>)}</select>
+//         <select value={mpFilterType} onChange={e=>setMpFilterType(e.target.value)} className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="all">Tipo</option>{[...new Set(groupList.map(g=>g.type))].sort().map(t=><option key={t}>{t}</option>)}</select>
+//       </div>
 
-      {selectedGroup && (
-        <Card className={`bg-gray-900 border p-6 space-y-6 ${isLeadTimeCritical ? 'border-rose-500 shadow-lg shadow-rose-900/20' : 'border-gray-700'}`}>
-            <div className="flex justify-between items-start">
-                <div>
-                    <h1 className="text-4xl font-bold text-white mb-1">{selectedGroup.type} <span className="text-emerald-400 text-2xl">{selectedGroup.thickness} mm</span></h1>
-                    <div className="text-gray-400 text-sm">Agrupa {selectedGroup.uniqueCodesCount} códigos</div>
-                </div>
-                <div className="text-right">
-                    <div className="text-xs text-gray-400 uppercase">Estoque Atual</div>
-                    <div className="text-3xl font-bold text-white">{formatKg(selectedGroup.available)} <span className="text-sm font-normal text-gray-500">kg</span></div>
-                    <button onClick={exportSimulationPDF} className="mt-2 bg-rose-600 hover:bg-rose-500 text-white px-4 py-1.5 rounded text-xs font-bold flex items-center gap-2 ml-auto"><FileText size={14}/> PDF</button>
-                </div>
-            </div>
+//       {selectedGroup && (
+//         <Card className={`bg-gray-900 border p-6 space-y-6 ${isLeadTimeCritical ? 'border-rose-500 shadow-lg shadow-rose-900/20' : 'border-gray-700'}`}>
+//             <div className="flex justify-between items-start">
+//                 <div>
+//                     <h1 className="text-4xl font-bold text-white mb-1">{selectedGroup.type} <span className="text-emerald-400 text-2xl">{selectedGroup.thickness} mm</span></h1>
+//                     <div className="text-gray-400 text-sm">Agrupa {selectedGroup.uniqueCodesCount} códigos</div>
+//                 </div>
+//                 <div className="text-right">
+//                     <div className="text-xs text-gray-400 uppercase">Estoque Atual</div>
+//                     <div className="text-3xl font-bold text-white">{formatKg(selectedGroup.available)} <span className="text-sm font-normal text-gray-500">kg</span></div>
+//                     <button onClick={exportSimulationPDF} className="mt-2 bg-rose-600 hover:bg-rose-500 text-white px-4 py-1.5 rounded text-xs font-bold flex items-center gap-2 ml-auto"><FileText size={14}/> PDF</button>
+//                 </div>
+//             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 border-t border-gray-800 pt-6">
-                <div className="lg:col-span-5 space-y-6">
-                    <div className="flex bg-gray-800 border border-gray-700 rounded-lg p-1">
-                        {['historical','manual','file'].map(m => (
-                            <button key={m} onClick={()=>setMpScenarioMode(m)} className={`flex-1 py-2 text-xs font-bold rounded-md uppercase ${mpScenarioMode===m?'bg-indigo-600 text-white':'text-gray-400 hover:text-white'}`}>{m}</button>
-                        ))}
-                    </div>
+//             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 border-t border-gray-800 pt-6">
+//                 <div className="lg:col-span-5 space-y-6">
+//                     <div className="flex bg-gray-800 border border-gray-700 rounded-lg p-1">
+//                         {['historical','manual','file'].map(m => (
+//                             <button key={m} onClick={()=>setMpScenarioMode(m)} className={`flex-1 py-2 text-xs font-bold rounded-md uppercase ${mpScenarioMode===m?'bg-indigo-600 text-white':'text-gray-400 hover:text-white'}`}>{m}</button>
+//                         ))}
+//                     </div>
 
-                    {mpScenarioMode === 'manual' && (
-                        <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 space-y-4">
-                            <div className="flex border-b border-gray-700 pb-2 mb-2">
-                                <button onClick={()=>setMpManualInputType('daily')} className={`flex-1 text-xs pb-2 ${mpManualInputType==='daily'?'text-indigo-400 border-b-2 border-indigo-400':'text-gray-500'}`}>Por Taxa Diária</button>
-                                <button onClick={()=>setMpManualInputType('total')} className={`flex-1 text-xs pb-2 ${mpManualInputType==='total'?'text-indigo-400 border-b-2 border-indigo-400':'text-gray-500'}`}>Por Demanda Total</button>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                {mpManualInputType === 'total' ? (
-                                    <>
-                                        <div><label className="text-[10px] text-gray-400 uppercase font-bold block mb-1">Demanda Período</label><input type="number" value={mpManualTotal} onChange={e=>setMpManualTotal(e.target.value)} className="w-full bg-gray-900 border-gray-600 rounded p-2 text-white font-mono"/></div>
-                                        <div><label className="text-[10px] text-gray-400 uppercase font-bold block mb-1">Dias do Período</label><input type="number" value={mpManualDays} onChange={e=>setMpManualDays(Number(e.target.value))} className="w-full bg-gray-900 border-gray-600 rounded p-2 text-white font-mono"/></div>
-                                    </>
-                                ) : (
-                                    <div className="col-span-2"><label className="text-[10px] text-gray-400 uppercase font-bold block mb-1">Consumo Diário</label><input type="number" value={mpManualDaily} onChange={e=>setMpManualDaily(e.target.value)} className="w-full bg-gray-900 border-gray-600 rounded p-2 text-white font-mono"/></div>
-                                )}
-                            </div>
-                        </div>
-                    )}
+//                     {mpScenarioMode === 'manual' && (
+//                         <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 space-y-4">
+//                             <div className="flex border-b border-gray-700 pb-2 mb-2">
+//                                 <button onClick={()=>setMpManualInputType('daily')} className={`flex-1 text-xs pb-2 ${mpManualInputType==='daily'?'text-indigo-400 border-b-2 border-indigo-400':'text-gray-500'}`}>Por Taxa Diária</button>
+//                                 <button onClick={()=>setMpManualInputType('total')} className={`flex-1 text-xs pb-2 ${mpManualInputType==='total'?'text-indigo-400 border-b-2 border-indigo-400':'text-gray-500'}`}>Por Demanda Total</button>
+//                             </div>
+//                             <div className="grid grid-cols-2 gap-4">
+//                                 {mpManualInputType === 'total' ? (
+//                                     <>
+//                                         <div><label className="text-[10px] text-gray-400 uppercase font-bold block mb-1">Demanda Período</label><input type="number" value={mpManualTotal} onChange={e=>setMpManualTotal(e.target.value)} className="w-full bg-gray-900 border-gray-600 rounded p-2 text-white font-mono"/></div>
+//                                         <div><label className="text-[10px] text-gray-400 uppercase font-bold block mb-1">Dias do Período</label><input type="number" value={mpManualDays} onChange={e=>setMpManualDays(Number(e.target.value))} className="w-full bg-gray-900 border-gray-600 rounded p-2 text-white font-mono"/></div>
+//                                     </>
+//                                 ) : (
+//                                     <div className="col-span-2"><label className="text-[10px] text-gray-400 uppercase font-bold block mb-1">Consumo Diário</label><input type="number" value={mpManualDaily} onChange={e=>setMpManualDaily(e.target.value)} className="w-full bg-gray-900 border-gray-600 rounded p-2 text-white font-mono"/></div>
+//                                 )}
+//                             </div>
+//                         </div>
+//                     )}
 
-                    <div className="bg-blue-900/10 p-3 rounded border border-blue-500/20">
-                        <label className="text-xs font-bold text-blue-400 uppercase block mb-2">Pedidos em Trânsito</label>
-                        <div className="flex gap-1 mb-2">
-                            <input type="date" value={mpOrderDate} onChange={e=>setMpOrderDate(e.target.value)} className="w-full bg-gray-900 border-gray-600 rounded text-xs text-white p-1"/>
-                            <input type="number" placeholder="Kg" value={mpOrderQty} onChange={e=>setMpOrderQty(e.target.value)} className="w-20 bg-gray-900 border-gray-600 rounded text-xs text-white p-1"/>
-                            <button onClick={handleAddOrder} className="bg-blue-600 text-white rounded px-2 font-bold">+</button>
-                        </div>
-                        <div className="space-y-1 max-h-24 overflow-y-auto custom-scrollbar-dark">
-                            {activeOrders.map(o => (
-                                <div key={o.id} className="flex justify-between bg-gray-900/50 p-1 rounded text-xs border border-gray-700"><span className="text-blue-300">{formatDate(o.date)}</span><span className="font-bold text-white">+{formatKg(o.qty)}</span><button onClick={()=>setMpIncomingOrders(mpIncomingOrders.filter(x=>x.id!==o.id))} className="text-red-400 px-1">x</button></div>
-                            ))}
-                        </div>
-                    </div>
+//                     <div className="bg-blue-900/10 p-3 rounded border border-blue-500/20">
+//                         <label className="text-xs font-bold text-blue-400 uppercase block mb-2">Pedidos em Trânsito</label>
+//                         <div className="flex gap-1 mb-2">
+//                             <input type="date" value={mpOrderDate} onChange={e=>setMpOrderDate(e.target.value)} className="w-full bg-gray-900 border-gray-600 rounded text-xs text-white p-1"/>
+//                             <input type="number" placeholder="Kg" value={mpOrderQty} onChange={e=>setMpOrderQty(e.target.value)} className="w-20 bg-gray-900 border-gray-600 rounded text-xs text-white p-1"/>
+//                             <button onClick={handleAddOrder} className="bg-blue-600 text-white rounded px-2 font-bold">+</button>
+//                         </div>
+//                         <div className="space-y-1 max-h-24 overflow-y-auto custom-scrollbar-dark">
+//                             {activeOrders.map(o => (
+//                                 <div key={o.id} className="flex justify-between bg-gray-900/50 p-1 rounded text-xs border border-gray-700"><span className="text-blue-300">{formatDate(o.date)}</span><span className="font-bold text-white">+{formatKg(o.qty)}</span><button onClick={()=>setMpIncomingOrders(mpIncomingOrders.filter(x=>x.id!==o.id))} className="text-red-400 px-1">x</button></div>
+//                             ))}
+//                         </div>
+//                     </div>
 
-                    <div className="grid grid-cols-3 gap-2">
-                        <div className="bg-emerald-900/10 p-2 rounded border border-emerald-500/20"><label className="text-[9px] text-emerald-400 font-bold block mb-1 uppercase">Meta (Dias)</label><input type="number" value={mpTargetDays} onChange={e=>setMpTargetDays(Number(e.target.value))} className="w-full bg-transparent text-center text-white font-bold outline-none"/></div>
-                        <div className="bg-purple-900/10 p-2 rounded border border-purple-500/20"><label className="text-[9px] text-purple-400 font-bold block mb-1 uppercase">Lead Time</label><input type="number" value={mpLeadTime} onChange={e=>setMpLeadTime(Number(e.target.value))} className="w-full bg-transparent text-center text-white font-bold outline-none"/></div>
-                        <div className="bg-gray-800 p-2 rounded border border-gray-600"><label className="text-[9px] text-gray-400 font-bold block mb-1 uppercase">Preço R$</label><input type="number" value={mpSimulatedPrice} onChange={e=>setMpSimulatedPrice(e.target.value)} className="w-full bg-transparent text-center text-white font-bold outline-none"/></div>
-                    </div>
-                </div>
+//                     <div className="grid grid-cols-3 gap-2">
+//                         <div className="bg-emerald-900/10 p-2 rounded border border-emerald-500/20"><label className="text-[9px] text-emerald-400 font-bold block mb-1 uppercase">Meta (Dias)</label><input type="number" value={mpTargetDays} onChange={e=>setMpTargetDays(Number(e.target.value))} className="w-full bg-transparent text-center text-white font-bold outline-none"/></div>
+//                         <div className="bg-purple-900/10 p-2 rounded border border-purple-500/20"><label className="text-[9px] text-purple-400 font-bold block mb-1 uppercase">Lead Time</label><input type="number" value={mpLeadTime} onChange={e=>setMpLeadTime(Number(e.target.value))} className="w-full bg-transparent text-center text-white font-bold outline-none"/></div>
+//                         <div className="bg-gray-800 p-2 rounded border border-gray-600"><label className="text-[9px] text-gray-400 font-bold block mb-1 uppercase">Preço R$</label><input type="number" value={mpSimulatedPrice} onChange={e=>setMpSimulatedPrice(e.target.value)} className="w-full bg-transparent text-center text-white font-bold outline-none"/></div>
+//                     </div>
+//                 </div>
 
-                <div className="lg:col-span-7 space-y-6">
-                    {/* ALERTAS */}
-                    <div className="grid grid-cols-2 gap-4">
-                        {isLeadTimeCritical ? (
-                            <div className="col-span-2 bg-rose-900/30 border border-rose-500 p-3 rounded flex items-center justify-between">
-                                <div className="flex items-center gap-3"><AlertTriangle className="text-rose-500" size={24}/><div><h4 className="text-rose-400 font-bold text-sm uppercase">Ação Necessária</h4><p className="text-xs text-rose-200">Pedir até: {deadlineDateStr}</p></div></div>
-                            </div>
-                        ) : null}
-                    </div>
+//                 <div className="lg:col-span-7 space-y-6">
+//                     {/* ALERTAS */}
+//                     <div className="grid grid-cols-2 gap-4">
+//                         {isLeadTimeCritical ? (
+//                             <div className="col-span-2 bg-rose-900/30 border border-rose-500 p-3 rounded flex items-center justify-between">
+//                                 <div className="flex items-center gap-3"><AlertTriangle className="text-rose-500" size={24}/><div><h4 className="text-rose-400 font-bold text-sm uppercase">Ação Necessária</h4><p className="text-xs text-rose-200">Pedir até: {deadlineDateStr}</p></div></div>
+//                             </div>
+//                         ) : null}
+//                     </div>
 
-                    {/* KPIS */}
-                    <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700 grid grid-cols-2 gap-8">
-                        <div><div className="text-xs text-gray-400 uppercase mb-1">Estoque Ideal ({mpTargetDays} Dias)</div><div className="text-2xl font-bold text-blue-400">{formatKg(idealStock)}</div></div>
-                        <div><div className="text-xs text-gray-400 uppercase mb-1">Falta Comprar</div><div className={`text-2xl font-bold ${purchaseNeed>0?'text-rose-400':'text-emerald-400'}`}>{formatKg(purchaseNeed)}</div></div>
-                        <div><div className="text-xs text-gray-400 uppercase mb-1">Valor em Estoque</div><div className="text-lg font-mono font-bold text-gray-300">{formatMoney(stockValue)}</div></div>
-                        <div><div className="text-xs text-gray-400 uppercase mb-1">Investimento</div><div className="text-2xl font-mono font-bold text-rose-400">{formatMoney(investment)}</div></div>
-                    </div>
+//                     {/* KPIS */}
+//                     <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700 grid grid-cols-2 gap-8">
+//                         <div><div className="text-xs text-gray-400 uppercase mb-1">Estoque Ideal ({mpTargetDays} Dias)</div><div className="text-2xl font-bold text-blue-400">{formatKg(idealStock)}</div></div>
+//                         <div><div className="text-xs text-gray-400 uppercase mb-1">Falta Comprar</div><div className={`text-2xl font-bold ${purchaseNeed>0?'text-rose-400':'text-emerald-400'}`}>{formatKg(purchaseNeed)}</div></div>
+//                         <div><div className="text-xs text-gray-400 uppercase mb-1">Valor em Estoque</div><div className="text-lg font-mono font-bold text-gray-300">{formatMoney(stockValue)}</div></div>
+//                         <div><div className="text-xs text-gray-400 uppercase mb-1">Investimento</div><div className="text-2xl font-mono font-bold text-rose-400">{formatMoney(investment)}</div></div>
+//                     </div>
 
-                    {/* GRÁFICO SVG SEGURO */}
-                    <div className="bg-gray-900 border border-gray-700 rounded-lg p-0 overflow-hidden relative h-[250px]">
-                        <div className="absolute top-3 left-4 text-xs font-bold text-gray-500 z-10">PROJEÇÃO DE SALDO</div>
-                        {dailyStatement.length > 1 ? (
-                            <div className="w-full h-full relative" onMouseLeave={() => setHoverData(null)}>
-                                <svg className="w-full h-full" viewBox={`0 0 ${graphW} ${graphH}`} preserveAspectRatio="none">
-                                    <defs>
-                                        <linearGradient id="gSplit" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset={`${graphZeroPercent*100}%`} stopColor="#10b981" stopOpacity="0.4"/><stop offset={`${graphZeroPercent*100}%`} stopColor="#ef4444" stopOpacity="0.4"/>
-                                        </linearGradient>
-                                    </defs>
-                                    <line x1="0" y1={graphZeroY} x2={graphW} y2={graphZeroY} stroke="#6b7280" strokeWidth="1" strokeDasharray="4"/>
-                                    <path d={graphArea} fill="url(#gSplit)" />
-                                    <polyline points={graphPoints} fill="none" stroke="#e5e7eb" strokeWidth="2" strokeLinecap="round" />
-                                    {dailyStatement.filter(d => d.inflow > 0).map((d, i) => <circle key={i} cx={graphPointsData[i].x} cy={graphPointsData[i].y} r="4" fill="#3b82f6" stroke="white" strokeWidth="1.5"/>)}
-                                    {graphPointsData.map((d, i) => <rect key={i} x={d.x-5} y="0" width="10" height={graphH} fill="transparent" onMouseEnter={() => setHoverData(d)}/>)}
-                                </svg>
-                                {hoverData && (
-                                    <div className="absolute bg-gray-800 border border-gray-600 rounded p-2 shadow-xl pointer-events-none z-20" style={{ left: `${(hoverData.dayIndex/dailyStatement.length)*100}%`, top: '10%', transform: 'translateX(-50%)' }}>
-                                        <div className="text-xs text-white text-center">{formatDate(hoverData.date)}</div>
-                                        <div className={`font-bold text-center ${hoverData.balance<0?'text-rose-400':'text-emerald-400'}`}>{formatKg(hoverData.balance)} kg</div>
-                                        {hoverData.inflow > 0 && <div className="text-[10px] text-blue-300 font-bold mt-1 text-center">+ {formatKg(hoverData.inflow)}</div>}
-                                    </div>
-                                )}
-                            </div>
-                        ) : <div className="h-full flex items-center justify-center text-gray-500">Dados insuficientes</div>}
-                    </div>
-                </div>
-            </div>
-        </Card>
-      )}
+//                     {/* GRÁFICO SVG SEGURO */}
+//                     <div className="bg-gray-900 border border-gray-700 rounded-lg p-0 overflow-hidden relative h-[250px]">
+//                         <div className="absolute top-3 left-4 text-xs font-bold text-gray-500 z-10">PROJEÇÃO DE SALDO</div>
+//                         {dailyStatement.length > 1 ? (
+//                             <div className="w-full h-full relative" onMouseLeave={() => setHoverData(null)}>
+//                                 <svg className="w-full h-full" viewBox={`0 0 ${graphW} ${graphH}`} preserveAspectRatio="none">
+//                                     <defs>
+//                                         <linearGradient id="gSplit" x1="0" y1="0" x2="0" y2="1">
+//                                             <stop offset={`${graphZeroPercent*100}%`} stopColor="#10b981" stopOpacity="0.4"/><stop offset={`${graphZeroPercent*100}%`} stopColor="#ef4444" stopOpacity="0.4"/>
+//                                         </linearGradient>
+//                                     </defs>
+//                                     <line x1="0" y1={graphZeroY} x2={graphW} y2={graphZeroY} stroke="#6b7280" strokeWidth="1" strokeDasharray="4"/>
+//                                     <path d={graphArea} fill="url(#gSplit)" />
+//                                     <polyline points={graphPoints} fill="none" stroke="#e5e7eb" strokeWidth="2" strokeLinecap="round" />
+//                                     {dailyStatement.filter(d => d.inflow > 0).map((d, i) => <circle key={i} cx={graphPointsData[i].x} cy={graphPointsData[i].y} r="4" fill="#3b82f6" stroke="white" strokeWidth="1.5"/>)}
+//                                     {graphPointsData.map((d, i) => <rect key={i} x={d.x-5} y="0" width="10" height={graphH} fill="transparent" onMouseEnter={() => setHoverData(d)}/>)}
+//                                 </svg>
+//                                 {hoverData && (
+//                                     <div className="absolute bg-gray-800 border border-gray-600 rounded p-2 shadow-xl pointer-events-none z-20" style={{ left: `${(hoverData.dayIndex/dailyStatement.length)*100}%`, top: '10%', transform: 'translateX(-50%)' }}>
+//                                         <div className="text-xs text-white text-center">{formatDate(hoverData.date)}</div>
+//                                         <div className={`font-bold text-center ${hoverData.balance<0?'text-rose-400':'text-emerald-400'}`}>{formatKg(hoverData.balance)} kg</div>
+//                                         {hoverData.inflow > 0 && <div className="text-[10px] text-blue-300 font-bold mt-1 text-center">+ {formatKg(hoverData.inflow)}</div>}
+//                                     </div>
+//                                 )}
+//                             </div>
+//                         ) : <div className="h-full flex items-center justify-center text-gray-500">Dados insuficientes</div>}
+//                     </div>
+//                 </div>
+//             </div>
+//         </Card>
+//       )}
 
-      <Card className="flex-1 overflow-hidden p-0 mt-6">
-         <div className="overflow-x-auto max-h-[500px] custom-scrollbar-dark">
-             <table className="w-full text-sm text-left text-gray-300 border-collapse">
-                 <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10 uppercase text-xs">
-                     <tr><th className="p-3">Tipo</th><th className="p-3">Espessura</th><th className="p-3 text-center">Itens</th><th className="p-3 text-right">Est. Atual</th><th className="p-3 text-right">Média/Dia</th></tr>
-                 </thead>
-                 <tbody className="divide-y divide-gray-700">
-                     {filteredGroups.map(g => {
-                         const isSelected = selectedMpCode === g.groupId;
-                         const widthMap = new Map();
-                         if (isSelected) {
-                             g.items.forEach(item => {
-                                 const w = item.width || 0;
-                                 if (!widthMap.has(w)) widthMap.set(w, { width: w, motherW: 0, b2W: 0, count: 0 });
-                                 const e = widthMap.get(w); e.count++;
-                                 if(item.origin === 'Mãe') e.motherW += item.weight; else e.b2W += item.weight;
-                             });
-                         }
-                         const sortedWidths = Array.from(widthMap.values()).sort((a,b) => b.width - a.width);
+//       <Card className="flex-1 overflow-hidden p-0 mt-6">
+//          <div className="overflow-x-auto max-h-[500px] custom-scrollbar-dark">
+//              <table className="w-full text-sm text-left text-gray-300 border-collapse">
+//                  <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10 uppercase text-xs">
+//                      <tr><th className="p-3">Tipo</th><th className="p-3">Espessura</th><th className="p-3 text-center">Itens</th><th className="p-3 text-right">Est. Atual</th><th className="p-3 text-right">Média/Dia</th></tr>
+//                  </thead>
+//                  <tbody className="divide-y divide-gray-700">
+//                      {filteredGroups.map(g => {
+//                          const isSelected = selectedMpCode === g.groupId;
+//                          const widthMap = new Map();
+//                          if (isSelected) {
+//                              g.items.forEach(item => {
+//                                  const w = item.width || 0;
+//                                  if (!widthMap.has(w)) widthMap.set(w, { width: w, motherW: 0, b2W: 0, count: 0 });
+//                                  const e = widthMap.get(w); e.count++;
+//                                  if(item.origin === 'Mãe') e.motherW += item.weight; else e.b2W += item.weight;
+//                              });
+//                          }
+//                          const sortedWidths = Array.from(widthMap.values()).sort((a,b) => b.width - a.width);
 
-                         return (
-                             <React.Fragment key={g.groupId}>
-                                 <tr onClick={()=>setSelectedMpCode(g.groupId)} className={`cursor-pointer border-l-2 hover:bg-gray-800/50 ${isSelected?'bg-gray-800 border-l-indigo-500':'border-transparent'}`}>
-                                     <td className="p-3 font-bold text-white">{g.type}</td><td className="p-3 text-gray-300">{g.thickness}</td><td className="p-3 text-center text-xs text-gray-500">{g.uniqueCodesCount}</td>
-                                     <td className="p-3 text-right font-bold text-white">{formatKg(g.available)}</td><td className="p-3 text-right text-gray-400">{formatKg(g.dailyAvg)}</td>
-                                 </tr>
-                                 {isSelected && (
-                                     <tr className="bg-gray-900/40">
-                                         <td colSpan={5} className="p-4 inset-shadow">
-                                             <div className="flex items-center gap-2 mb-2 text-[10px] text-gray-400 font-bold uppercase"><List size={12}/> Detalhe Físico</div>
-                                             <div className="overflow-hidden rounded border border-gray-700 bg-gray-900">
-                                                 <table className="w-full text-xs text-left">
-                                                     <thead className="bg-gray-800 text-gray-500 uppercase"><tr><th className="p-2 pl-4">Largura</th><th className="p-2 text-right">Peso Mãe</th><th className="p-2 text-right">Peso B2</th><th className="p-2 text-right">Total</th></tr></thead>
-                                                     <tbody className="divide-y divide-gray-800 text-gray-400">
-                                                         {sortedWidths.map(w => (
-                                                             <tr key={w.width}><td className="p-2 pl-4 font-bold text-white">{w.width} mm</td><td className="p-2 text-right text-emerald-400">{formatKg(w.motherW)}</td><td className="p-2 text-right text-indigo-400">{formatKg(w.b2W)}</td><td className="p-2 text-right font-bold text-white">{formatKg(w.motherW + w.b2W)}</td></tr>
-                                                         ))}
-                                                     </tbody>
-                                                 </table>
-                                             </div>
-                                         </td>
-                                     </tr>
-                                 )}
-                             </React.Fragment>
-                         );
-                     })}
-                 </tbody>
-             </table>
-         </div>
-      </Card>
-    </div>
-  );
-};
+//                          return (
+//                              <React.Fragment key={g.groupId}>
+//                                  <tr onClick={()=>setSelectedMpCode(g.groupId)} className={`cursor-pointer border-l-2 hover:bg-gray-800/50 ${isSelected?'bg-gray-800 border-l-indigo-500':'border-transparent'}`}>
+//                                      <td className="p-3 font-bold text-white">{g.type}</td><td className="p-3 text-gray-300">{g.thickness}</td><td className="p-3 text-center text-xs text-gray-500">{g.uniqueCodesCount}</td>
+//                                      <td className="p-3 text-right font-bold text-white">{formatKg(g.available)}</td><td className="p-3 text-right text-gray-400">{formatKg(g.dailyAvg)}</td>
+//                                  </tr>
+//                                  {isSelected && (
+//                                      <tr className="bg-gray-900/40">
+//                                          <td colSpan={5} className="p-4 inset-shadow">
+//                                              <div className="flex items-center gap-2 mb-2 text-[10px] text-gray-400 font-bold uppercase"><List size={12}/> Detalhe Físico</div>
+//                                              <div className="overflow-hidden rounded border border-gray-700 bg-gray-900">
+//                                                  <table className="w-full text-xs text-left">
+//                                                      <thead className="bg-gray-800 text-gray-500 uppercase"><tr><th className="p-2 pl-4">Largura</th><th className="p-2 text-right">Peso Mãe</th><th className="p-2 text-right">Peso B2</th><th className="p-2 text-right">Total</th></tr></thead>
+//                                                      <tbody className="divide-y divide-gray-800 text-gray-400">
+//                                                          {sortedWidths.map(w => (
+//                                                              <tr key={w.width}><td className="p-2 pl-4 font-bold text-white">{w.width} mm</td><td className="p-2 text-right text-emerald-400">{formatKg(w.motherW)}</td><td className="p-2 text-right text-indigo-400">{formatKg(w.b2W)}</td><td className="p-2 text-right font-bold text-white">{formatKg(w.motherW + w.b2W)}</td></tr>
+//                                                          ))}
+//                                                      </tbody>
+//                                                  </table>
+//                                              </div>
+//                                          </td>
+//                                      </tr>
+//                                  )}
+//                              </React.Fragment>
+//                          );
+//                      })}
+//                  </tbody>
+//              </table>
+//          </div>
+//       </Card>
+//     </div>
+//   );
+// };
 
   // --- RETURN FINAL ---
 
@@ -5228,7 +5489,7 @@ const renderRawMaterialRequirement = () => {
               <List size={20} className={activeTab === 'b2report' ? "text-indigo-400" : "group-hover:text-indigo-400 transition-colors"}/> <span className="font-medium">Rastreio B2</span>
             </button>
 
-           <button onClick={() => { setActiveTab('indicators'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'indicators' ? 'bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+           <button onClick={() => { setActiveTab('bi'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'indicators' ? 'bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
                 <PieChart size={20} className={activeTab === 'indicators' ? "text-cyan-400" : "group-hover:text-cyan-400 transition-colors"}/> <span className="font-medium">BI & Gráficos</span>
             </button>
 
@@ -5253,6 +5514,7 @@ const renderRawMaterialRequirement = () => {
             <span className="font-medium">Necessidade MP</span>
           </button>
 
+          
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mt-8 mb-4">Gestão</p>
 
            <div className="mt-2 px-4">
@@ -5287,7 +5549,7 @@ const renderRawMaterialRequirement = () => {
                   {activeTab === 'production' && "Apontamento"}
                   {activeTab === 'shipping' && "Expedição"}
                   {activeTab === 'reports' && "Relatórios"}
-                  {activeTab === 'indicators' && "Indicadores & BI"}               
+                                                
                 </h2>
                 <p className="text-xs text-gray-500 mt-0.5 font-medium uppercase tracking-wider hidden md:block">Controle de Produção</p>
               </div>
@@ -5305,8 +5567,30 @@ const renderRawMaterialRequirement = () => {
               {activeTab === 'shipping' && renderShipping()}
               {activeTab === 'reports' && renderReports()}
               {activeTab === 'b2report' && renderB2DynamicReport()}
-              {activeTab === 'indicators' && renderIndicators()}
-              {activeTab === 'mpNeed' && renderRawMaterialRequirement()}
+
+{activeTab === 'bi' && (
+  <IndicatorsDashboard
+    motherCoils={motherCoils}
+    childCoils={childCoils}
+    cuttingLogs={cuttingLogs}
+    shippingLogs={shippingLogs}
+    productionLogs={productionLogs}
+  />
+)}
+
+
+              
+
+              {activeTab === "mpNeed" && (
+                <RawMaterialRequirement
+                  motherCoils={motherCoils}
+                  childCoils={childCoils}
+                  productCatalog={productCatalog}
+                  motherCatalog={INITIAL_MOTHER_CATALOG}
+                />
+              )}
+
+
 
             </div>
          </main>
@@ -5334,6 +5618,7 @@ const renderRawMaterialRequirement = () => {
           onSave={updateMotherCoil} 
         />
       )}
+      
       {viewingCutLog && (
         <CutDetailsModal 
             log={viewingCutLog} 
