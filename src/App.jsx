@@ -3107,12 +3107,6 @@ safeCutting.forEach((c) => {
             </div>
           </div>
           
-          <RawMaterialRequirement
-        motherCoils={motherCoils}
-        childCoils={childCoils}
-        productCatalog={productCatalog}
-        motherCatalog={INITIAL_MOTHER_CATALOG}
-      />
 
 
 
