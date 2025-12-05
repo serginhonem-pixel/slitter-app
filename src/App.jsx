@@ -75,6 +75,9 @@ import { default as EditMotherCoilModal, default as ProductHistoryModal } from '
 
 import { INITIAL_MOTHER_CATALOG } from './data/motherCatalog';
 import { INITIAL_PRODUCT_CATALOG } from './data/productCatalog';
+import { INITIAL_INOX_BLANK_PRODUCTS } from './data/inoxCatalog';
+
+const ENABLE_BACKUP_BUTTON = true; // muda pra true quando quiser usar o backup
 
 const ITEMS_PER_PAGE = 50;
 
@@ -662,6 +665,31 @@ const handleGeneratePDF = (title, data) => {
 };
 // --- FUNÇÃO DE INVENTÁRIO (BOBINA MÃE) ---
   // --- FUNÇÃO DE INVENTÁRIO ATUALIZADA (LÊ TUDO) ---
+  // ===== DADOS DE TESTE PARA ABA INOX =====
+const INOX_PRODUCTS = [
+  {
+    id: "INOX-001",
+    code: "INOX-001",
+    description: "BLANK INOX 1,20 x 1000",
+    unitWeightKg: 2.5, // kg por peça
+  },
+];
+
+const INOX_DEMAND_ROWS = [
+  {
+    productId: "INOX-001",  // TEM QUE bater com o id acima
+    demandQty: 1000,        // demanda em peças
+  },
+];
+
+const INOX_STOCK_POSITIONS = [
+  {
+    productId: "INOX-001",  // mesmo id
+    finishedQty: 200,       // peças prontas
+    blankQty: 100,          // blanks em estoque
+  },
+];
+
     
 export default function App() {
   const importFullBackupRef = useRef(null);
@@ -999,59 +1027,103 @@ export default function App() {
   };
 
     const addMotherCoil = async () => {
-    if (!newMotherCoil.code || !newMotherCoil.weight) {
-      return alert("Preencha código e peso.");
+  const family = (newMotherCoil?.family || "").toUpperCase();
+  const typeUpper = (newMotherCoil?.type || "").toUpperCase();
+  const isInox =
+    family === "INOX" || typeUpper === "INOX" || newMotherCoil?.form === "BLANK";
+
+  // ========================
+  // 1) VALIDAÇÕES
+  // ========================
+
+  // Peso é obrigatório sempre
+  if (!newMotherCoil.weight) {
+    return alert("Preencha o peso.");
+  }
+
+  if (isInox) {
+    // Para inox: não obriga código, mas obriga escolher o tipo de inox
+    if (!newMotherCoil.inoxGrade) {
+      return alert("Selecione o tipo de inox.");
     }
 
-    // Garante que tem uma data válida
-    const isoDate = newMotherCoil.entryDate || new Date().toISOString().split('T')[0];
-    const dateParts = isoDate.split('-');
-    const formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
-
-    // 1. Gera um ID Temporário para mostrar na tela agora
-    const tempId = Date.now().toString();
-
-    const newCoil = {
-      id: tempId, // <--- ID PROVISÓRIO
-      ...newMotherCoil,
-      type: newMotherCoil.type,
-      weight: parseFloat(newMotherCoil.weight),
-      originalWeight: parseFloat(newMotherCoil.weight),
-      width: parseFloat(newMotherCoil.width) || 1200,
-      remainingWeight: parseFloat(newMotherCoil.weight),
-      status: 'stock',
-      date: formattedDate,
-    };
-
-    // 2. Atualiza otimista no front (Usuário vê instantaneamente)
-    setMotherCoils(prev => [...prev, newCoil]);
-
-    // Reseta formulário imediatamente
-    setNewMotherCoil({
-        code: '', nf: '', weight: '', material: '', width: '', thickness: '', type: '', 
-        entryDate: new Date().toISOString().split('T')[0] 
-    });
-
-    try {
-      // 3. Persiste no Firebase e ESPERA O ID REAL
-      // Nota: removemos o ID provisório antes de mandar pro banco pra não sujar os dados
-      const { id, ...coilDataToSend } = newCoil; 
-      const savedItem = await saveToDb('motherCoils', coilDataToSend);
-
-      // 4. O SEGREDO: Troca o ID provisório pelo ID Real do Firebase na tela
-      setMotherCoils(prev => prev.map(item => 
-          item.id === tempId ? { ...item, id: savedItem.id } : item
-      ));
-
-      alert("Bobina salva na Nuvem! Data: " + formattedDate);
-
-    } catch (error) {
-      console.error('Erro ao salvar bobina no Firebase', error);
-      alert('Erro de conexão! A bobina está na tela, mas NÃO foi salva no banco. Se der F5 ela some.');
-      // Opcional: Remover da tela se deu erro, para não enganar o usuário
-      // setMotherCoils(prev => prev.filter(m => m.id !== tempId));
+    // Se quiser também obrigar quantidade, descomenta:
+    // if (!newMotherCoil.qty) {
+    //   return alert("Preencha a quantidade de peças.");
+    // }
+  } else {
+    // Para bobina carbono/galv: continua exigindo código
+    if (!newMotherCoil.code) {
+      return alert("Preencha o código do lote.");
     }
+  }
+
+  // ========================
+  // 2) DATA
+  // ========================
+  const isoDate =
+    newMotherCoil.entryDate || new Date().toISOString().split("T")[0];
+  const dateParts = isoDate.split("-");
+  const formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+
+  // 3) Gera um ID Temporário para mostrar na tela agora
+  const tempId = Date.now().toString();
+
+  const newCoil = {
+    id: tempId, // ID PROVISÓRIO
+    ...newMotherCoil,
+    type: newMotherCoil.type, // já vem "INOX" ou BQ/BF/etc
+    weight: parseFloat(newMotherCoil.weight),
+    originalWeight: parseFloat(newMotherCoil.weight),
+    width: parseFloat(newMotherCoil.width) || 1200,
+    remainingWeight: parseFloat(newMotherCoil.weight),
+    status: "stock",
+    date: formattedDate,
   };
+
+  // 4) Atualiza otimista no front
+  setMotherCoils((prev) => [...prev, newCoil]);
+
+  // 5) Reseta formulário
+  setNewMotherCoil({
+    code: "",
+    nf: "",
+    weight: "",
+    material: "",
+    width: "",
+    thickness: "",
+    type: "",
+    entryDate: new Date().toISOString().split("T")[0],
+    family: "",
+    form: "",
+    inoxGrade: "",
+    qty: "",
+    length: "",
+  });
+
+  try {
+    // 6) Persiste no Firebase (sem o ID provisório)
+    const { id, ...coilDataToSend } = newCoil;
+    const savedItem = await saveToDb("motherCoils", coilDataToSend);
+
+    // 7) Troca o ID provisório pelo ID real
+    setMotherCoils((prev) =>
+      prev.map((item) =>
+        item.id === tempId ? { ...item, id: savedItem.id } : item
+      )
+    );
+
+    alert("Bobina salva na Nuvem! Data: " + formattedDate);
+  } catch (error) {
+    console.error("Erro ao salvar bobina no Firebase", error);
+    alert(
+      "Erro de conexão! A bobina está na tela, mas NÃO foi salva no banco. Se der F5 ela some."
+    );
+    // Se quiser remover da tela quando der erro, descomenta:
+    // setMotherCoils(prev => prev.filter(m => m.id !== tempId));
+  }
+};
+
 
   const deleteMotherCoil = async (id) => {
     if (!window.confirm("Tem certeza? Isso apagará a bobina permanentemente.")) {
@@ -1729,122 +1801,450 @@ export default function App() {
 
   // --- RENDERS ---
 
-  const renderMotherCoilForm = () => (
+  const renderMotherCoilForm = () => {
+  // --- Define se estamos cadastrando bobina "normal" ou blank inox ---
+  const family = (newMotherCoil?.family || "").toUpperCase();
+  const typeUpper = (newMotherCoil?.type || "").toUpperCase();
+  const isInoxSelected =
+    family === "INOX" || typeUpper === "INOX" || newMotherCoil?.form === "BLANK";
+
+  // Catálogo de produtos inox
+  const inoxProducts = INITIAL_INOX_BLANK_PRODUCTS || [];
+
+  // LISTA ÚNICA DE TIPOS DE INOX (SEM REPETIÇÃO)
+  const inoxGrades = Array.from(
+    new Set(inoxProducts.map((p) => p.inoxGrade))
+  ).sort();
+
+  const selectedInoxGrade = newMotherCoil?.inoxGrade || "";
+  const defaultProductForSelectedGrade =
+    inoxProducts.find((p) => p.inoxGrade === selectedInoxGrade) || null;
+
+  const handleSelectInoxGrade = (e) => {
+  const grade = e.target.value;
+
+  if (!grade) {
+    setNewMotherCoil({
+      ...newMotherCoil,
+      inoxGrade: "",
+      material: "",
+      family: "INOX",
+      form: "BLANK",
+      type: "INOX",
+      thickness: "",
+      width: "",
+      length: "",
+    });
+    return;
+  }
+
+  const defaultProduct = inoxProducts.find((p) => p.inoxGrade === grade);
+
+  let thicknessStr = "";
+  let width = "";
+  let length = "";
+
+  if (defaultProduct) {
+    thicknessStr =
+      defaultProduct.thickness != null
+        ? defaultProduct.thickness.toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })
+        : "";
+    width = defaultProduct.width ?? "";
+    length = defaultProduct.length ?? "";
+  }
+
+  setNewMotherCoil({
+    ...newMotherCoil,
+    inoxGrade: grade,                          // coluna INOX
+    material: defaultProduct?.measuresLabel    // <-- AQUI MUDA O NOME LÁ EM CIMA
+      ? `${grade} — ${defaultProduct.measuresLabel}`
+      : grade,
+    family: "INOX",
+    form: "BLANK",
+    type: "INOX",
+    thickness: thicknessStr,
+    width,
+    length,
+  });
+};
+
+
+  return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+      {/* LADO ESQUERDO: FORMULÁRIO */}
       <div className="lg:col-span-1">
         <Card className="h-full flex flex-col justify-center">
-           <div className="flex flex-col items-center text-center mb-8">
-              <div className="w-16 h-16 bg-blue-500/10 text-blue-400 rounded-full flex items-center justify-center mb-4 border border-blue-500/20">
-                <Plus size={32}/>
+          <div className="flex flex-col items-center text-center mb-8">
+            <div className="w-16 h-16 bg-blue-500/10 text-blue-400 rounded-full flex items-center justify-center mb-4 border border-blue-500/20">
+              <Plus size={32} />
+            </div>
+            <h2 className="text-2xl font-bold text-white">
+              {isInoxSelected ? "Novo Blank Inox" : "Nova Bobina"}
+            </h2>
+            <p className="text-gray-400 text-sm mt-1">
+              {isInoxSelected
+                ? "Cadastre chapas / blanks inox recebidos"
+                : "Cadastre a matéria prima recebida"}
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {/* --- LINHA 0: TIPO DE MATÉRIA-PRIMA (BOBINA x BLANK INOX) --- */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="block text-xs font-bold text-blue-400/70 uppercase mb-1">
+                  Tipo de Matéria-prima
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNewMotherCoil({
+                        ...newMotherCoil,
+                        family: "CARBONO",
+                        form: "BOBINA",
+                        inoxGrade: "",
+                        type: "",
+                        thickness: "",
+                        width: "",
+                        length: "",
+                      })
+                    }
+                    className={`flex-1 text-xs font-semibold rounded-lg px-3 py-2 border transition ${
+                      !isInoxSelected
+                        ? "bg-blue-600/20 border-blue-500/60 text-blue-100"
+                        : "bg-gray-800 border-gray-700 text-gray-300 hover:border-blue-500/40"
+                    }`}
+                  >
+                    Bobina (aço / galv)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNewMotherCoil({
+                        ...newMotherCoil,
+                        family: "INOX",
+                        form: "BLANK",
+                        type: "INOX",
+                      })
+                    }
+                    className={`flex-1 text-xs font-semibold rounded-lg px-3 py-2 border transition ${
+                      isInoxSelected
+                        ? "bg-emerald-600/20 border-emerald-500/60 text-emerald-100"
+                        : "bg-gray-800 border-gray-700 text-gray-300 hover:border-emerald-500/40"
+                    }`}
+                  >
+                    Blank Inox
+                  </button>
+                </div>
               </div>
-              <h2 className="text-2xl font-bold text-white">Nova Bobina</h2>
-              <p className="text-gray-400 text-sm mt-1">Cadastre a matéria prima recebida</p>
-           </div>
-           
-           <div className="space-y-4">
-              {/* --- LINHA 1: CÓDIGO, NF e DATA (3 Colunas) --- */}
-              <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-1">
-                      <Input label="Código Lote" value={newMotherCoil.code} onChange={e => setNewMotherCoil({...newMotherCoil, code: e.target.value})} placeholder="Ex: 10644" />
+            </div>
+
+            {/* --- LINHA 0.1: SELETOR DE TIPO DE INOX (SEM REPETIÇÃO) --- */}
+            {isInoxSelected && (
+              <div>
+                <label className="block text-xs font-bold text-blue-400/70 uppercase mb-1">
+                  Tipo de Inox
+                </label>
+                <select
+                  value={selectedInoxGrade}
+                  onChange={handleSelectInoxGrade}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                >
+                  <option value="">Selecione...</option>
+                  {inoxGrades.map((grade) => (
+                    <option key={grade} value={grade}>
+                      {grade}
+                    </option>
+                  ))}
+                </select>
+
+                {defaultProductForSelectedGrade && (
+                  <div className="mt-2 text-[11px] text-gray-400">
+                    Medidas padrão:{" "}
+                    <span className="font-semibold">
+                      {defaultProductForSelectedGrade.measuresLabel}
+                    </span>
                   </div>
-                  <div className="col-span-1">
-                      <Input label="Nota Fiscal" value={newMotherCoil.nf} onChange={e => setNewMotherCoil({...newMotherCoil, nf: e.target.value})} placeholder="Ex: 12345" />
-                  </div>
-                  <div className="col-span-1">
-                      <Input label="Data Entrada" type="date" value={newMotherCoil.entryDate} onChange={e => setNewMotherCoil({...newMotherCoil, entryDate: e.target.value})} />
-                  </div>
+                )}
+              </div>
+            )}
+
+            {/* --- LINHA 1: CÓDIGO, NF e DATA (3 Colunas) --- */}
+            <div className="grid grid-cols-3 gap-3">
+              {/* Código Lote só aparece quando NÃO é inox */}
+              {!isInoxSelected && (
+                <div className="col-span-1">
+                  <Input
+                    label="Código Lote"
+                    value={newMotherCoil.code}
+                    onChange={(e) =>
+                      setNewMotherCoil({
+                        ...newMotherCoil,
+                        code: e.target.value,
+                      })
+                    }
+                    placeholder="Ex: 10644"
+                  />
+                </div>
+              )}
+
+              <div className={isInoxSelected ? "col-span-2" : "col-span-1"}>
+                <Input
+                  label="Nota Fiscal"
+                  value={newMotherCoil.nf}
+                  onChange={(e) =>
+                    setNewMotherCoil({
+                      ...newMotherCoil,
+                      nf: e.target.value,
+                    })
+                  }
+                  placeholder="Ex: 12345"
+                />
               </div>
 
-              {/* --- LINHA 2: PESO e LARGURA --- */}
+              <div className="col-span-1">
+                <Input
+                  label="Data Entrada"
+                  type="date"
+                  value={newMotherCoil.entryDate}
+                  onChange={(e) =>
+                    setNewMotherCoil({
+                      ...newMotherCoil,
+                      entryDate: e.target.value,
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            {/* --- LINHA 2: 
+                  - INOX: Peso + Quantidade
+                  - Não INOX: Peso + Largura
+              --- */}
+            {isInoxSelected ? (
               <div className="grid grid-cols-2 gap-4">
-                <Input label="Peso (kg)" type="number" value={newMotherCoil.weight} onChange={e => setNewMotherCoil({...newMotherCoil, weight: e.target.value})} />
-                <Input label="Largura (mm)" type="number" value={newMotherCoil.width} onChange={e => setNewMotherCoil({...newMotherCoil, width: e.target.value})} />
+                <Input
+                  label="Peso (kg)"
+                  type="number"
+                  value={newMotherCoil.weight}
+                  onChange={(e) =>
+                    setNewMotherCoil({
+                      ...newMotherCoil,
+                      weight: e.target.value,
+                    })
+                  }
+                />
+                <Input
+                  label="Quantidade (peças)"
+                  type="number"
+                  value={newMotherCoil.qty || ""}
+                  onChange={(e) =>
+                    setNewMotherCoil({
+                      ...newMotherCoil,
+                      qty: e.target.value,
+                    })
+                  }
+                />
               </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="Peso (kg)"
+                  type="number"
+                  value={newMotherCoil.weight}
+                  onChange={(e) =>
+                    setNewMotherCoil({
+                      ...newMotherCoil,
+                      weight: e.target.value,
+                    })
+                  }
+                />
+                <Input
+                  label="Largura (mm)"
+                  type="number"
+                  value={newMotherCoil.width}
+                  onChange={(e) =>
+                    setNewMotherCoil({
+                      ...newMotherCoil,
+                      width: e.target.value,
+                    })
+                  }
+                />
+              </div>
+            )}
 
-              <Button onClick={addMotherCoil} className="w-full py-3 text-lg shadow-md mt-4">Confirmar Entrada</Button>
-              
-              {/* Rodapé de Importação (Mantido igual) */}
-           </div>
+            {/* Não tem mais campo para digitar medidas do inox:
+                elas vêm do catálogo e já foram salvas em thickness/width/length */}
+
+            <Button
+              onClick={addMotherCoil}
+              className="w-full py-3 text-lg shadow-md mt-4"
+            >
+              Confirmar Entrada
+            </Button>
+          </div>
         </Card>
       </div>
-      
-      {/* Lado Direito (Lista de Entradas) - Mantido igual, só adicionei a NF no visual */}
+
+      {/* LADO DIREITO: LISTA DE ENTRADAS */}
       <div className="lg:col-span-2 flex flex-col gap-6">
-         <Card className="bg-gray-800/80 border-blue-900/30">
-            <div className="flex gap-4">
-               <div className="flex-1">
-                 <label className="block text-xs font-bold text-blue-400/70 uppercase mb-1">Material Identificado</label>
-                 <div className="font-medium text-white text-lg truncate">{newMotherCoil.material || 'Aguarda código...'}</div>
-               </div>
-               <div className="flex gap-4">
-                 <div><label className="block text-xs font-bold text-blue-400/70 uppercase mb-1">Espessura</label><div className="font-bold text-blue-400 text-xl">{newMotherCoil.thickness || '-'}</div></div>
-                 <div><label className="block text-xs font-bold text-blue-400/70 uppercase mb-1">Tipo</label><div className="font-bold text-blue-400 text-xl">{newMotherCoil.type || '-'}</div></div>
-               </div>
+        <Card className="bg-gray-800/80 border-blue-900/30">
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="block text-xs font-bold text-blue-400/70 uppercase mb-1">
+                Material Identificado
+              </label>
+              <div className="font-medium text-white text-lg truncate">
+                {newMotherCoil.material || "Aguarda código..."}
+              </div>
             </div>
-         </Card>
-         <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2"><List size={20} className="text-gray-400"/> Entradas Recentes</h3>
-            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar-dark space-y-3 max-h-[calc(100vh-260px)]">
-              {[...motherCoils]
-                .sort((a, b) => {
-                    // Função Robusta de Data
-                    const getDateValue = (item) => {
-                        // Tenta formato ISO (YYYY-MM-DD) -> É o mais confiável
-                        if (item.entryDate && item.entryDate.length === 10) {
-                            return new Date(item.entryDate).getTime();
-                        }
-                        // Tenta formato BR (DD/MM/YYYY)
-                        if (item.date && item.date.includes('/')) {
-                            const [dia, mes, ano] = item.date.split('/');
-                            return new Date(`${ano}-${mes}-${dia}`).getTime();
-                        }
-                        return 0; // Se não tiver data, vale 0 (vai pro final)
-                    };
+            <div className="flex gap-4">
+              <div>
+                <label className="block text-xs font-bold text-blue-400/70 uppercase mb-1">
+                  Espessura
+                </label>
+                <div className="font-bold text-blue-400 text-xl">
+                  {newMotherCoil.thickness || "-"}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-blue-400/70 uppercase mb-1">
+                  Tipo
+                </label>
+                <div className="font-bold text-blue-400 text-xl">
+                  {newMotherCoil.type || "-"}
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
 
-                    const timeA = getDateValue(a);
-                    const timeB = getDateValue(b);
+        <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2">
+            <List size={20} className="text-gray-400" /> Entradas Recentes
+          </h3>
+          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar-dark space-y-3 max-h-[calc(100vh-260px)]">
+            {[...motherCoils]
+              .sort((a, b) => {
+                const getDateValue = (item) => {
+                  if (item.entryDate && item.entryDate.length === 10) {
+                    return new Date(item.entryDate).getTime();
+                  }
+                  if (item.date && item.date.includes("/")) {
+                    const [dia, mes, ano] = item.date.split("/");
+                    return new Date(`${ano}-${mes}-${dia}`).getTime();
+                  }
+                  return 0;
+                };
 
-                    // Se as datas forem diferentes, ordena por data
-                    if (timeA !== timeB) {
-                        return timeB - timeA; // Mais novo primeiro
-                    }
+                const timeA = getDateValue(a);
+                const timeB = getDateValue(b);
 
-                    // SE EMPATAR NA DATA (Vários hoje), DESEMPATA PELO CÓDIGO (LOTE)
-                    // Isso garante que o lote 10500 venha antes do 10499
-                    return String(b.code).localeCompare(String(a.code), undefined, { numeric: true });
-                })
-                .slice(0, 50)
-                .map(coil => (
-                  <div key={coil.id} className={`p-4 rounded-xl border flex justify-between items-center transition-all hover:bg-gray-700/50 ${coil.status === 'stock' ? 'bg-gray-900 border-gray-700' : 'bg-gray-800 border-gray-700 opacity-50'}`}>
-                    <div>
-                      <div className="font-bold text-gray-200 flex items-center gap-2">
-                        {coil.code} 
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${coil.status === 'stock' ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-900' : 'bg-gray-800 text-gray-500'}`}>{coil.status === 'stock' ? 'EM ESTOQUE' : 'CONSUMIDA'}</span>
-                      </div>
-                      <div className="text-sm text-gray-500 mt-1">{coil.type} | {coil.thickness} | {coil.material}</div>
-                      <div className="text-[10px] text-blue-400 mt-1 font-bold">
-                        NF: {coil.nf || '-'} | Entrada: {coil.date}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <div className="font-bold text-xl text-white">{(Number(coil.weight) || 0).toFixed(0)} <span className="text-sm text-gray-500 font-normal">kg</span></div>
-                        <div className="text-xs text-gray-500">{coil.width}mm</div>
-                      </div>
-                      {coil.status === 'stock' && (
-                        <div className="flex gap-2">
-                          <button onClick={() => setEditingMotherCoil(coil)} className="p-2 bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600 hover:text-white"><Edit size={16}/></button>
-                          <button onClick={() => deleteMotherCoil(coil.id)} className="p-2 bg-red-600/20 text-red-400 rounded hover:bg-red-600 hover:text-white"><Trash2 size={16}/></button>
-                        </div>
+                if (timeA !== timeB) {
+                  return timeB - timeA;
+                }
+
+                return String(b.code).localeCompare(String(a.code), undefined, {
+                  numeric: true,
+                });
+              })
+              .slice(0, 50)
+              .map((coil) => (
+                <div
+                  key={coil.id}
+                  className={`p-4 rounded-xl border flex justify-between items-center transition-all hover:bg-gray-700/50 ${
+                    coil.status === "stock"
+                      ? "bg-gray-900 border-gray-700"
+                      : "bg-gray-800 border-gray-700 opacity-50"
+                  }`}
+                >
+                  <div>
+                    <div className="font-bold text-gray-200 flex items-center gap-2 flex-wrap">
+                      {coil.code}
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full ${
+                          coil.status === "stock"
+                            ? "bg-emerald-900/40 text-emerald-400 border border-emerald-900"
+                            : "bg-gray-800 text-gray-500"
+                        }`}
+                      >
+                        {coil.status === "stock"
+                          ? "EM ESTOQUE"
+                          : "CONSUMIDA"}
+                      </span>
+
+                      {coil.form === "BLANK" && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-900/30 text-emerald-300 border border-emerald-500/40">
+                          BLANK INOX
+                        </span>
                       )}
                     </div>
+
+                    <div className="text-sm text-gray-500 mt-1">
+                      {(coil.family || coil.type || "").toUpperCase()} |{" "}
+                      {coil.thickness} | {coil.material}
+                    </div>
+
+                    <div className="text-[10px] text-blue-400 mt-1 font-bold">
+                      NF: {coil.nf || "-"} | Entrada: {coil.date}
+                    </div>
+
+                    {coil.form === "BLANK" && (
+                      <div className="text-[10px] text-gray-400 mt-1">
+                        {coil.width} x {coil.length} mm | Qtd:{" "}
+                        {coil.qty || 0} pcs
+                      </div>
+                    )}
                   </div>
-                ))}
-            </div>
-         </Card>
+
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <div className="font-bold text-xl text-white">
+                        {(Number(coil.weight) || 0).toFixed(0)}{" "}
+                        <span className="text-sm text-gray-500 font-normal">
+                          kg
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {coil.width}mm
+                      </div>
+                    </div>
+                    {coil.status === "stock" && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setEditingMotherCoil(coil)}
+                          className="p-2 bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600 hover:text-white"
+                        >
+                          <Edit size={16} />
+                        </button>
+                        <button
+                          onClick={() => deleteMotherCoil(coil.id)}
+                          className="p-2 bg-red-600/20 text-red-400 rounded hover:bg-red-600 hover:text-white"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+          </div>
+        </Card>
       </div>
     </div>
   );
+};
+
+
+
+
+
+
 
   const renderCuttingProcess = () => {
     // 1. Filtra as bobinas mães (Busca Blindada)
@@ -2256,9 +2656,14 @@ export default function App() {
                <div>
                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Produto em Estoque</label>
                  <select className="w-full p-3 border border-gray-700 rounded-lg bg-gray-900 text-gray-200 outline-none text-sm" value={shipProduct} onChange={e => setShipProduct(e.target.value)}>
-                   <option value="">Selecione...</option>
-                   {availableProducts.map(p => <option key={p.code} value={p.code}>{p.name} (Saldo: {p.count})</option>)}
-                 </select>
+  <option value="">Selecione...</option>
+  {/* AQUI ESTÁ A ALTERAÇÃO: Adicionei {p.code} e um traço separador */}
+  {availableProducts.map(p => (
+    <option key={p.code} value={p.code}>
+      {p.code} - {p.name} (Saldo: {p.count})
+    </option>
+  ))}
+</select>
                </div>
                <Input label="Quantidade" type="number" value={shipQty} onChange={e => setShipQty(e.target.value)} />
                <div>
@@ -2272,16 +2677,25 @@ export default function App() {
             </div>
          </Card>
          <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2">Histórico de Expedição</h3>
-            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar-dark space-y-2">
-               {shippingLogs.map(log => (
-                 <div key={log.id} className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
-                    <div className="flex justify-between"><span className="font-bold text-white">{log.productName}</span><span className="text-xs text-gray-500">{log.date}</span></div>
-                    <div className="flex justify-between mt-1"><span className="text-sm text-amber-400 font-bold">{log.destination}</span><span className="text-sm text-gray-300">{log.quantity} pçs</span></div>
-                 </div>
-               ))}
-            </div>
-         </Card>
+  <h3 className="font-bold text-gray-200 mb-4 flex items-center gap-2">Histórico de Expedição</h3>
+  <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar-dark space-y-2">
+    {shippingLogs.map(log => (
+      <div key={log.id} className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
+        <div className="flex justify-between">
+          {/* AQUI A ALTERAÇÃO: Adicionando o código antes do nome */}
+          <span className="font-bold text-white">
+            {log.productCode} - {log.productName}
+          </span>
+          <span className="text-xs text-gray-500">{log.date}</span>
+        </div>
+        <div className="flex justify-between mt-1">
+          <span className="text-sm text-amber-400 font-bold">{log.destination}</span>
+          <span className="text-sm text-gray-300">{log.quantity} pçs</span>
+        </div>
+      </div>
+    ))}
+  </div>
+</Card>
       </div>
     );
   };
@@ -3573,6 +3987,8 @@ safeCutting.forEach((c) => {
 
 
   // --- 3. RESTAURAR BACKUP COMPLETO ---
+
+  
 const handleFullRestore = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -4997,15 +5413,19 @@ const renderB2DynamicReport = () => {
     reader.readAsText(file);
   };
   return (
-    <div className="flex h-screen bg-[#0f172a] font-sans text-gray-100 overflow-hidden">
 
-      <input 
-        type="file" 
-        ref={importFullBackupRef} 
-        style={{ display: 'none' }} // Ele fica invisível propositalmente
-        accept=".json" 
-        onChange={handleFullRestore} 
-      />
+    
+    <div className="flex h-screen bg-[#0f172a] font-sans text-gray-100 overflow-hidden">
+      {ENABLE_BACKUP_BUTTON && (
+        <input 
+          type="file" 
+          ref={importFullBackupRef} 
+          style={{ display: 'none' }} // Ele fica invisível propositalmente
+          accept=".json" 
+          onChange={handleFullRestore} 
+        />
+      )}
+
       
       {/* Mobile Overlay */}
       <div className={`fixed inset-0 z-30 bg-black/50 md:hidden ${isSidebarOpen ? 'block' : 'hidden'}`} onClick={() => setSidebarOpen(false)}></div>
@@ -5093,9 +5513,19 @@ const renderB2DynamicReport = () => {
             </Button>
           </div>
           
-           <div className="mt-8 px-4">
-             <Button onClick={handleFullBackup} variant="success" className="w-full justify-start text-xs"><Archive size={16} className="mr-2"/> Backup Completo</Button>
-           </div>
+           {ENABLE_BACKUP_BUTTON && (
+  <div className="mt-8 px-4">
+    <Button
+      onClick={handleFullBackup}
+      variant="success"
+      className="w-full justify-start text-xs"
+    >
+      <Archive size={16} className="mr-2" />
+      Backup Completo
+    </Button>
+  </div>
+)}
+
         </nav>
         <div className="px-6 py-2 mt-auto border-t border-white/5 text-center"><p className="text-[11px] text-gray-500 font-medium">© 2025 — <span className="text-gray-400 font-semibold">Sergio Betini</span></p></div>
         <div className="p-6 border-t border-white/5 bg-black/20"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-gray-300 border border-gray-600"><User size={20}/></div><div><p className="text-white font-bold text-sm">Operador</p><p className="text-xs text-gray-500">Produção</p></div></div></div>
@@ -5149,11 +5579,19 @@ const renderB2DynamicReport = () => {
 
               {activeTab === "mpNeed" && (
                 <RawMaterialRequirement
-                  motherCoils={motherCoils}
-                  childCoils={childCoils}
-                  productCatalog={productCatalog}
-                  motherCatalog={INITIAL_MOTHER_CATALOG}
-                />
+  motherCoils={motherCoils}
+  childCoils={childCoils}
+  productCatalog={INITIAL_PRODUCT_CATALOG}
+  motherCatalog={INITIAL_MOTHER_CATALOG}
+  inoxProducts={INOX_PRODUCTS}
+  inoxDemandRows={INOX_DEMAND_ROWS}
+  inoxStockPositions={INOX_STOCK_POSITIONS}
+/>
+
+
+
+
+
               )}
 
 
@@ -5236,7 +5674,7 @@ const renderB2DynamicReport = () => {
 
 
 
-    </div>    
+    </div>   
   );
 };
 

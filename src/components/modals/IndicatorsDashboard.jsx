@@ -1,4 +1,3 @@
-// src/components/IndicatorsDashboard.jsx
 import React, { useState } from 'react';
 import { PieChart as PieIcon } from 'lucide-react';
 import {
@@ -147,6 +146,14 @@ const IndicatorsDashboard = ({
     return t === typeFilter;
   });
 
+  // CORREÇÃO: Calcula o peso TOTAL independente da data válida
+  // Isso garante que bobinas sem data ou com data errada entrem na soma do KPI
+  const estoqueTotalKgReal = filteredMotherStock.reduce((acc, item) => {
+    // Usa remainingWeight se existir, senão weight
+    const peso = Number(item.remainingWeight) || Number(item.weight) || 0;
+    return acc + peso;
+  }, 0);
+
   const filteredMotherForFlow = safeMother.filter(c => {
     const t = c.type || 'OUTROS';
     if (typeFilter === 'ALL') return true;
@@ -186,6 +193,9 @@ const IndicatorsDashboard = ({
 
       const rawDate = item[dateField] || item.date || item.createdAt;
       const norm = normalizeDateBR(rawDate);
+      
+      // Se não tiver data válida, não entra no gráfico de Aging (pizza/barras),
+      // mas JÁ FOI contado no estoqueTotalKgReal acima.
       if (!norm) return;
 
       const [d, m, y] = norm.split('/');
@@ -217,15 +227,16 @@ const IndicatorsDashboard = ({
       { name: '+90 dias', peso: buckets['+90'], fill: '#ef4444' },
     ];
 
-    const totalWeight = Object.values(bucketsRaw).reduce((sum, w) => sum + w, 0);
+    // O total calculado aqui é APENAS o total das bobinas com data válida
+    const totalWeightWithDate = Object.values(bucketsRaw).reduce((sum, w) => sum + w, 0);
 
-    return { data, bucketsRaw, totalWeight };
+    return { data, bucketsRaw, totalWeightWithDate };
   };
 
   const {
     data: agingMother,
     bucketsRaw: bucketsMother,
-    totalWeight: estoqueTotalKg,
+    // Não usamos mais o totalWeight daqui para o KPI principal
   } = calculateSimpleAging(
     filteredMotherStock,
     'entryDate',
@@ -234,7 +245,7 @@ const IndicatorsDashboard = ({
 
   const {
     data: agingB2,
-    totalWeight: totalB2Kg,
+    totalWeightWithDate: totalB2Kg, // B2 geralmente tem data de criação automática, então ok usar esse, ou faça igual ao MP se precisar
   } = calculateSimpleAging(
     safeChild.filter(c => c.status === 'in_process'),
     'createdAt',
@@ -273,16 +284,21 @@ const IndicatorsDashboard = ({
   // ---------- KPIs ----------
   const consumoTotalJanela = flowData.reduce((acc, curr) => acc + curr.consumo, 0);
   const consumoMedioDiario = windowDays > 0 ? (consumoTotalJanela / windowDays) : 0;
-  const estoqueTotalT = formatKgToT(estoqueTotalKg).replace('t', '');
+  
+  // USANDO A VARIÁVEL CORRIGIDA (Soma real)
+  const estoqueTotalT = formatKgToT(estoqueTotalKgReal).replace('t', '');
+  
   const coberturaEstoqueDiasNum =
-    consumoMedioDiario > 0 ? (estoqueTotalKg / consumoMedioDiario) : null;
+    consumoMedioDiario > 0 ? (estoqueTotalKgReal / consumoMedioDiario) : null;
   const coberturaEstoqueDias = coberturaEstoqueDiasNum != null
     ? coberturaEstoqueDiasNum.toFixed(1)
     : 'N/A';
+  
   const pesoMais90 = bucketsMother['+90'] || 0;
-  const percentualMais90 = estoqueTotalKg > 0
-    ? ((pesoMais90 / estoqueTotalKg) * 100).toFixed(1)
+  const percentualMais90 = estoqueTotalKgReal > 0
+    ? ((pesoMais90 / estoqueTotalKgReal) * 100).toFixed(1)
     : 0;
+
   const totalB2T = formatKgToT(totalB2Kg).replace('t', '');
   const expedicaoTotalJanela = shippingData.reduce((acc, curr) => acc + curr.value, 0);
 
@@ -347,7 +363,7 @@ const IndicatorsDashboard = ({
           value={estoqueTotalT}
           unit="t"
           color="text-blue-400"
-          subText={`Total de ${formatKg(estoqueTotalKg)}`}
+          subText={`Total de ${formatKg(estoqueTotalKgReal)}`}
         />
         <KpiCard
           title="Consumo Médio"
