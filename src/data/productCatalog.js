@@ -30,7 +30,7 @@ export const INITIAL_PRODUCT_CATALOG = [
   { code: '00668J', name: 'PERFIL UE 50X25X10X1,55 GALV', b2Code: '85518J', b2Name: 'BOB 2 PERFIL UE 50X25X10X1,55 GALV', width: 102, thickness: '1,55', type: 'BZ', motherCode: '10624' },
   { code: '00668A', name: 'PERFIL UE 50X25X10X1,80', b2Code: '85518A', b2Name: 'BOB 2 PERFIL UE 50X25X10X1,80', width: 102, thickness: '1,80', type: 'BQ', motherCode: '10262' },
   { code: '00668K', name: 'PERFIL UE 50X25X10X1,95 GALV', b2Code: '85518K', b2Name: 'BOB 2 PERFIL UE 50X25X10X1,95 GALV', width: 102, thickness: '1,95', type: 'BZ', motherCode: '10419' },
-  { code: '00668B', name: 'PERFIL UE 50X25X10X2,00', b2Code: '85518B', b2Name: 'BOB 2 PERFIL UE 50X25X10X2,00', width: 102, thickness: '2,00', type: 'BQ', motherCode: '10646' },
+  { code: '00668B', name: 'PERFIL UE 50X25X10X2,00', b2Code: '85518B', b2Name: 'BOB 2 PERFIL UE 50X25X10X2,00', width: 102, thickness: '2,00', type: 'BQ', motherCode: '11340' },
   { code: '00670A', name: 'PERFIL UE 75X40X15X1,80', b2Code: '85520A', b2Name: 'BOB 2 PERFIL UE 75X40X15X1,80', width: 166, thickness: '1,80', type: 'BQ', motherCode: '10262' },
   { code: '00670K', name: 'PERFIL UE 75X40X15X1,95 GALV', b2Code: '85520K', b2Name: 'BOB 2 PERFIL UE 75X40X15X1,95 GALV', width: 164, thickness: '1,95', type: 'BZ', motherCode: '10419' },
   { code: '00670B', name: 'PERFIL UE 75X40X15X2,00', b2Code: '85520B', b2Name: 'BOB 2 PERFIL UE 75X40X15X2,00', width: 164, thickness: '2,00', type: 'BQ', motherCode: '10646' },
@@ -79,7 +79,7 @@ export const INITIAL_PRODUCT_CATALOG = [
   { code: '00653D', name: 'PERFIL US 75X40X2,65', b2Code: '85503D', b2Name: 'BOB 2 PERFIL US 75X40X2,65', width: 142, thickness: '2,65', type: 'BQ', motherCode: '10020' },
   { code: '00654A', name: 'PERFIL US 92X30X1,80', b2Code: '85504A', b2Name: 'BOB 2 PERFIL US 92X30X1,80', width: 142, thickness: '1,80', type: 'BQ', motherCode: '10262' },
   { code: '00654K', name: 'PERFIL US 92X30X1,95 GALV', b2Code: '85504K', b2Name: 'BOB 2 PERFIL US 92X30X1,95 GALV', width: 142, thickness: '1,95', type: 'BZ', motherCode: '10419' },
-  { code: '00654B', name: 'PERFIL US 92X30X2,00', b2Code: '85504B', b2Name: 'BOB 2 PERFIL US 92X30X2,00', width: 142, thickness: '2,00', type: 'BQ', motherCode: '10646' },
+  { code: '00654B', name: 'PERFIL US 92X30X2,00', b2Code: '85504B', b2Name: 'BOB 2 PERFIL US 92X30X2,00', width: 142, thickness: '2,00', type: 'BQ', motherCode: '11340' },
   { 
     code: '00653E', 
     name: 'PERFIL US 75X40X3,00', 

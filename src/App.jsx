@@ -77,7 +77,7 @@ import InoxBlanksPlanner from "./components/modals/InoxBlanksPlanner";
 
 import { INITIAL_MOTHER_CATALOG } from './data/motherCatalog';
 import { INITIAL_PRODUCT_CATALOG } from './data/productCatalog';
-import { INITIAL_INOX_BLANK_PRODUCTS } from './data/inoxCatalog';
+import { INITIAL_INOX_BLANK_PRODUCTS } from "./data/inoxCatalog";
 
 const ENABLE_BACKUP_BUTTON = true; // muda pra true quando quiser usar o backup
 
@@ -5590,6 +5590,7 @@ const renderB2DynamicReport = () => {
 {activeTab === "inoxBlanks" && (
   <InoxBlanksPlanner />
 )}
+
 
 
 

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { INITIAL_INOX_BLANK_PRODUCTS } from "../../data/inoxCatalog";
 
-// Helpers de formatação
+// --------- helpers simples ---------
 const formatInt = (v) =>
   (Number(v) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
@@ -11,7 +11,6 @@ const formatKg = (v) =>
     maximumFractionDigits: 0,
   });
 
-// Converte texto de input em número seguro
 const toNumber = (value) => {
   if (value === "" || value === null || value === undefined) return 0;
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -21,8 +20,8 @@ const toNumber = (value) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-function InoxBlanksPlanner() {
-  // Catálogo base de inox + campos manuais
+export default function InoxBlanksPlanner() {
+  // 1) monta SEMPRE a lista a partir do catálogo fixo
   const [rows, setRows] = useState(() =>
     INITIAL_INOX_BLANK_PRODUCTS.map((p) => ({
       id: p.id,
@@ -30,9 +29,9 @@ function InoxBlanksPlanner() {
       inoxGrade: p.inoxGrade,
       measuresLabel: p.measuresLabel,
       unitWeightKg: Number(p.weight) || 0,
-      demandUnits: "",        // Demanda (peças)
-      finishedStockUnits: "", // Estoque acabado
-      blanksStockUnits: "",   // Estoque blanks
+      demandUnits: "",        // Demanda (peças) que você vai digitar
+      finishedStockUnits: "", // Estoque acabado (peças)
+      blanksStockUnits: "",   // Estoque blanks (peças)
     }))
   );
 
@@ -40,15 +39,13 @@ function InoxBlanksPlanner() {
 
   const handleFieldChange = (id, field, value) => {
     setRows((prev) =>
-      prev.map((row) =>
-        row.id === id ? { ...row, [field]: value } : row
-      )
+      prev.map((row) => (row.id === id ? { ...row, [field]: value } : row))
     );
   };
 
-  // Filtro + cálculo das métricas por linha
+  // 2) aplica filtro + calcula cobertura e necessidade
   const enrichedRows = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = (search || "").trim().toLowerCase();
 
     const base = term
       ? rows.filter((row) => {
@@ -61,8 +58,9 @@ function InoxBlanksPlanner() {
       const demandUnits = toNumber(row.demandUnits);
       const finishedStockUnits = toNumber(row.finishedStockUnits);
       const blanksStockUnits = toNumber(row.blanksStockUnits);
+
       const totalStockUnits = finishedStockUnits + blanksStockUnits;
-      const coverageUnits = totalStockUnits;
+      const coverageUnits = totalStockUnits; // por enquanto 1:1
       const needUnits = Math.max(demandUnits - totalStockUnits, 0);
       const needKg = needUnits * (Number(row.unitWeightKg) || 0);
 
@@ -79,7 +77,7 @@ function InoxBlanksPlanner() {
     });
   }, [rows, search]);
 
-  // Resumo do topo — usa a primeira linha visível
+  // 3) cards de resumo do topo (usa o primeiro item visível no filtro)
   const summary = useMemo(() => {
     if (!enrichedRows.length) {
       return {
@@ -101,7 +99,7 @@ function InoxBlanksPlanner() {
 
   return (
     <div className="space-y-4">
-      {/* Busca de produtos inox */}
+      {/* Busca */}
       <div className="flex justify-end">
         <input
           type="text"
@@ -163,7 +161,7 @@ function InoxBlanksPlanner() {
         </div>
       </section>
 
-      {/* Tabela detalhada de todos os inox */}
+      {/* Tabela detalhada */}
       <div className="bg-slate-900/70 border border-slate-800 rounded-xl overflow-hidden">
         <table className="min-w-full text-xs">
           <thead className="bg-slate-900 text-slate-400 uppercase text-[10px] tracking-wide">
@@ -269,6 +267,3 @@ function InoxBlanksPlanner() {
     </div>
   );
 }
-
-export default InoxBlanksPlanner;
-export { InoxBlanksPlanner };
