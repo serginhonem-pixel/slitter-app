@@ -19,9 +19,6 @@ import {
 import Button from './components/ui/Button';
 import IndicatorsDashboard from './components/modals/IndicatorsDashboard.jsx';
 
-
-import RawMaterialRequirement from "./components/modals/RawMaterialRequirement.jsx";
-
 import { db, deleteFromDb, loadFromDb, saveToDb, updateInDb } from './services/api'; // Certifique-se de exportar 'db' no seu arquivo de configuração
 
 import {
@@ -70,6 +67,11 @@ import {
 
 import CutDetailsModal from './components/modals/CutDetailsModal';
 import { default as EditMotherCoilModal, default as ProductHistoryModal } from './components/modals/ProductHistoryModal';
+import RawMaterialRequirement from "./components/modals/RawMaterialRequirement";
+import InoxBlanksPlanner from "./components/modals/InoxBlanksPlanner";
+
+
+
 
 // --- IMPORTAÇÃO DOS Catalogos ---
 
@@ -80,6 +82,7 @@ import { INITIAL_INOX_BLANK_PRODUCTS } from './data/inoxCatalog';
 const ENABLE_BACKUP_BUTTON = true; // muda pra true quando quiser usar o backup
 
 const ITEMS_PER_PAGE = 50;
+
 
 // --- Componentes UI ---
 
@@ -5564,35 +5567,29 @@ const renderB2DynamicReport = () => {
               {activeTab === 'reports' && renderReports()}
               {activeTab === 'b2report' && renderB2DynamicReport()}
 
-{activeTab === 'bi' && (
-  <IndicatorsDashboard
+              {activeTab === 'bi' && (
+                <IndicatorsDashboard
+                  motherCoils={motherCoils}
+                  childCoils={childCoils}
+                  cuttingLogs={cuttingLogs}
+                  shippingLogs={shippingLogs}
+                  productionLogs={productionLogs}
+                />
+              )}
+
+              
+              {activeTab === "mpNeed" && (
+  <RawMaterialRequirement
     motherCoils={motherCoils}
     childCoils={childCoils}
-    cuttingLogs={cuttingLogs}
-    shippingLogs={shippingLogs}
-    productionLogs={productionLogs}
+    productCatalog={INITIAL_PRODUCT_CATALOG}
+    motherCatalog={INITIAL_MOTHER_CATALOG}
   />
 )}
 
-
-              
-
-              {activeTab === "mpNeed" && (
-                <RawMaterialRequirement
-  motherCoils={motherCoils}
-  childCoils={childCoils}
-  productCatalog={INITIAL_PRODUCT_CATALOG}
-  motherCatalog={INITIAL_MOTHER_CATALOG}
-  inoxProducts={INOX_PRODUCTS}
-  inoxDemandRows={INOX_DEMAND_ROWS}
-  inoxStockPositions={INOX_STOCK_POSITIONS}
-/>
-
-
-
-
-
-              )}
+{activeTab === "inoxBlanks" && (
+  <InoxBlanksPlanner />
+)}
 
 
 

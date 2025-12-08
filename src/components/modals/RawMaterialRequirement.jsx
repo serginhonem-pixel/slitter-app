@@ -3,6 +3,9 @@ import { TrendingUp, FileText } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
+// ajusta o caminho se sua pasta for diferente
+
+
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 // Helpers simples
@@ -14,6 +17,9 @@ const formatMoney = (v) =>
     style: "currency",
     currency: "BRL",
   });
+
+const formatPieces = (v) =>
+  (Number(v) || 0).toLocaleString("pt-BR");
 
 const formatDate = (d) => {
   if (!d) return "-";
@@ -659,6 +665,10 @@ console.log("inoxStockPositions", inoxStockPositions);
       alert("Erro ao gerar o PDF. Veja o console para mais detalhes.");
     }
   };
+
+const formatPieces = (v) =>
+  (Number(v) || 0).toLocaleString("pt-BR");
+
 
   // ---------- RENDER ----------
   return (
@@ -1432,5 +1442,10 @@ console.log("inoxStockPositions", inoxStockPositions);
     </div>
   );
 };
+
+
+// Formata quantidade em peças
+// Lista de Inox – usa o catálogo vindo por props
+
 
 export default RawMaterialRequirement;
