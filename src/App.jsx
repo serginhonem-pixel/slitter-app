@@ -69,6 +69,7 @@ import CutDetailsModal from './components/modals/CutDetailsModal';
 import { default as EditMotherCoilModal, default as ProductHistoryModal } from './components/modals/ProductHistoryModal';
 import RawMaterialRequirement from "./components/modals/RawMaterialRequirement";
 import InoxBlanksPlanner from "./components/modals/InoxBlanksPlanner";
+import { PESO_UNITARIO_PA } from './data/peso_unitario_pa';
 
 
 
@@ -469,49 +470,120 @@ const MpDetailsModal = ({ data, onClose }) => {
   );
 };
 const ProductDetailsModal = ({ data, onClose }) => {
-  const batches = data.items.sort((a, b) => b.timestamp - a.timestamp);
+  // Se ainda não tem dados, nem tenta renderizar
+  if (!data) return null;
+
+  // Garante que sempre temos um array antes de ordenar
+  const rawItems = Array.isArray(data.items) ? data.items : [];
+  const batches = [...rawItems].sort(
+    (a, b) => (b.timestamp || 0) - (a.timestamp || 0)
+  );
+
+  const totalQty = Number(data.totalQty) || 0;
+  const totalWeight = Number(data.totalWeight) || 0;
+  const totalScrap = Number(data.totalScrap) || 0;
 
   return (
     <div className="fixed inset-0 bg-black/80 z-[90] flex items-center justify-center p-4">
       <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-4xl shadow-2xl flex flex-col max-h-[85vh]">
+        {/* HEADER */}
         <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-900 rounded-t-xl">
           <div>
-             <h3 className="text-white font-bold text-lg">Histórico: {data.name}</h3>
-             <p className="text-sm text-gray-400">{data.code}</p>
+            <h3 className="text-white font-bold text-lg">
+              Histórico: {data.name ?? "-"}
+            </h3>
+            <p className="text-sm text-gray-400">{data.code ?? "-"}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20}/></button>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white"
+          >
+            <X size={20} />
+          </button>
         </div>
+
+        {/* RESUMO */}
         <div className="p-0 overflow-y-auto custom-scrollbar-dark flex-1">
-             <div className="grid grid-cols-3 gap-4 mb-0 text-xs text-gray-400 bg-gray-900 p-3 border-b border-gray-800">
-                 <div className="text-center">Total: <strong className="text-emerald-400">{data.totalQty} pçs</strong></div>
-                 <div className="text-center">Peso: <strong className="text-blue-400">{data.totalWeight.toFixed(1)} kg</strong></div>
-                 <div className="text-center">Sucata: <strong className="text-red-400">{data.totalScrap.toFixed(1)} kg</strong></div>
-             </div>
-             <table className="w-full text-sm text-left text-gray-300">
-                <thead className="bg-gray-800 text-gray-400 sticky top-0 shadow-md">
-                  <tr>
-                    <th className="p-3">Data</th><th className="p-3">Lote</th><th className="p-3">Detalhes</th><th className="p-3">Origem MP</th><th className="p-3 text-right">Qtd</th><th className="p-3 text-right">Peso</th>
+          <div className="grid grid-cols-3 gap-4 mb-0 text-xs text-gray-400 bg-gray-900 p-3 border-b border-gray-800">
+            <div className="text-center">
+              Total:{" "}
+              <strong className="text-emerald-400">{totalQty} pçs</strong>
+            </div>
+            <div className="text-center">
+              Peso:{" "}
+              <strong className="text-blue-400">
+                {totalWeight.toFixed(1)} kg
+              </strong>
+            </div>
+            <div className="text-center">
+              Sucata:{" "}
+              <strong className="text-red-400">
+                {totalScrap.toFixed(1)} kg
+              </strong>
+            </div>
+          </div>
+
+          {/* TABELA */}
+          <table className="w-full text-sm text-left text-gray-300">
+            <thead className="bg-gray-800 text-gray-400 sticky top-0 shadow-md">
+              <tr>
+                <th className="p-3">Data</th>
+                <th className="p-3">Lote</th>
+                <th className="p-3">Detalhes</th>
+                <th className="p-3">Origem MP</th>
+                <th className="p-3 text-right">Qtd</th>
+                <th className="p-3 text-right">Peso un.</th>
+                <th className="p-3 text-right">Peso</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700">
+              {batches.map((batch, idx) => {
+                const pieces = Number(batch?.pieces) || 0;
+                const weight = Number(batch?.weight) || 0;
+                const unitWeight = Number(batch?.unitWeight) || 0;
+
+                return (
+                  <tr key={idx} className="hover:bg-gray-700/50">
+                    <td className="p-3 font-mono text-xs text-gray-400">
+                      {batch?.date ?? "-"}
+                    </td>
+                    <td className="p-3 font-bold text-white text-xs">
+                      {batch?.id ?? "-"}
+                    </td>
+                    <td className="p-3 text-xs text-gray-500">
+                      {(batch?.packCount ?? 0) + " vols"}
+                    </td>
+                    <td className="p-3 text-xs text-blue-300 truncate max-w-[150px]">
+                      {batch?.motherCode || "-"}
+                    </td>
+                    <td className="p-3 text-right font-bold text-emerald-400">
+                      {pieces}
+                    </td>
+                    <td className="p-3 text-right font-mono">
+                      {unitWeight.toFixed(3)} kg
+                    </td>
+                    <td className="p-3 text-right font-mono">
+                      {weight.toFixed(1)} kg
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-700">
-                  {batches.map((batch, idx) => (
-                    <tr key={idx} className="hover:bg-gray-700/50">
-                      <td className="p-3 font-mono text-xs text-gray-400">{batch.date}</td>
-                      <td className="p-3 font-bold text-white text-xs">{batch.id}</td>
-                      <td className="p-3 text-xs text-gray-500">{batch.packCount} vols</td>
-                      <td className="p-3 text-xs text-blue-300 truncate max-w-[150px]">{batch.motherCode || '-'}</td>
-                      <td className="p-3 text-right font-bold text-emerald-400">{batch.pieces}</td>
-                      <td className="p-3 text-right font-mono">{batch.weight.toFixed(1)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-             </table>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-        <div className="p-3 border-t border-gray-700 bg-gray-900 flex justify-end"><Button variant="secondary" onClick={onClose}>Fechar</Button></div>
+
+        {/* FOOTER */}
+        <div className="p-3 border-t border-gray-700 bg-gray-900 flex justify-end">
+          <Button variant="secondary" onClick={onClose}>
+            Fechar
+          </Button>
+        </div>
       </div>
     </div>
   );
 };
+
+
 
 // --- MODAL DE DETALHES DO ESTOQUE (COM DESCRIÇÃO) ---
 
@@ -2244,7 +2316,10 @@ export default function App() {
 };
 
 
-
+const getUnitWeight = (code) => {
+    const c = String(code || '').trim();
+    return Number(PESO_UNITARIO_PA[c]) || 0;
+  };
 
 
 
@@ -2981,32 +3056,58 @@ const handleGlobalDetail = (group) => {
 
   // C2. Saídas (corte slitter)
   safeCutting.forEach((c) => {
-    if (!c.date) return;
-    const d = toISODate(c.date);
-    if (d < reportStartDate || d > reportEndDate) return;
+  if (!c.date) return;
+  const d = toISODate(c.date);
+  if (d < reportStartDate || d > reportEndDate) return;
 
-    const key = makeKeyFromCut(c, safeMother);
-    if (!movementsMap[key]) movementsMap[key] = { in: 0, out: 0, details: [] };
+  const key = makeKeyFromCut(c, safeMother); // ou a chave que você já usa
 
-    const w = safeNum(c.inputWeight);
+  if (!movementsMap[key]) {
+    movementsMap[key] = {
+      code: c.motherCode || 'S/ COD',
+      desc: c.motherMaterial || '',
+      width:
+        safeNum(c?.motherWidth) ||
+        safeNum(c?.width) ||
+        null,
+      initialBalance: 0,
+      in: 0,
+      out: 0,
+      details: [],
+    };
+  }
 
-    // largura usada na chave
-    let width =
-      safeNum(c?.motherWidth) ||
-      safeNum(c?.width) ||
-      0; // se veio 0 é porque não temos certeza
+  const w = safeNum(c.inputWeight);
 
-    movementsMap[key].out += w;
-    movementsMap[key].details.push({
-      date: c.date,
-      timestamp: getTimestamp(c.date),
-      type: 'SAÍDA',
-      weightChange: -w,
-      width,
-      desc: c.motherMaterial,
-      detail: c.generatedItems,
-    });
+  // 👇 sucata do corte (ajusta o nome do campo se for diferente)
+  const scrap = safeNum(c.scrapWeight ?? c.scrap ?? 0);
+
+  movementsMap[key].out += w;
+
+  // descrição base: o que você já mostrava
+  const baseDetail =
+    c.generatedItems ||
+    c.motherMaterial ||
+    'Consumo Slitter';
+
+  // monta o texto final com sucata
+  const detail =
+    scrap > 0
+      ? `${baseDetail} | Sucata: ${scrap.toLocaleString('pt-BR', {
+          maximumFractionDigits: 1,
+        })} kg`
+      : baseDetail;
+
+  movementsMap[key].details.push({
+    date: c.date,
+    timestamp: getTimestamp(c.date),
+    type: 'SAÍDA',
+    weightChange: -w,
+    width: movementsMap[key].width,
+    desc: movementsMap[key].desc,
+    detail, // 👈 é isso que aparece no modal em {row.detail}
   });
+});
 
   // D. Consolidação
   const mpSummaryList = [];
@@ -3095,37 +3196,59 @@ const handleGlobalDetail = (group) => {
   // CORTE SLITTER
   // CORTE – usado na LINHA DO TEMPO GLOBAL e no modal "Cortes Slitter"
 safeCutting.forEach((c) => {
+  const code = c.motherCode || '?';
+
+  // descrição base: produtos gerados > material da mãe > fallback
+  const baseDesc =
+    c.generatedItems ||
+    c.motherMaterial ||
+    'Corte Slitter';
+
+  // sucata do corte (ajusta o campo se o nome for outro)
+  const scrap = safeNum(c.scrapWeight ?? c.scrap ?? 0);
+
+  // monta a descrição final com sucata, se tiver
+  const desc =
+    scrap > 0
+      ? `${baseDesc} | Sucata: ${scrap.toLocaleString('pt-BR', {
+          maximumFractionDigits: 1,
+        })} kg`
+      : baseDesc;
+
+  const qty = safeNum(c.outputCount) || 1;
+  const weight = safeNum(c.inputWeight); // peso consumido da MP
+
   rawGlobalEvents.push({
     rawDate: c.date,
     type: 'CORTE',
-    id: c.motherCode || '?',
-
-    // 👇 Prioridade de descrição:
-    // 1) generatedItems  -> produtos cortados (bobina 2 / telha)
-    // 2) motherMaterial  -> descrição da bobina mãe
-    // 3) fallback genérico
-    desc:
-      c.generatedItems ||
-      c.motherMaterial ||
-      'Corte Slitter',
-
-    qty: safeNum(c.outputCount) || 1,
-    weight: safeNum(c.inputWeight),
+    id: code,
+    desc,
+    qty,
+    weight,
   });
 });
 
 
+
   // PRODUÇÃO PA
-  safeProd.forEach((p) =>
-    rawGlobalEvents.push({
-      rawDate: p.date,
-      type: 'PRODUÇÃO',
-      id: p.productCode || '?',
-      desc: p.productName || '-',
-      qty: safeNum(p.pieces),
-      weight: safeNum(p.weight),
-    })  
-  );
+  safeProd.forEach((p) => {
+  const code = p.productCode || 'S/ COD';
+
+  const qty = safeNum(p.pieces);
+  const unitWeight = getUnitWeight(code);      // kg por peça
+  const totalWeight = unitWeight * qty;        // kg total da produção
+
+  rawGlobalEvents.push({
+    rawDate: p.date,
+    type: 'PRODUÇÃO',
+    id: code,
+    desc: p.productName || '-',
+    qty,
+    unitWeight,                                // (se quiser usar depois)
+    weight: totalWeight,                       // 👈 agora vem do mapa de peso
+  });
+});
+
 
   // EXPEDIÇÃO PA
   safeShipping.forEach((s) =>
@@ -3194,37 +3317,63 @@ safeCutting.forEach((c) => {
   // =================================================================================
   const prodByProductMap = {};
 
-  safeProd.forEach((lot) => {
-    if (!lot.date) return;
-    const d = toISODate(lot.date);
-    if (d < reportStartDate || d > reportEndDate) return;
+    safeProd.forEach((lot) => {
+      if (!lot.date) return;
+      const d = toISODate(lot.date);
+      if (d < reportStartDate || d > reportEndDate) return;
 
-    if (reportSearch) {
-      const term = reportSearch.toLowerCase();
-      const text = (
-        String(lot.productCode) + String(lot.productName)
-      ).toLowerCase();
-      if (!text.includes(term)) return;
-    }
+      if (reportSearch) {
+        const term = reportSearch.toLowerCase();
+        const text = (
+          String(lot.productCode) + String(lot.productName)
+        ).toLowerCase();
+        if (!text.includes(term)) return;
+      }
 
-    const code = lot.productCode || 'S/ COD';
-    if (!prodByProductMap[code]) {
-      prodByProductMap[code] = {
-        code,
-        name: lot.productName,
-        totalQty: 0,
-        totalWeight: 0,
-        totalScrap: 0,
-      };
-    }
-    prodByProductMap[code].totalQty += safeNum(lot.pieces);
-    prodByProductMap[code].totalWeight += safeNum(lot.weight);
-    prodByProductMap[code].totalScrap += safeNum(lot.scrap);
-  });
+      const code = lot.productCode || 'S/ COD';
 
-  const prodSummaryList = Object.values(prodByProductMap).sort((a, b) =>
-    String(a.name).localeCompare(String(b.name))
-  );
+      if (!prodByProductMap[code]) {
+        prodByProductMap[code] = {
+          code,
+          name: lot.productName,
+          totalQty: 0,
+          totalWeight: 0,
+          totalScrap: 0,
+          items: [],          // usado pelo modal
+        };
+      }
+
+      const pieces = safeNum(lot.pieces);
+      const scrap = safeNum(lot.scrap);
+
+      // 👇 peso unitário vindo do mapa
+      const unitWeight = getUnitWeight(code);      // kg por peça (ou por unidade que você definiu)
+      const weight = unitWeight * pieces;          // peso total desse lançamento
+
+      // acumula totais
+      prodByProductMap[code].totalQty += pieces;
+      prodByProductMap[code].totalWeight += weight;
+      prodByProductMap[code].totalScrap += scrap;
+
+      // alimenta itens para o modal
+      prodByProductMap[code].items.push({
+        date: lot.date,
+        id: lot.batchId || lot.lotId || lot.id || '-',
+        packCount: safeNum(lot.packCount) || safeNum(lot.packs) || 0,
+        motherCode: lot.motherCode || lot.motherCoilCode || '',
+        pieces,
+        unitWeight,          // 👈 guarda o peso unitário
+        weight,              // 👈 peso total (qtd * unitário)
+        timestamp:
+          lot.timestamp ??
+          new Date(d + 'T12:00:00').getTime(),
+      });
+    });
+
+const prodSummaryList = Object.values(prodByProductMap).sort((a, b) =>
+  String(a.name).localeCompare(String(b.name))
+);
+
 
   // =================================================================================
   // 5. RENDERIZAÇÃO
@@ -3603,75 +3752,90 @@ safeCutting.forEach((c) => {
 
       {/* ABA 3: RESUMO PRODUÇÃO */}
       {reportViewMode === 'PROD_SUMMARY' && (
-        <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-t-4 border-purple-600">
-          <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700 p-4 bg-purple-900/10 -mt-6 -mx-6">
-            <div>
-              <h3 className="font-bold text-xl text-purple-100">
-                Resumo Produção
-              </h3>
-              <p className="text-sm text-purple-300/70">Por Produto</p>
-            </div>
-            <Button
-              onClick={() => {
-                const data = prodSummaryList.map((i) => ({
-                  Produto: i.name,
-                  Código: i.code,
-                  Qtd: i.totalQty,
-                  Peso: i.totalWeight,
-                  Sucata: i.totalScrap,
-                }));
-                exportToCSV(data, `resumo_producao`);
-              }}
-              className="h-9 bg-purple-600 text-white"
-            >
-              <Download size={14} /> Excel
-            </Button>
-          </div>
-          <div className="flex-1 overflow-auto custom-scrollbar-dark px-4 pb-4">
-            <table className="w-full text-sm text-left text-gray-300">
-              <thead className="bg-gray-800 text-gray-400 sticky top-0">
-                <tr>
-                  <th className="p-3">Produto</th>
-                  <th className="p-3">Código</th>
-                  <th className="p-3 text-right text-emerald-400">Qtd</th>
-                  <th className="p-3 text-right text-blue-400">Peso</th>
-                  <th className="p-3 text-right text-red-400">Sucata</th>
-                  <th className="p-3 text-center">Ação</th>
+  <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-t-4 border-purple-600">
+    <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700 p-4 bg-purple-900/10 -mt-6 -mx-6">
+      <div>
+        <h3 className="font-bold text-xl text-purple-100">
+          Resumo Produção
+        </h3>
+        <p className="text-sm text-purple-300/70">Por Produto</p>
+      </div>
+      <Button
+        onClick={() => {
+          const safeList = Array.isArray(prodSummaryList)
+            ? prodSummaryList
+            : [];
+
+          const data = safeList.map((i) => ({
+            Produto: i.name ?? '',
+            Código: i.code ?? '',
+            Qtd: Number(i.totalQty) || 0,
+            Peso: Number(i.totalWeight) || 0,
+            Sucata: Number(i.totalScrap) || 0,
+          }));
+
+          exportToCSV(data, `resumo_producao`);
+        }}
+        className="h-9 bg-purple-600 text-white"
+      >
+        <Download size={14} /> Excel
+      </Button>
+    </div>
+
+    <div className="flex-1 overflow-auto custom-scrollbar-dark px-4 pb-4">
+      <table className="w-full text-sm text-left text-gray-300">
+        <thead className="bg-gray-800 text-gray-400 sticky top-0">
+          <tr>
+            <th className="p-3">Produto</th>
+            <th className="p-3">Código</th>
+            <th className="p-3 text-right text-emerald-400">Qtd</th>
+            <th className="p-3 text-right text-blue-400">Peso</th>
+            <th className="p-3 text-right text-red-400">Sucata</th>
+            <th className="p-3 text-center">Ação</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-700">
+          {(Array.isArray(prodSummaryList) ? prodSummaryList : []).map(
+            (row, idx) => {
+              const qty = Number(row.totalQty) || 0;
+              const weight = Number(row.totalWeight) || 0;
+              const scrap = Number(row.totalScrap) || 0;
+
+              return (
+                <tr key={idx} className="hover:bg-gray-700/50">
+                  <td className="p-3 font-bold text-white text-sm">
+                    {row.name ?? '-'}
+                  </td>
+                  <td className="p-3 text-gray-400 text-xs font-mono">
+                    {row.code ?? '-'}
+                  </td>
+                  <td className="p-3 text-right text-emerald-400 font-bold text-lg">
+                    {qty}
+                  </td>
+                  <td className="p-3 text-right text-blue-400 font-mono">
+                    {weight.toFixed(1)} kg
+                  </td>
+                  <td className="p-3 text-right text-red-400 font-mono">
+                    {scrap.toFixed(1)} kg
+                  </td>
+                  <td className="p-3 text-center">
+                    <button
+                      onClick={() => setViewingProdDetails(row)}
+                      className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs transition-colors flex items-center gap-2 mx-auto"
+                    >
+                      <Eye size={14} /> Detalhes
+                    </button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-700">
-                {prodSummaryList.map((row, idx) => (
-                  <tr key={idx} className="hover:bg-gray-700/50">
-                    <td className="p-3 font-bold text-white text-sm">
-                      {row.name}
-                    </td>
-                    <td className="p-3 text-gray-400 text-xs font-mono">
-                      {row.code}
-                    </td>
-                    <td className="p-3 text-right text-emerald-400 font-bold text-lg">
-                      {row.totalQty}
-                    </td>
-                    <td className="p-3 text-right text-blue-400 font-mono">
-                      {row.totalWeight.toFixed(1)} kg
-                    </td>
-                    <td className="p-3 text-right text-red-400 font-mono">
-                      {row.totalScrap.toFixed(1)} kg
-                    </td>
-                    <td className="p-3 text-center">
-                      <button
-                        onClick={() => setViewingProdDetails(row)}
-                        className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs transition-colors flex items-center gap-2 mx-auto"
-                      >
-                        <Eye size={14} /> Detalhes
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+              );
+            }
+          )}
+        </tbody>
+      </table>
+    </div>
+  </Card>
+)}
+
     </div>
   );
 };
@@ -5640,11 +5804,12 @@ const renderB2DynamicReport = () => {
         />
       )}
       {viewingProdDetails && (
-        <ProductDetailsModal 
-            data={viewingProdDetails} 
-            onClose={() => setViewingProdDetails(null)} 
-        />
-      )}
+  <ProductDetailsModal
+    data={viewingProdDetails}
+    onClose={() => setViewingProdDetails(null)}
+  />
+)}
+
 
       {selectedGlobalGroup && (
         <DailyGlobalModal
