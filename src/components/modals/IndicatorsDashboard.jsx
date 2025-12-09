@@ -16,6 +16,8 @@ import {
   ComposedChart,
 } from 'recharts';
 
+import { PESO_UNITARIO_PA } from '../../data/peso_unitario_pa';
+
 // ---------- Helpers de formatação ----------
 const formatKgToT = (kg) => {
   const t = (Number(kg) || 0) / 1000;
@@ -32,18 +34,27 @@ const formatPcs = (pcs) => {
   return `${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} pçs`;
 };
 
+const getUnitWeight = (code) => {
+  const c = String(code || '').trim();
+  return Number(PESO_UNITARIO_PA[c]) || 0;
+};
+
 const CustomFlowTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
-    const entrada = payload.find(p => p.dataKey === 'entrada')?.value || 0;
-    const consumo = payload.find(p => p.dataKey === 'consumo')?.value || 0;
-    const saldo = payload.find(p => p.dataKey === 'saldo')?.value || 0;
+    const entrada = payload.find((p) => p.dataKey === 'entrada')?.value || 0;
+    const consumo = payload.find((p) => p.dataKey === 'consumo')?.value || 0;
+    const saldo = payload.find((p) => p.dataKey === 'saldo')?.value || 0;
 
     return (
       <div className="bg-gray-900/90 p-3 border border-gray-700 rounded shadow-xl text-sm text-white">
         <p className="font-bold mb-1">{label}</p>
         <p className="text-blue-400">Entrada: {formatKg(entrada)}</p>
         <p className="text-red-400">Consumo: {formatKg(consumo)}</p>
-        <p className={`mt-1 font-bold ${saldo >= 0 ? 'text-green-400' : 'text-yellow-400'}`}>
+        <p
+          className={`mt-1 font-bold ${
+            saldo >= 0 ? 'text-green-400' : 'text-yellow-400'
+          }`}
+        >
           Saldo Acumulado: {formatKg(saldo)}
         </p>
       </div>
@@ -66,7 +77,7 @@ const IndicatorsDashboard = ({
 }) => {
   // filtros
   const [typeFilter, setTypeFilter] = useState('ALL'); // tipo MP
-  const [windowDays, setWindowDays] = useState(15);    // 15 / 30 / 60
+  const [windowDays, setWindowDays] = useState(15); // 15 / 30 / 60
 
   // listas seguras
   const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
@@ -84,12 +95,10 @@ const IndicatorsDashboard = ({
     if (!raw) return null;
     let dateStr = String(raw).trim();
 
-    // corta hora ISO
     if (dateStr.length >= 10 && dateStr.includes('T')) {
       dateStr = dateStr.slice(0, 10);
     }
 
-    // yyyy-mm-dd
     if (dateStr.includes('-')) {
       const [y, m, d] = dateStr.split('-');
       if (y && y.length === 4 && m && d) {
@@ -97,7 +106,6 @@ const IndicatorsDashboard = ({
       }
     }
 
-    // dd/mm/yyyy
     if (dateStr.includes('/')) {
       const [d, m, y] = dateStr.split('/');
       if (d && m && y) {
@@ -124,7 +132,7 @@ const IndicatorsDashboard = ({
 
   const groupByDate = (list, dateField, valueField) => {
     const map = {};
-    list.forEach(item => {
+    list.forEach((item) => {
       const d = normalizeDateBR(item[dateField]);
       if (!d) return;
       const rawVal = item[valueField];
@@ -135,26 +143,24 @@ const IndicatorsDashboard = ({
   };
 
   // ---------- TIPOS MP PARA O SELECT ----------
-  const stockOnly = safeMother.filter(c => c.status === 'stock');
-  const typeOptionsSet = new Set(stockOnly.map(c => c.type || 'OUTROS'));
+  const stockOnly = safeMother.filter((c) => c.status === 'stock');
+  const typeOptionsSet = new Set(stockOnly.map((c) => c.type || 'OUTROS'));
   const typeOptions = Array.from(typeOptionsSet).sort();
 
   // ---------- APLICA FILTRO DE TIPO ----------
-  const filteredMotherStock = stockOnly.filter(c => {
+  const filteredMotherStock = stockOnly.filter((c) => {
     const t = c.type || 'OUTROS';
     if (typeFilter === 'ALL') return true;
     return t === typeFilter;
   });
 
-  // CORREÇÃO: Calcula o peso TOTAL independente da data válida
-  // Isso garante que bobinas sem data ou com data errada entrem na soma do KPI
+  // Estoque total em kg (MP) — usa remainingWeight, se tiver
   const estoqueTotalKgReal = filteredMotherStock.reduce((acc, item) => {
-    // Usa remainingWeight se existir, senão weight
     const peso = Number(item.remainingWeight) || Number(item.weight) || 0;
     return acc + peso;
   }, 0);
 
-  const filteredMotherForFlow = safeMother.filter(c => {
+  const filteredMotherForFlow = safeMother.filter((c) => {
     const t = c.type || 'OUTROS';
     if (typeFilter === 'ALL') return true;
     return t === typeFilter;
@@ -162,17 +168,54 @@ const IndicatorsDashboard = ({
 
   // ---------- JANELA DE DATAS ----------
   const lastDays = getLastNDays(windowDays);
-  const dateLabels = lastDays.map(d => d.dateBR);
+  const dateLabels = lastDays.map((d) => d.dateBR);
+
+  // ---------- FILTROS POR JANELA (Produção / Expedição) ----------
+  const filteredProdWindow = safeProd.filter((p) => {
+    const d = normalizeDateBR(p.date);
+    return d && dateLabels.includes(d);
+  });
+
+  const filteredShippingWindow = safeShipping.filter((s) => {
+    const d = normalizeDateBR(s.date);
+    return d && dateLabels.includes(d);
+  });
+
+  // PESOS DE PRODUÇÃO (window)
+  const totalProdWeightKgWindow = filteredProdWindow.reduce((acc, p) => {
+    const code = p.productCode || 'S/ COD';
+    const qty = Number(p.pieces) || 0;
+    const unit = getUnitWeight(code);
+    return acc + unit * qty;
+  }, 0);
+
+  const totalProdPiecesWindow = filteredProdWindow.reduce(
+    (acc, p) => acc + (Number(p.pieces) || 0),
+    0
+  );
+
+  // PESOS DE EXPEDIÇÃO (window)
+  const totalShippingWeightKgWindow = filteredShippingWindow.reduce((acc, s) => {
+    const code = s.productCode || 'S/ COD';
+    const qty = Number(s.quantity) || 0;
+    const unit = getUnitWeight(code);
+    return acc + unit * qty;
+  }, 0);
+
+  const totalShippingPiecesWindow = filteredShippingWindow.reduce(
+    (acc, s) => acc + (Number(s.quantity) || 0),
+    0
+  );
 
   // ---------- FLUXO DE AÇO ----------
   const entryMap = groupByDate(filteredMotherForFlow, 'entryDate', 'weight');
   const cutMap = groupByDate(safeCutting, 'date', 'inputWeight');
 
   let saldoAcumulado = 0;
-  const flowData = dateLabels.map(dateBR => {
+  const flowData = dateLabels.map((dateBR) => {
     const entrada = entryMap[dateBR] || 0;
     const consumo = cutMap[dateBR] || 0;
-    saldoAcumulado += (entrada - consumo);
+    saldoAcumulado += entrada - consumo;
     return {
       name: dateBR.slice(0, 5),
       dateBR,
@@ -188,24 +231,18 @@ const IndicatorsDashboard = ({
     const buckets = { '0-30': 0, '30-60': 0, '60-90': 0, '+90': 0 };
     const bucketsRaw = { '0-30': 0, '30-60': 0, '60-90': 0, '+90': 0 };
 
-    list.forEach(item => {
+    list.forEach((item) => {
       if (item.status !== 'stock' && item.status !== 'in_process') return;
 
       const rawDate = item[dateField] || item.date || item.createdAt;
       const norm = normalizeDateBR(rawDate);
-      
-      // Se não tiver data válida, não entra no gráfico de Aging (pizza/barras),
-      // mas JÁ FOI contado no estoqueTotalKgReal acima.
       if (!norm) return;
 
       const [d, m, y] = norm.split('/');
       const entryDate = new Date(Number(y), Number(m) - 1, Number(d));
       if (isNaN(entryDate.getTime())) return;
 
-      const diffDays = Math.max(
-        0,
-        Math.ceil((now - entryDate) / MS_PER_DAY)
-      );
+      const diffDays = Math.max(0, Math.ceil((now - entryDate) / MS_PER_DAY));
 
       const rawW = item[weightField] ?? item.weight ?? 0;
       const weight = Number(rawW) || 0;
@@ -227,8 +264,10 @@ const IndicatorsDashboard = ({
       { name: '+90 dias', peso: buckets['+90'], fill: '#ef4444' },
     ];
 
-    // O total calculado aqui é APENAS o total das bobinas com data válida
-    const totalWeightWithDate = Object.values(bucketsRaw).reduce((sum, w) => sum + w, 0);
+    const totalWeightWithDate = Object.values(bucketsRaw).reduce(
+      (sum, w) => sum + w,
+      0
+    );
 
     return { data, bucketsRaw, totalWeightWithDate };
   };
@@ -236,25 +275,20 @@ const IndicatorsDashboard = ({
   const {
     data: agingMother,
     bucketsRaw: bucketsMother,
-    // Não usamos mais o totalWeight daqui para o KPI principal
-  } = calculateSimpleAging(
-    filteredMotherStock,
-    'entryDate',
-    'remainingWeight'
-  );
+  } = calculateSimpleAging(filteredMotherStock, 'entryDate', 'remainingWeight');
 
   const {
     data: agingB2,
-    totalWeightWithDate: totalB2Kg, // B2 geralmente tem data de criação automática, então ok usar esse, ou faça igual ao MP se precisar
+    totalWeightWithDate: totalB2Kg,
   } = calculateSimpleAging(
-    safeChild.filter(c => c.status === 'in_process'),
+    safeChild.filter((c) => c.status === 'in_process'),
     'createdAt',
     'weight'
   );
 
   // ---------- ESTOQUE POR TIPO ----------
   const stockByType = {};
-  filteredMotherStock.forEach(c => {
+  filteredMotherStock.forEach((c) => {
     const t = c.type || 'OUTROS';
     const rawW = c.remainingWeight ?? c.weight ?? 0;
     const w = Number(rawW) || 0;
@@ -262,15 +296,12 @@ const IndicatorsDashboard = ({
   });
 
   const typeData = Object.keys(stockByType)
-    .map(k => ({ name: k, value: stockByType[k] }))
+    .map((k) => ({ name: k, value: stockByType[k] }))
     .sort((a, b) => b.value - a.value);
 
-  // ---------- EXPEDIÇÃO ----------
+  // ---------- EXPEDIÇÃO por destino ----------
   const shippingDestMap = {};
-  safeShipping.forEach(l => {
-    const logDate = normalizeDateBR(l.date);
-    if (!logDate || !dateLabels.includes(logDate)) return;
-
+  filteredShippingWindow.forEach((l) => {
     const d = (l.destination || 'ND').toUpperCase();
     if (d.includes('AJUSTE')) return;
     const q = Number(l.quantity) || 0;
@@ -278,39 +309,50 @@ const IndicatorsDashboard = ({
   });
 
   const shippingData = Object.keys(shippingDestMap)
-    .map(k => ({ name: k, value: shippingDestMap[k] }))
+    .map((k) => ({ name: k, value: shippingDestMap[k] }))
     .sort((a, b) => b.value - a.value);
 
   // ---------- KPIs ----------
   const consumoTotalJanela = flowData.reduce((acc, curr) => acc + curr.consumo, 0);
-  const consumoMedioDiario = windowDays > 0 ? (consumoTotalJanela / windowDays) : 0;
-  
-  // USANDO A VARIÁVEL CORRIGIDA (Soma real)
+  const consumoMedioDiario =
+    windowDays > 0 ? consumoTotalJanela / windowDays : 0;
+
   const estoqueTotalT = formatKgToT(estoqueTotalKgReal).replace('t', '');
-  
+
   const coberturaEstoqueDiasNum =
-    consumoMedioDiario > 0 ? (estoqueTotalKgReal / consumoMedioDiario) : null;
-  const coberturaEstoqueDias = coberturaEstoqueDiasNum != null
-    ? coberturaEstoqueDiasNum.toFixed(1)
-    : 'N/A';
-  
+    consumoMedioDiario > 0 ? estoqueTotalKgReal / consumoMedioDiario : null;
+  const coberturaEstoqueDias =
+    coberturaEstoqueDiasNum != null
+      ? coberturaEstoqueDiasNum.toFixed(1)
+      : 'N/A';
+
   const pesoMais90 = bucketsMother['+90'] || 0;
-  const percentualMais90 = estoqueTotalKgReal > 0
-    ? ((pesoMais90 / estoqueTotalKgReal) * 100).toFixed(1)
-    : 0;
+  const percentualMais90 =
+    estoqueTotalKgReal > 0
+      ? ((pesoMais90 / estoqueTotalKgReal) * 100).toFixed(1)
+      : 0;
 
   const totalB2T = formatKgToT(totalB2Kg).replace('t', '');
-  const expedicaoTotalJanela = shippingData.reduce((acc, curr) => acc + curr.value, 0);
+
+  // Produção e Expedição (window)
+  const prodTotalT = formatKgToT(totalProdWeightKgWindow).replace('t', '');
+  const expedicaoTotalT = formatKgToT(totalShippingWeightKgWindow).replace('t', '');
 
   // ---------- KpiCard ----------
-  const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '' }) => (
+  const KpiCard = ({
+    title,
+    value,
+    unit,
+    color = 'text-blue-400',
+    subText = '',
+  }) => (
     <div className="bg-gray-800 p-4 rounded-lg shadow-lg flex flex-col justify-between h-28">
       <p className="text-sm font-medium text-gray-400">{title}</p>
       <div className="flex items-end justify-between">
-        <span className={`text-4xl font-extrabold ${color}`}>
-          {value}
+        <span className={`text-4xl font-extrabold ${color}`}>{value}</span>
+        <span className="text-lg font-semibold text-gray-500 ml-2">
+          {unit}
         </span>
-        <span className="text-lg font-semibold text-gray-500 ml-2">{unit}</span>
       </div>
       {subText && <p className="text-xs text-gray-500 mt-1">{subText}</p>}
     </div>
@@ -338,8 +380,10 @@ const IndicatorsDashboard = ({
             onChange={(e) => setTypeFilter(e.target.value)}
           >
             <option value="ALL">Todos os Tipos</option>
-            {typeOptions.map(t => (
-              <option key={t} value={t}>{t}</option>
+            {typeOptions.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
             ))}
           </select>
 
@@ -367,7 +411,9 @@ const IndicatorsDashboard = ({
         />
         <KpiCard
           title="Consumo Médio"
-          value={consumoMedioDiario.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+          value={consumoMedioDiario.toLocaleString('pt-BR', {
+            maximumFractionDigits: 0,
+          })}
           unit="kg/dia"
           color="text-indigo-400"
           subText={`Total de ${formatKg(consumoTotalJanela)} em ${windowDays}d`}
@@ -380,10 +426,10 @@ const IndicatorsDashboard = ({
             coberturaEstoqueDiasNum == null
               ? 'text-gray-400'
               : coberturaEstoqueDiasNum > 60
-                ? 'text-green-400'
-                : coberturaEstoqueDiasNum > 30
-                  ? 'text-yellow-400'
-                  : 'text-red-400'
+              ? 'text-green-400'
+              : coberturaEstoqueDiasNum > 30
+              ? 'text-yellow-400'
+              : 'text-red-400'
           }
           subText="Estoque / Consumo Médio"
         />
@@ -391,22 +437,28 @@ const IndicatorsDashboard = ({
           title="% Estoque > 90d"
           value={percentualMais90}
           unit="%"
-          color={percentualMais90 > 5 ? 'text-red-400' : percentualMais90 > 1 ? 'text-yellow-400' : 'text-green-400'}
+          color={
+            percentualMais90 > 5
+              ? 'text-red-400'
+              : percentualMais90 > 1
+              ? 'text-yellow-400'
+              : 'text-green-400'
+          }
           subText={`Peso: ${formatKgToT(pesoMais90)}`}
         />
         <KpiCard
-          title="B2 em Processo"
-          value={totalB2T}
+          title={`Produção PA (${windowDays}d)`}
+          value={prodTotalT}
           unit="t"
-          color="text-purple-400"
-          subText={`Total de ${formatKg(totalB2Kg)}`}
+          color="text-emerald-400"
+          subText={`Qtd: ${formatPcs(totalProdPiecesWindow)}`}
         />
         <KpiCard
-          title={`Expedição (${windowDays}d)`}
-          value={expedicaoTotalJanela.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
-          unit="pçs"
+          title={`Expedição PA (${windowDays}d)`}
+          value={expedicaoTotalT}
+          unit="t"
           color="text-amber-400"
-          subText={`Média: ${(expedicaoTotalJanela / windowDays || 0).toFixed(0)} pçs/dia`}
+          subText={`Qtd: ${formatPcs(totalShippingPiecesWindow)}`}
         />
       </div>
 
@@ -417,7 +469,10 @@ const IndicatorsDashboard = ({
         </h3>
         <div className="flex-1 w-full min-h-0">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={flowData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <ComposedChart
+              data={flowData}
+              margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+            >
               <defs>
                 <linearGradient id="colorEntrada" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
@@ -428,7 +483,11 @@ const IndicatorsDashboard = ({
                   <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <XAxis dataKey="name" stroke="#6b7280" tick={{ fill: '#9ca3af', fontSize: 12 }} />
+              <XAxis
+                dataKey="name"
+                stroke="#6b7280"
+                tick={{ fill: '#9ca3af', fontSize: 12 }}
+              />
               <YAxis
                 yAxisId="left"
                 stroke="#6b7280"
@@ -442,7 +501,11 @@ const IndicatorsDashboard = ({
                 tick={{ fill: '#f59e0b', fontSize: 12 }}
                 tickFormatter={(val) => formatKgToT(val)}
               />
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="#374151"
+                vertical={false}
+              />
               <Tooltip content={<CustomFlowTooltip />} />
               <Legend verticalAlign="top" height={36} />
 
@@ -491,21 +554,37 @@ const IndicatorsDashboard = ({
           <div className="flex-1 w-full min-h-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={agingMother} layout="vertical" margin={{ left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#374151"
+                  horizontal={false}
+                />
                 <XAxis
                   type="number"
                   stroke="#9ca3af"
                   tickFormatter={(val) => formatKgToT(val)}
                 />
-                <YAxis dataKey="name" type="category" stroke="#fff" width={80} tick={{ fontSize: 11 }} />
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  stroke="#fff"
+                  width={80}
+                  tick={{ fontSize: 11 }}
+                />
                 <Tooltip
                   cursor={{ fill: '#ffffff10' }}
-                  contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
+                  contentStyle={{
+                    backgroundColor: '#1f2937',
+                    borderColor: '#374151',
+                  }}
                   formatter={(value) => [`${formatKg(value)}`, 'Peso']}
                 />
                 <Bar dataKey="peso" radius={[0, 4, 4, 0]} barSize={20}>
                   {agingMother.map((entry, index) => (
-                    <Cell key={`cell-mother-${index}`} fill={entry.fill} />
+                    <Cell
+                      key={`cell-mother-${index}`}
+                      fill={entry.fill}
+                    />
                   ))}
                 </Bar>
               </BarChart>
@@ -520,8 +599,16 @@ const IndicatorsDashboard = ({
           </h3>
           <div className="flex-1 w-full min-h-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={typeData.slice(0, 5)} layout="vertical" margin={{ left: 20, right: 30 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
+              <BarChart
+                data={typeData.slice(0, 5)}
+                layout="vertical"
+                margin={{ left: 20, right: 30 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#374151"
+                  horizontal={false}
+                />
                 <XAxis
                   type="number"
                   stroke="#9ca3af"
@@ -536,12 +623,18 @@ const IndicatorsDashboard = ({
                 />
                 <Tooltip
                   cursor={{ fill: '#ffffff10' }}
-                  contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
+                  contentStyle={{
+                    backgroundColor: '#1f2937',
+                    borderColor: '#374151',
+                  }}
                   formatter={(value) => [`${formatKg(value)}`, 'Peso']}
                 />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={25}>
                   {typeData.slice(0, 5).map((entry, index) => (
-                    <Cell key={`cell-type-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    <Cell
+                      key={`cell-type-${index}`}
+                      fill={PIE_COLORS[index % PIE_COLORS.length]}
+                    />
                   ))}
                 </Bar>
               </BarChart>
@@ -563,17 +656,33 @@ const IndicatorsDashboard = ({
             </div>
             <div className="flex-1 w-full min-h-0">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={agingB2} layout="vertical" margin={{ left: 0, right: 10, top: 0, bottom: 0 }}>
-                  <XAxis type="number" hide tickFormatter={(val) => formatKgToT(val)} />
-                  <YAxis dataKey="name" type="category" stroke="#fff" width={60} tick={{ fontSize: 10 }} />
+                <BarChart
+                  data={agingB2}
+                  layout="vertical"
+                  margin={{ left: 0, right: 10, top: 0, bottom: 0 }}
+                >
+                  <XAxis type="number" hide />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    stroke="#fff"
+                    width={60}
+                    tick={{ fontSize: 10 }}
+                  />
                   <Tooltip
                     cursor={{ fill: '#ffffff10' }}
-                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
+                    contentStyle={{
+                      backgroundColor: '#1f2937',
+                      borderColor: '#374151',
+                    }}
                     formatter={(value) => [`${formatKg(value)}`, 'Peso']}
                   />
                   <Bar dataKey="peso" radius={[0, 4, 4, 0]} barSize={10}>
                     {agingB2.map((entry, index) => (
-                      <Cell key={`cell-b2-${index}`} fill={entry.fill} />
+                      <Cell
+                        key={`cell-b2-${index}`}
+                        fill={entry.fill}
+                      />
                     ))}
                   </Bar>
                 </BarChart>
@@ -603,7 +712,9 @@ const IndicatorsDashboard = ({
                       paddingAngle={2}
                       dataKey="value"
                       labelLine={false}
-                      label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                      label={({ name, percent }) =>
+                        `${name} (${(percent * 100).toFixed(0)}%)`
+                      }
                     >
                       {shippingData.map((entry, index) => (
                         <Cell
@@ -617,7 +728,10 @@ const IndicatorsDashboard = ({
                         backgroundColor: '#1f2937',
                         borderColor: '#374151',
                       }}
-                      formatter={(value, name) => [`${formatPcs(value)}`, name]}
+                      formatter={(value, name) => [
+                        `${formatPcs(value)}`,
+                        name,
+                      ]}
                     />
                     <Legend
                       layout="horizontal"
