@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { TrendingUp, FileText } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { INITIAL_INOX_BLANK_PRODUCTS } from "../../data/inoxCatalog";
 
 // ajusta o caminho se sua pasta for diferente
 
@@ -28,50 +29,12 @@ const formatDate = (d) => {
   return dt.toLocaleDateString("pt-BR");
 };
 
-// ======================================
-// LÓGICA MRP SIMPLES PARA INOX (BLANKS)
-// ======================================
-const calculateMaterialRequirements = (products, demandRows, stockPositions) => {
-  // Aggrega demanda por produto
-  const demandByProductId = new Map();
-  demandRows.forEach((d) => {
-    const prev = demandByProductId.get(d.productId) ?? 0;
-    demandByProductId.set(d.productId, prev + (d.demandQty || 0));
-  });
-
-  // Estoque por produto
-  const stockByProductId = new Map();
-  stockPositions.forEach((s) => {
-    stockByProductId.set(s.productId, s);
-  });
-
-  // Monta linhas de resultado
-  return products.map((p) => {
-    const demandQty = demandByProductId.get(p.id) ?? 0;
-
-    const stock = stockByProductId.get(p.id) || {};
-    const finishedStockQty = stock.finishedQty ?? 0; // peças prontas
-    const blankStockQty = stock.blankQty ?? 0; // blanks
-
-    const totalCoverageQty = finishedStockQty + blankStockQty;
-    const coverageBalanceQty = demandQty - totalCoverageQty;
-    const qtyToBuy = Math.max(0, coverageBalanceQty);
-    const weightToBuyKg = qtyToBuy * (p.unitWeightKg || 0);
-
-    return {
-      productId: p.id,
-      productCode: p.code,
-      description: p.description,
-      unitWeightKg: p.unitWeightKg,
-      demandQty,
-      finishedStockQty,
-      blankStockQty,
-      totalCoverageQty,
-      qtyToBuy,
-      weightToBuyKg,
-      coverageBalanceQty,
-    };
-  });
+// Converte entrada de input (aceitando vÇülido, vazio ou com vÇürgula) em nÇ§mero seguro
+const parseNumberInput = (value) => {
+  if (value === "" || value === null || value === undefined) return 0;
+  const cleaned = String(value).replace(/\./g, "").replace(",", ".");
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : 0;
 };
 
 const RawMaterialRequirement = ({
@@ -121,6 +84,36 @@ const RawMaterialRequirement = ({
   // ---------- ESTADOS ABA INOX ----------
   const [inoxSearch, setInoxSearch] = useState("");
   const [selectedInoxProductId, setSelectedInoxProductId] = useState(null);
+  const [inoxRows, setInoxRows] = useState(() =>
+    INITIAL_INOX_BLANK_PRODUCTS.map((p) => ({
+      productId: p.id,
+      productCode: p.id,
+      description: p.name,
+      inoxGrade: p.inoxGrade,
+      unitWeightKg: Number(p.weight) || 0,
+      demandUnits: "",
+      finishedStockUnits: "",
+      blanksStockUnits: "",
+    }))
+  );
+  const [inoxLeadTime, setInoxLeadTime] = useState(30);
+  const [inoxTargetDays, setInoxTargetDays] = useState(90);
+  const [inoxSimulatedPrice, setInoxSimulatedPrice] = useState(10);
+  const [inoxMinStockKg, setInoxMinStockKg] = useState(0);
+  const [inoxManualStartDate, setInoxManualStartDate] = useState(() => {
+    const d = new Date();
+    return d.toISOString().slice(0, 10);
+  });
+  const [inoxManualEndDate, setInoxManualEndDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 90);
+    return d.toISOString().slice(0, 10);
+  });
+  const [inoxManualDemandGranularity, setInoxManualDemandGranularity] =
+    useState("week");
+  const [inoxIncomingOrders, setInoxIncomingOrders] = useState([]);
+  const [inoxOrderQty, setInoxOrderQty] = useState("");
+  const [inoxOrderDate, setInoxOrderDate] = useState("");
 
   // ---------- PREPARAÇÃO DOS DADOS (AGRUPAMENTO BOBINAS) ----------
   const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
@@ -134,11 +127,6 @@ const RawMaterialRequirement = ({
     const t = (m.type || "").toUpperCase();
     return fam === "INOX" || form === "BLANK" || t === "INOX";
   };
-
-  console.log("inoxProducts", inoxProducts);
-console.log("inoxDemandRows", inoxDemandRows);
-console.log("inoxStockPositions", inoxStockPositions);
-
 
   const getMaterialMetadata = (rawMotherCode, rawB2Code) => {
     const cleanMother = rawMotherCode
@@ -281,23 +269,51 @@ console.log("inoxStockPositions", inoxStockPositions);
   const coilGroups = groupList.filter((g) => !g.isInox);
 
   // ---------- LISTA INOX (ABA NOVA) ----------
-  const inoxRows = calculateMaterialRequirements(
-    Array.isArray(inoxProducts) ? inoxProducts : [],
-    Array.isArray(inoxDemandRows) ? inoxDemandRows : [],
-    Array.isArray(inoxStockPositions) ? inoxStockPositions : []
+  const inoxComputedRows = useMemo(
+    () =>
+      (Array.isArray(inoxRows) ? inoxRows : []).map((row) => {
+        const demandQty = parseNumberInput(row.demandUnits);
+        const finishedStockQty = parseNumberInput(row.finishedStockUnits);
+        const blankStockQty = parseNumberInput(row.blanksStockUnits);
+        const totalCoverageQty = finishedStockQty + blankStockQty;
+        const qtyToBuy = Math.max(demandQty - totalCoverageQty, 0);
+        const weightToBuyKg = qtyToBuy * (Number(row.unitWeightKg) || 0);
+
+        return {
+          ...row,
+          demandQty,
+          finishedStockQty,
+          blankStockQty,
+          totalCoverageQty,
+          qtyToBuy,
+          weightToBuyKg,
+        };
+      }),
+    [inoxRows]
   );
 
-  const inoxFilteredRows = inoxRows.filter((r) => {
-    if (!inoxSearch) return true;
-    const term = inoxSearch.toLowerCase();
-    return (
-      String(r.productCode || "").toLowerCase().includes(term) ||
-      String(r.description || "").toLowerCase().includes(term)
-    );
-  });
+  const inoxFilteredRows = useMemo(() => {
+    const term = (inoxSearch || "").toLowerCase();
+    if (!term) return inoxComputedRows;
+    return inoxComputedRows.filter((r) => {
+      const text = `${r.productCode} ${r.description} ${r.inoxGrade}`.toLowerCase();
+      return text.includes(term);
+    });
+  }, [inoxComputedRows, inoxSearch]);
 
   const selectedInoxRow =
-    inoxRows.find((r) => r.productId === selectedInoxProductId) || null;
+    inoxFilteredRows.find((r) => r.productId === selectedInoxProductId) ||
+    inoxFilteredRows[0] ||
+    null;
+
+  const handleInoxFieldChange = (productId, field, value) => {
+    setInoxRows((prev) =>
+      prev.map((row) =>
+        row.productId === productId ? { ...row, [field]: value } : row
+      )
+    );
+    setSelectedInoxProductId(productId);
+  };
 
   // ---------- FILTROS (BOBINAS) ----------
   const search = mpNeedSearch.toLowerCase();
@@ -548,6 +564,228 @@ console.log("inoxStockPositions", inoxStockPositions);
     }));
   }
 
+  // ---------- SIMULAÇÃO INOX (MANUAL) ----------
+  let inoxScenarioDailyKg = 0;
+  let inoxIdealStockKg = 0;
+  let inoxPurchaseNeedKg = 0;
+  let inoxInvestment = 0;
+  let inoxStockValue = 0;
+  let inoxRuptureDateStr = "Sem risco";
+  let inoxDeadlineDateStr = "-";
+  let inoxIsLeadTimeCritical = false;
+  let inoxMinStockRuptureDateStr = "Sem risco";
+  let inoxMinStockDeadlineDateStr = "-";
+  let inoxTotalDemandSimulatedKg = 0;
+  let inoxInitialStockKg = 0;
+  let inoxActiveOrders = [];
+  let inoxDailyStatement = [];
+  let inoxDaysToDeadline = null;
+  let inoxGraphW = 1000;
+  let inoxGraphH = 220;
+  let inoxGraphPoints = "";
+  let inoxGraphArea = "";
+  let inoxGraphZeroY = 0;
+  let inoxGraphMinStockY = 0;
+  let inoxGraphPointsData = [];
+  let inoxGraphYTicks = [];
+  let inoxGraphXAxisDates = { start: null, middle: null, end: null };
+  let inoxMinStockValKg = 0;
+
+  if (selectedInoxRow) {
+    const unitWeight = Number(selectedInoxRow.unitWeightKg) || 0;
+    const demandUnits = Number(selectedInoxRow.demandQty) || 0;
+    const finishedUnits = Number(selectedInoxRow.finishedStockQty) || 0;
+    const blankUnits = Number(selectedInoxRow.blankStockQty) || 0;
+    const totalStockUnits = finishedUnits + blankUnits;
+
+    const demandKg = demandUnits * unitWeight;
+    inoxInitialStockKg = totalStockUnits * unitWeight;
+
+    const targetDays = Number(inoxTargetDays) || 90;
+    const leadTime = Number(inoxLeadTime) || 30;
+    const minStockKg = Number(inoxMinStockKg) || 0;
+    const price = Number(inoxSimulatedPrice) || 0;
+    const baseDate = new Date();
+    baseDate.setHours(0, 0, 0, 0);
+
+    inoxActiveOrders = inoxIncomingOrders.filter(
+      (o) => o.productId === selectedInoxRow.productId
+    );
+    const totalIncomingKg = inoxActiveOrders.reduce(
+      (acc, o) => acc + (Number(o.qty) || 0),
+      0
+    );
+
+    const startDate = inoxManualStartDate
+      ? new Date(inoxManualStartDate)
+      : new Date(baseDate);
+    const endDate = inoxManualEndDate
+      ? new Date(inoxManualEndDate)
+      : new Date(baseDate.getTime() + targetDays * MS_PER_DAY);
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(0, 0, 0, 0);
+
+    const daysInPeriod = Math.max(
+      1,
+      Math.round((endDate.getTime() - startDate.getTime()) / MS_PER_DAY) + 1
+    );
+
+    if (inoxManualDemandGranularity === "day") {
+      inoxScenarioDailyKg = demandKg;
+    } else if (inoxManualDemandGranularity === "week") {
+      inoxScenarioDailyKg = demandKg / 7;
+    } else if (inoxManualDemandGranularity === "month") {
+      inoxScenarioDailyKg = demandKg / 30;
+    } else {
+      inoxScenarioDailyKg = demandKg / daysInPeriod;
+    }
+
+    inoxIdealStockKg = inoxScenarioDailyKg * targetDays;
+    inoxPurchaseNeedKg = Math.max(
+      0,
+      inoxIdealStockKg - (inoxInitialStockKg + totalIncomingKg)
+    );
+    inoxInvestment = inoxPurchaseNeedKg * price;
+    inoxStockValue = inoxInitialStockKg * price;
+    inoxMinStockValKg = minStockKg;
+
+    let currentBalance = inoxInitialStockKg;
+    let maxStock = currentBalance;
+    let minStockSeen = currentBalance;
+    let firstStockoutDate = null;
+    let firstMinStockDate = null;
+
+    const finalHorizon = targetDays + 15;
+
+    for (let i = 0; i <= finalHorizon; i++) {
+      const simDate = new Date(baseDate);
+      simDate.setDate(simDate.getDate() + i);
+
+      const sameDay = (d1, d2) =>
+        d1.getDate() === d2.getDate() &&
+        d1.getMonth() === d2.getMonth() &&
+        d1.getFullYear() === d2.getFullYear();
+
+      const inflows = inoxActiveOrders.filter((o) => {
+        if (!o.date) return false;
+        const oDate = new Date(o.date + "T00:00:00");
+        return sameDay(oDate, simDate);
+      });
+
+      const inflowQty = inflows.reduce(
+        (acc, o) => acc + (Number(o.qty) || 0),
+        0
+      );
+
+      let dailyDemand = 0;
+      if (simDate >= startDate && simDate <= endDate) {
+        dailyDemand = inoxScenarioDailyKg;
+      }
+
+      currentBalance += inflowQty;
+      if (i > 0) currentBalance -= dailyDemand;
+
+      inoxTotalDemandSimulatedKg += dailyDemand;
+
+      if (currentBalance < 0 && !firstStockoutDate) {
+        firstStockoutDate = new Date(simDate);
+      }
+      if (currentBalance < minStockKg && !firstMinStockDate) {
+        firstMinStockDate = new Date(simDate);
+      }
+
+      if (currentBalance > maxStock) maxStock = currentBalance;
+      if (currentBalance < minStockSeen) minStockSeen = currentBalance;
+
+      inoxDailyStatement.push({
+        dayIndex: i,
+        date: simDate,
+        balance: currentBalance,
+        inflow: inflowQty,
+        demand: dailyDemand,
+      });
+    }
+
+    if (firstStockoutDate) {
+      inoxRuptureDateStr = formatDate(firstStockoutDate);
+      const deadline = new Date(firstStockoutDate);
+      deadline.setDate(deadline.getDate() - leadTime);
+      inoxDeadlineDateStr = formatDate(deadline);
+      inoxDaysToDeadline = Math.round(
+        (deadline.getTime() - baseDate.getTime()) / MS_PER_DAY
+      );
+      if (inoxDaysToDeadline < 0) inoxIsLeadTimeCritical = true;
+    }
+
+    if (minStockKg > 0 && firstMinStockDate) {
+      inoxMinStockRuptureDateStr = formatDate(firstMinStockDate);
+      const deadline = new Date(firstMinStockDate);
+      deadline.setDate(deadline.getDate() - leadTime);
+      inoxMinStockDeadlineDateStr = formatDate(deadline);
+    }
+
+    const range = maxStock - minStockSeen || 1;
+    const padding = range * 0.1;
+    const gMax = maxStock + padding;
+    const gMin = minStockSeen - padding;
+    const gRange = gMax - gMin;
+
+    const chartPaddingLeft = 60;
+    const chartPaddingRight = 20;
+    const chartPaddingTop = 20;
+    const chartPaddingBottom = 30;
+    const innerW = inoxGraphW - chartPaddingLeft - chartPaddingRight;
+    const innerH = inoxGraphH - chartPaddingTop - chartPaddingBottom;
+
+    const getX = (i) =>
+      chartPaddingLeft + (i / (inoxDailyStatement.length - 1 || 1)) * innerW;
+
+    const getY = (val) => {
+      const y =
+        chartPaddingTop +
+        innerH -
+        ((val - gMin) / gRange) * innerH;
+      return Number.isFinite(y) ? y : chartPaddingTop + innerH;
+    };
+
+    if (inoxDailyStatement.length > 0) {
+      const first = inoxDailyStatement[0];
+      const last = inoxDailyStatement[inoxDailyStatement.length - 1];
+      const middle =
+        inoxDailyStatement[Math.floor(inoxDailyStatement.length / 2)];
+      inoxGraphXAxisDates = {
+        start: first.date,
+        middle: middle.date,
+        end: last.date,
+      };
+    }
+
+    inoxGraphPoints = inoxDailyStatement
+      .map((d, i) => `${getX(i)},${getY(d.balance)}`)
+      .join(" ");
+
+    inoxGraphArea = `${inoxGraphPoints} L ${
+      chartPaddingLeft + innerW
+    },${chartPaddingTop + innerH} L ${
+      chartPaddingLeft
+    },${chartPaddingTop + innerH} Z`;
+
+    inoxGraphZeroY = getY(0);
+    inoxGraphMinStockY = getY(minStockKg);
+
+    inoxGraphPointsData = inoxDailyStatement.map((d, i) => ({
+      x: getX(i),
+      y: getY(d.balance),
+      ...d,
+    }));
+
+    const rawTicks = [gMax, (gMax + gMin) / 2, Math.max(0, gMin)];
+    inoxGraphYTicks = rawTicks.map((value) => ({
+      value,
+      y: getY(value),
+    }));
+  }
+
   // ---------- HANDLERS BOBINAS ----------
   const handleAddOrder = () => {
     if (!selectedMpCode || !mpOrderQty || !mpOrderDate) return;
@@ -568,6 +806,26 @@ console.log("inoxStockPositions", inoxStockPositions);
 
   const removeOrder = (id) =>
     setMpIncomingOrders((prev) => prev.filter((o) => o.id !== id));
+
+  const handleAddInoxOrder = () => {
+    if (!selectedInoxRow || !inoxOrderQty || !inoxOrderDate) return;
+
+    setInoxIncomingOrders((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        productId: selectedInoxRow.productId,
+        date: inoxOrderDate,
+        qty: Number(inoxOrderQty),
+      },
+    ]);
+
+    setInoxOrderQty("");
+    setInoxOrderDate("");
+  };
+
+  const removeInoxOrder = (id) =>
+    setInoxIncomingOrders((prev) => prev.filter((o) => o.id !== id));
 
   const exportSimulationPDF = async () => {
     if (!selectedGroup) {
@@ -666,10 +924,6 @@ console.log("inoxStockPositions", inoxStockPositions);
     }
   };
 
-const formatPieces = (v) =>
-  (Number(v) || 0).toLocaleString("pt-BR");
-
-
   // ---------- RENDER ----------
   return (
     <div className="space-y-6 pb-20 animate-fade-in">
@@ -744,17 +998,6 @@ const formatPieces = (v) =>
                 ))}
             </select>
           </>
-        )}
-
-        {/* Campo de busca só para INOX */}
-        {activeTab === "inox" && (
-          <input
-            type="text"
-            placeholder="Buscar produto inox..."
-            value={inoxSearch}
-            onChange={(e) => setInoxSearch(e.target.value)}
-            className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white w-64"
-          />
         )}
       </div>
 
@@ -1315,18 +1558,28 @@ const formatPieces = (v) =>
         <div className="space-y-6">
           {/* Resumo + seleção do produto */}
           <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-            <h3 className="text-lg font-semibold text-white mb-3">
-              MRP Simplificado – Inox / Blanks
-            </h3>
-
-            <p className="text-sm text-gray-400 mb-3">
-              Aqui você enxerga, por produto de inox, o quanto tem de demanda,
-              o quanto já tem em estoque (acabado + blanks) e o quanto
-              precisaria comprar em kg.
-            </p>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white">
+                  MRP Simplificado – Inox / Blanks
+                </h3>
+                <p className="text-sm text-gray-400">
+                  Preencha o saldo atual (acabado + blanks) e a demanda de cada
+                  item de inox. A tabela calcula automaticamente a cobertura em
+                  peças e a necessidade em kg.
+                </p>
+              </div>
+              <input
+                type="text"
+                placeholder="Buscar produto inox..."
+                className="w-full md:w-72 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                value={inoxSearch}
+                onChange={(e) => setInoxSearch(e.target.value)}
+              />
+            </div>
 
             {selectedInoxRow && (
-              <div className="grid grid-cols-4 gap-4 mt-3">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
                 <div className="bg-gray-900/60 border border-gray-700 rounded-lg p-3">
                   <p className="text-xs text-gray-400">Produto</p>
                   <p className="text-sm font-bold text-white">
@@ -1335,19 +1588,22 @@ const formatPieces = (v) =>
                   <p className="text-xs text-gray-300 mt-1">
                     {selectedInoxRow.description}
                   </p>
+                  <p className="text-[10px] text-emerald-400 mt-1">
+                    {selectedInoxRow.inoxGrade}
+                  </p>
                 </div>
                 <div className="bg-gray-900/60 border border-gray-700 rounded-lg p-3">
-                  <p className="text-xs text-gray-400">Demanda (peças)</p>
+                  <p className="text-xs text-gray-400">Demanda informada</p>
                   <p className="text-xl font-bold text-white">
-                    {selectedInoxRow.demandQty.toLocaleString("pt-BR")}
+                    {formatPieces(selectedInoxRow.demandQty)}
                   </p>
                 </div>
                 <div className="bg-gray-900/60 border border-gray-700 rounded-lg p-3">
                   <p className="text-xs text-gray-400">
-                    Estoque (Acabado + Blanks)
+                    Saldo atual (acabado + blanks)
                   </p>
                   <p className="text-xl font-bold text-emerald-400">
-                    {selectedInoxRow.totalCoverageQty.toLocaleString("pt-BR")}
+                    {formatPieces(selectedInoxRow.totalCoverageQty)}
                   </p>
                 </div>
                 <div className="bg-gray-900/60 border border-gray-700 rounded-lg p-3">
@@ -1366,6 +1622,396 @@ const formatPieces = (v) =>
             )}
           </div>
 
+          {selectedInoxRow && (
+            <div className="space-y-6">
+              <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                <h4 className="text-sm font-semibold text-white mb-3">
+                  Configurações de simulação (manual)
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <label className="text-xs text-gray-400 flex flex-col gap-1">
+                    Lead time (dias)
+                    <input
+                      type="number"
+                      min="0"
+                      value={inoxLeadTime}
+                      onChange={(e) => setInoxLeadTime(e.target.value)}
+                      className="bg-gray-900 border border-gray-700 rounded px-2 py-2 text-sm text-gray-100"
+                    />
+                  </label>
+                  <label className="text-xs text-gray-400 flex flex-col gap-1">
+                    Cobertura alvo (dias)
+                    <input
+                      type="number"
+                      min="0"
+                      value={inoxTargetDays}
+                      onChange={(e) => setInoxTargetDays(e.target.value)}
+                      className="bg-gray-900 border border-gray-700 rounded px-2 py-2 text-sm text-gray-100"
+                    />
+                  </label>
+                  <label className="text-xs text-gray-400 flex flex-col gap-1">
+                    Estoque mínimo (kg)
+                    <input
+                      type="number"
+                      min="0"
+                      value={inoxMinStockKg}
+                      onChange={(e) => setInoxMinStockKg(e.target.value)}
+                      className="bg-gray-900 border border-gray-700 rounded px-2 py-2 text-sm text-gray-100"
+                    />
+                  </label>
+                  <label className="text-xs text-gray-400 flex flex-col gap-1">
+                    Preço simulado (R$/kg)
+                    <input
+                      type="number"
+                      min="0"
+                      value={inoxSimulatedPrice}
+                      onChange={(e) => setInoxSimulatedPrice(e.target.value)}
+                      className="bg-gray-900 border border-gray-700 rounded px-2 py-2 text-sm text-gray-100"
+                    />
+                  </label>
+                  <label className="text-xs text-gray-400 flex flex-col gap-1">
+                    Início da simulação
+                    <input
+                      type="date"
+                      value={inoxManualStartDate}
+                      onChange={(e) => setInoxManualStartDate(e.target.value)}
+                      className="bg-gray-900 border border-gray-700 rounded px-2 py-2 text-sm text-gray-100"
+                    />
+                  </label>
+                  <label className="text-xs text-gray-400 flex flex-col gap-1">
+                    Fim da simulação
+                    <input
+                      type="date"
+                      value={inoxManualEndDate}
+                      onChange={(e) => setInoxManualEndDate(e.target.value)}
+                      className="bg-gray-900 border border-gray-700 rounded px-2 py-2 text-sm text-gray-100"
+                    />
+                  </label>
+                  <label className="text-xs text-gray-400 flex flex-col gap-1">
+                    Granularidade da demanda
+                    <select
+                      value={inoxManualDemandGranularity}
+                      onChange={(e) =>
+                        setInoxManualDemandGranularity(e.target.value)
+                      }
+                      className="bg-gray-900 border border-gray-700 rounded px-2 py-2 text-sm text-gray-100"
+                    >
+                      <option value="week">Semanal</option>
+                      <option value="month">Mensal</option>
+                      <option value="day">Diária</option>
+                      <option value="range">Distribuir por período</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                  <p className="text-xs text-gray-400">Cobertura estimada</p>
+                  <p className="text-2xl font-bold text-white">
+                    {inoxScenarioDailyKg > 0
+                      ? `${Math.floor(
+                          inoxInitialStockKg / inoxScenarioDailyKg
+                        )} dias`
+                      : "-"}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Estoque atual: {formatKg(inoxInitialStockKg)} kg
+                  </p>
+                </div>
+                <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                  <p className="text-xs text-gray-400">
+                    Data de ruptura (estoque zero)
+                  </p>
+                  <p className="text-2xl font-bold text-orange-400">
+                    {inoxRuptureDateStr}
+                  </p>
+                  {inoxDeadlineDateStr !== "-" && (
+                    <p
+                      className={`text-xs mt-1 ${
+                        inoxIsLeadTimeCritical
+                          ? "text-red-400 font-semibold"
+                          : "text-gray-500"
+                      }`}
+                    >
+                      Comprar até {inoxDeadlineDateStr} (LT {inoxLeadTime} d)
+                    </p>
+                  )}
+                </div>
+                <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                  <p className="text-xs text-gray-400">
+                    Necessidade planejada
+                  </p>
+                  <p
+                    className={`text-2xl font-bold ${
+                      inoxPurchaseNeedKg > 0 ? "text-red-400" : "text-emerald-400"
+                    }`}
+                  >
+                    {formatKg(inoxPurchaseNeedKg)} kg
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Investimento: {formatMoney(inoxInvestment)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                <h4 className="text-sm font-semibold text-white mb-3">
+                  Comportamento do estoque projetado (kg)
+                </h4>
+                <svg
+                  width={inoxGraphW}
+                  height={inoxGraphH}
+                  viewBox={`0 0 ${inoxGraphW} ${inoxGraphH}`}
+                >
+                  <line
+                    x1={60}
+                    y1={inoxGraphH - 30}
+                    x2={inoxGraphW - 20}
+                    y2={inoxGraphH - 30}
+                    stroke="#4b5563"
+                    strokeWidth="1"
+                  />
+                  <line
+                    x1={60}
+                    y1={20}
+                    x2={60}
+                    y2={inoxGraphH - 30}
+                    stroke="#4b5563"
+                    strokeWidth="1"
+                  />
+
+                  {inoxGraphYTicks.map((t, idx) => (
+                    <g key={idx}>
+                      <line
+                        x1={55}
+                        y1={t.y}
+                        x2={60}
+                        y2={t.y}
+                        stroke="#9ca3af"
+                        strokeWidth="1"
+                      />
+                      <text
+                        x={50}
+                        y={t.y + 3}
+                        fill="#9ca3af"
+                        fontSize="10"
+                        textAnchor="end"
+                      >
+                        {formatKg(t.value)} kg
+                      </text>
+                      <line
+                        x1={60}
+                        y1={t.y}
+                        x2={inoxGraphW - 20}
+                        y2={t.y}
+                        stroke="#1f2937"
+                        strokeWidth="0.5"
+                        strokeDasharray="2 4"
+                      />
+                    </g>
+                  ))}
+
+                  <line
+                    x1={60}
+                    y1={inoxGraphZeroY}
+                    x2={inoxGraphW - 20}
+                    y2={inoxGraphZeroY}
+                    stroke="red"
+                    strokeDasharray="4 4"
+                    strokeWidth="1"
+                  />
+                  <text x={65} y={inoxGraphZeroY - 5} fill="red" fontSize="10">
+                    Estoque Zero
+                  </text>
+
+                  {inoxMinStockValKg > 0 && (
+                    <>
+                      <line
+                        x1={60}
+                        y1={inoxGraphMinStockY}
+                        x2={inoxGraphW - 20}
+                        y2={inoxGraphMinStockY}
+                        stroke="orange"
+                        strokeDasharray="4 4"
+                        strokeWidth="1"
+                      />
+                      <text
+                        x={65}
+                        y={inoxGraphMinStockY - 5}
+                        fill="orange"
+                        fontSize="10"
+                      >
+                        Estoque Mínimo ({formatKg(inoxMinStockValKg)} kg)
+                      </text>
+                    </>
+                  )}
+
+                  <polygon
+                    points={inoxGraphArea}
+                    fill="rgba(16,185,129,0.25)"
+                    stroke="none"
+                  />
+                  <polyline
+                    points={inoxGraphPoints}
+                    fill="none"
+                    stroke="rgb(16,185,129)"
+                    strokeWidth="2"
+                  />
+
+                  {inoxGraphPointsData.map((p, index) => (
+                    <circle
+                      key={index}
+                      cx={p.x}
+                      cy={p.y}
+                      r="2"
+                      fill="rgb(16,185,129)"
+                    />
+                  ))}
+
+                  {selectedInoxRow &&
+                    inoxActiveOrders.map((o) => {
+                      if (!o.date) return null;
+                      const oDate = new Date(o.date + "T00:00:00");
+
+                      const idx = inoxDailyStatement.findIndex(
+                        (d) =>
+                          d.date.getDate() === oDate.getDate() &&
+                          d.date.getMonth() === oDate.getMonth() &&
+                          d.date.getFullYear() === oDate.getFullYear()
+                      );
+
+                      if (idx === -1) return null;
+                      const point = inoxGraphPointsData[idx];
+                      if (!point) return null;
+
+                      return (
+                        <g key={o.id}>
+                          <line
+                            x1={point.x}
+                            y1={0}
+                            x2={point.x}
+                            y2={inoxGraphH}
+                            stroke="rgba(59,130,246,0.7)"
+                            strokeDasharray="4 4"
+                            strokeWidth="1"
+                          />
+                          <text
+                            x={point.x + 3}
+                            y={12}
+                            fill="#93c5fd"
+                            fontSize="9"
+                          >
+                            +{formatKg(o.qty)} kg
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                  {inoxGraphXAxisDates.start && (
+                    <>
+                      <text
+                        x={60}
+                        y={inoxGraphH - 15}
+                        fill="#9ca3af"
+                        fontSize="10"
+                        textAnchor="start"
+                      >
+                        {formatDate(inoxGraphXAxisDates.start)}
+                      </text>
+                      <text
+                        x={inoxGraphW / 2}
+                        y={inoxGraphH - 15}
+                        fill="#9ca3af"
+                        fontSize="10"
+                        textAnchor="middle"
+                      >
+                        {formatDate(inoxGraphXAxisDates.middle)}
+                      </text>
+                      <text
+                        x={inoxGraphW - 20}
+                        y={inoxGraphH - 15}
+                        fill="#9ca3af"
+                        fontSize="10"
+                        textAnchor="end"
+                      >
+                        {formatDate(inoxGraphXAxisDates.end)}
+                      </text>
+                    </>
+                  )}
+                </svg>
+                <p className="text-sm text-gray-400 mt-2">
+                  Linha verde = saldo projetado em kg. Vermelho tracejado =
+                  estoque zero. Laranja = estoque mínimo.
+                </p>
+              </div>
+
+              <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                <h4 className="text-sm font-semibold text-white mb-3">
+                  Pedidos em trânsito (kg)
+                </h4>
+                <div className="flex flex-wrap gap-3 mb-4">
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="Quantidade (kg)"
+                    value={inoxOrderQty}
+                    onChange={(e) => setInoxOrderQty(e.target.value)}
+                    className="w-full md:w-40 bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"
+                  />
+                  <input
+                    type="date"
+                    value={inoxOrderDate}
+                    onChange={(e) => setInoxOrderDate(e.target.value)}
+                    className="w-full md:w-40 bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"
+                  />
+                  <button
+                    onClick={handleAddInoxOrder}
+                    className="px-4 py-2 bg-emerald-600 rounded hover:bg-emerald-500 text-white text-sm"
+                  >
+                    Adicionar pedido
+                  </button>
+                </div>
+
+                <table className="w-full text-left text-sm text-gray-400">
+                  <thead className="text-xs text-gray-700 uppercase bg-gray-700">
+                    <tr>
+                      <th>Data</th>
+                      <th>Quantidade (kg)</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inoxActiveOrders.map((o) => (
+                      <tr key={o.id} className="bg-gray-800 border-b border-gray-700">
+                        <td>{formatDate(o.date)}</td>
+                        <td>{formatKg(o.qty)}</td>
+                        <td>
+                          <button
+                            onClick={() => removeInoxOrder(o.id)}
+                            className="text-red-400 hover:text-red-300"
+                          >
+                            Remover
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {inoxActiveOrders.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={3}
+                          className="py-2 text-center text-gray-500"
+                        >
+                          Nenhum pedido registrado.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Tabela Inox */}
           <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
             <table className="w-full text-sm text-gray-300">
@@ -1377,9 +2023,7 @@ const formatPieces = (v) =>
                   <th className="px-2 py-2 text-right">Demanda (peças)</th>
                   <th className="px-2 py-2 text-right">Est. Acabado</th>
                   <th className="px-2 py-2 text-right">Est. Blanks</th>
-                  <th className="px-2 py-2 text-right">
-                    Cobertura (peças)
-                  </th>
+                  <th className="px-2 py-2 text-right">Cobertura (peças)</th>
                   <th className="px-2 py-2 text-right">Necessidade (kg)</th>
                 </tr>
               </thead>
@@ -1394,7 +2038,12 @@ const formatPieces = (v) =>
                         : ""
                     }`}
                   >
-                    <td className="px-2 py-2">{row.productCode}</td>
+                    <td className="px-2 py-2">
+                      <p className="font-semibold text-sm">{row.productCode}</p>
+                      <p className="text-[11px] text-emerald-400">
+                        {row.inoxGrade}
+                      </p>
+                    </td>
                     <td className="px-2 py-2 text-xs">{row.description}</td>
                     <td className="px-2 py-2 text-right">
                       {row.unitWeightKg?.toLocaleString("pt-BR", {
@@ -1402,16 +2051,52 @@ const formatPieces = (v) =>
                       })}
                     </td>
                     <td className="px-2 py-2 text-right">
-                      {row.demandQty.toLocaleString("pt-BR")}
+                      <input
+                        type="number"
+                        min="0"
+                        className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-right text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                        value={row.demandUnits}
+                        onChange={(e) =>
+                          handleInoxFieldChange(
+                            row.productId,
+                            "demandUnits",
+                            e.target.value
+                          )
+                        }
+                      />
                     </td>
                     <td className="px-2 py-2 text-right">
-                      {row.finishedStockQty.toLocaleString("pt-BR")}
+                      <input
+                        type="number"
+                        min="0"
+                        className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-right text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                        value={row.finishedStockUnits}
+                        onChange={(e) =>
+                          handleInoxFieldChange(
+                            row.productId,
+                            "finishedStockUnits",
+                            e.target.value
+                          )
+                        }
+                      />
                     </td>
                     <td className="px-2 py-2 text-right">
-                      {row.blankStockQty.toLocaleString("pt-BR")}
+                      <input
+                        type="number"
+                        min="0"
+                        className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-right text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                        value={row.blanksStockUnits}
+                        onChange={(e) =>
+                          handleInoxFieldChange(
+                            row.productId,
+                            "blanksStockUnits",
+                            e.target.value
+                          )
+                        }
+                      />
                     </td>
                     <td className="px-2 py-2 text-right">
-                      {row.totalCoverageQty.toLocaleString("pt-BR")}
+                      {formatPieces(row.totalCoverageQty)}
                     </td>
                     <td
                       className={`px-2 py-2 text-right font-bold ${
