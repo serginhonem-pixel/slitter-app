@@ -38,6 +38,9 @@ const parseNumberInput = (value) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const normalizeInoxValue = (v) =>
+  v === null || v === undefined ? "" : String(v);
+
 const RawMaterialRequirement = ({
   motherCoils = [],
   childCoils = [],
@@ -205,6 +208,72 @@ const RawMaterialRequirement = ({
   const [inoxIncomingOrders, setInoxIncomingOrders] = useState([]);
   const [inoxOrderQty, setInoxOrderQty] = useState("");
   const [inoxOrderDate, setInoxOrderDate] = useState("");
+  const [inoxRowDocIds, setInoxRowDocIds] = useState({});
+  const [inoxRowsLoading, setInoxRowsLoading] = useState(false);
+  const [inoxRowsError, setInoxRowsError] = useState("");
+
+  const mergeSavedInoxRows = (baseRows, savedRows) => {
+    const docMap = {};
+    const safeSaved = Array.isArray(savedRows) ? savedRows : [];
+    const merged = (Array.isArray(baseRows) ? baseRows : []).map((row) => {
+      const found = safeSaved.find((s) => s.productId === row.productId);
+      if (!found) return row;
+      const mergedRow = {
+        ...row,
+        demandUnits: normalizeInoxValue(
+          found.demandUnits ?? row.demandUnits ?? ""
+        ),
+        finishedStockUnits: normalizeInoxValue(
+          found.finishedStockUnits ?? row.finishedStockUnits ?? ""
+        ),
+        blanksStockUnits: normalizeInoxValue(
+          found.blanksStockUnits ?? row.blanksStockUnits ?? ""
+        ),
+      };
+      if (found.id) {
+        docMap[row.productId] = found.id;
+      }
+      return mergedRow;
+    });
+    return { merged, docMap };
+  };
+
+  useEffect(() => {
+    const fetchInoxRows = async () => {
+      try {
+        setInoxRowsLoading(true);
+        setInoxRowsError("");
+
+        if (isLocal) {
+          const cached = localStorage.getItem("inoxRowsLocal");
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              setInoxRows((prev) => mergeSavedInoxRows(prev, parsed).merged);
+            } catch (err) {
+              console.warn("Cache local inox invalido, ignorando.", err);
+            }
+          }
+          return;
+        }
+
+        const data = await loadFromDb("inoxBlankRows");
+        setInoxRows((prev) => {
+          const { merged, docMap } = mergeSavedInoxRows(prev, data);
+          setInoxRowDocIds(docMap);
+          return merged;
+        });
+      } catch (error) {
+        console.error("Erro ao carregar Inox Blanks:", error);
+        setInoxRowsError("Nao foi possivel carregar os dados de inox.");
+      } finally {
+        setInoxRowsLoading(false);
+      }
+    };
+
+    fetchInoxRows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ---------- PREPARAÇÃO DOS DADOS (AGRUPAMENTO BOBINAS) ----------
   const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
@@ -397,12 +466,72 @@ const RawMaterialRequirement = ({
     inoxFilteredRows[0] ||
     null;
 
+  const persistInoxRow = async (row) => {
+    if (!row || !row.productId) return;
+    const payload = {
+      productId: row.productId,
+      demandUnits: normalizeInoxValue(row.demandUnits),
+      finishedStockUnits: normalizeInoxValue(row.finishedStockUnits),
+      blanksStockUnits: normalizeInoxValue(row.blanksStockUnits),
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      if (isLocal) {
+        const cached = localStorage.getItem("inoxRowsLocal");
+        let items = [];
+        if (cached) {
+          try {
+            items = JSON.parse(cached);
+          } catch (err) {
+            console.warn("Cache local inox corrompido, recriando.", err);
+          }
+        }
+        const filtered = Array.isArray(items)
+          ? items.filter((i) => i.productId !== row.productId)
+          : [];
+        localStorage.setItem(
+          "inoxRowsLocal",
+          JSON.stringify([...filtered, payload])
+        );
+        return;
+      }
+
+      const existingId = inoxRowDocIds[row.productId];
+      if (existingId) {
+        try {
+          await updateInDb("inoxBlankRows", existingId, payload);
+          return;
+        } catch (error) {
+          console.warn("Falha ao atualizar, tentando criar novo doc.", error);
+        }
+      }
+
+      const saved = await saveToDb("inoxBlankRows", payload);
+      if (saved?.id) {
+        setInoxRowDocIds((prev) => ({ ...prev, [row.productId]: saved.id }));
+      }
+    } catch (error) {
+      console.error("Erro ao salvar inox blanks:", error);
+      setInoxRowsError("Nao foi possivel salvar os dados no Firebase.");
+    }
+  };
+
   const handleInoxFieldChange = (productId, field, value) => {
-    setInoxRows((prev) =>
-      prev.map((row) =>
-        row.productId === productId ? { ...row, [field]: value } : row
-      )
-    );
+    setInoxRows((prev) => {
+      let updatedRow = null;
+      const next = prev.map((row) => {
+        if (row.productId === productId) {
+          updatedRow = { ...row, [field]: value };
+          return updatedRow;
+        }
+        return row;
+      });
+      if (updatedRow) {
+        persistInoxRow(updatedRow);
+      }
+      return next;
+    });
     setSelectedInoxProductId(productId);
   };
 
@@ -1899,6 +2028,19 @@ const RawMaterialRequirement = ({
                 onChange={(e) => setInoxSearch(e.target.value)}
               />
             </div>
+
+            {(inoxRowsLoading || inoxRowsError) && (
+              <div className="mt-2 space-y-1">
+                {inoxRowsLoading && (
+                  <p className="text-xs text-gray-400">
+                    Sincronizando com o Firebase...
+                  </p>
+                )}
+                {inoxRowsError && (
+                  <p className="text-xs text-red-400">{inoxRowsError}</p>
+                )}
+              </div>
+            )}
 
             {selectedInoxRow && (
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
