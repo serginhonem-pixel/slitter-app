@@ -937,6 +937,7 @@ export default function App() {
   const [stockDetailsModalOpen, setStockDetailsModalOpen] = useState(false);
   const [editingMotherCoil, setEditingMotherCoil] = useState(null); 
   const [editingChildCoil, setEditingChildCoil] = useState(null);
+  const [isSavingB2Purchase, setIsSavingB2Purchase] = useState(false);
   const [currentView, setCurrentView] = useState('dashboard'); 
 // 'dashboard', 'rastreioB2', 'mpNeed', etc...
 
@@ -1336,6 +1337,7 @@ export default function App() {
 
 
   const addPurchasedChildCoil = async () => {
+    if (isSavingB2Purchase) return;
     const { nf, entryDate, b2Code, b2Name, weight, quantity, width, thickness, type } = newB2Purchase;
 
     if (!nf || !b2Code || !b2Name || !weight) {
@@ -1381,6 +1383,8 @@ export default function App() {
 
     const prevChildren = [...childCoils];
     setChildCoils((prev) => [...prev, ...tempChildren]);
+
+    setIsSavingB2Purchase(true);
 
     try {
       if (USE_LOCAL_JSON) {
@@ -1428,6 +1432,8 @@ export default function App() {
       console.error("Erro ao salvar bobina 2 comprada", error);
       alert("Erro ao salvar a bobina 2 na nuvem. Reverto a alteracao local.");
       setChildCoils(prevChildren);
+    } finally {
+      setIsSavingB2Purchase(false);
     }
   };
 
@@ -2498,8 +2504,8 @@ export default function App() {
                   </div>
                 )}
 
-                <Button onClick={addPurchasedChildCoil} className="w-full">
-                  Lancar Bobina 2 (NF)
+                <Button onClick={addPurchasedChildCoil} className="w-full" disabled={isSavingB2Purchase}>
+                  {isSavingB2Purchase ? "Lançando..." : "Lancar Bobina 2 (NF)"}
                 </Button>
               </div>
             ) : (
