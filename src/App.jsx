@@ -589,6 +589,83 @@ const ProductDetailsModal = ({ data, onClose }) => {
 
 // --- MODAL DE DETALHES DO ESTOQUE (COM DESCRIÇÃO) ---
 
+
+
+const EditChildCoilModal = ({ coil, onClose, onSave }) => {
+  const [form, setForm] = useState(coil);
+
+  const handleChange = (field, value) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-[90] flex items-center justify-center p-4">
+      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-md p-6 shadow-2xl">
+        <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
+          <h3 className="text-white font-bold text-lg">Editar Bobina 2 (NF)</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="C?digo B2"
+              value={form.b2Code}
+              onChange={(e) => handleChange("b2Code", e.target.value)}
+            />
+            <Input
+              label="Nota Fiscal"
+              value={form.nf || ""}
+              onChange={(e) => handleChange("nf", e.target.value)}
+            />
+          </div>
+
+          <Input
+            label="Descri??o"
+            value={form.b2Name || ""}
+            onChange={(e) => handleChange("b2Name", e.target.value)}
+          />
+
+          <div className="grid grid-cols-3 gap-3">
+            <Input
+              label="Largura (mm)"
+              type="number"
+              value={form.width}
+              onChange={(e) => handleChange("width", e.target.value)}
+            />
+            <Input
+              label="Espessura"
+              value={form.thickness}
+              onChange={(e) => handleChange("thickness", e.target.value)}
+            />
+            <Input
+              label="Tipo"
+              value={form.type}
+              onChange={(e) => handleChange("type", e.target.value)}
+            />
+          </div>
+
+          <Input
+            label="Peso (kg)"
+            type="number"
+            value={form.weight}
+            onChange={(e) => handleChange("weight", e.target.value)}
+          />
+        </div>
+
+        <div className="flex justify-end gap-3 mt-6">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button onClick={() => onSave(form)}>Salvar</Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const StockDetailsModal = ({ code, coils, onClose, onReprint, type }) => { 
 
   const isMother = type === 'mother';
@@ -799,6 +876,18 @@ export default function App() {
       type: '',
       entryDate: new Date().toISOString().split('T')[0] 
   });
+  const [showB2PurchaseForm, setShowB2PurchaseForm] = useState(false);
+  const [newB2Purchase, setNewB2Purchase] = useState({
+    nf: '',
+    entryDate: new Date().toISOString().split('T')[0],
+    b2Code: '',
+    b2Name: '',
+    width: '',
+    thickness: '',
+    type: '',
+    weight: '',
+    quantity: '1',
+  });
   // Adicione junto com mpManualDaily, mpSimulatedPrice, etc.
   const [mpIncomingOrders, setMpIncomingOrders] = useState([]); // Lista de pedidos
   const [hoverData, setHoverData] = useState(null);
@@ -847,6 +936,7 @@ export default function App() {
   const [viewingStockCode, setViewingStockCode] = useState(null); 
   const [stockDetailsModalOpen, setStockDetailsModalOpen] = useState(false);
   const [editingMotherCoil, setEditingMotherCoil] = useState(null); 
+  const [editingChildCoil, setEditingChildCoil] = useState(null);
   const [currentView, setCurrentView] = useState('dashboard'); 
 // 'dashboard', 'rastreioB2', 'mpNeed', etc...
 
@@ -1245,6 +1335,102 @@ export default function App() {
 };
 
 
+  const addPurchasedChildCoil = async () => {
+    const { nf, entryDate, b2Code, b2Name, weight, quantity, width, thickness, type } = newB2Purchase;
+
+    if (!nf || !b2Code || !b2Name || !weight) {
+      return alert("Preencha NF, tipo de bobina 2, descricao e peso total.");
+    }
+
+    const qty = parseInt(quantity, 10);
+    if (!qty || qty <= 0) {
+      return alert("Informe a quantidade de bobinas.");
+    }
+
+    const totalWeight = parseFloat(String(weight).replace(",", "."));
+    if (!totalWeight || totalWeight <= 0) {
+      return alert("Informe um peso total vÇ­lido.");
+    }
+
+    const perCoilWeight = totalWeight / qty;
+    const formattedDate =
+      entryDate && entryDate.includes("-")
+        ? (() => {
+            const [y, m, d] = entryDate.split("-");
+            return `${d}/${m}/${y}`;
+          })()
+        : new Date().toLocaleDateString();
+
+    const tempChildren = Array.from({ length: qty }).map((_, idx) => ({
+      id: `TEMP-B2NF-${Date.now()}-${idx}`,
+      motherId: null,
+      motherCode: nf ? `NF ${nf}` : "NF EXTERNA",
+      nf,
+      b2Code,
+      b2Name,
+      width: parseFloat(width) || 0,
+      thickness: thickness || "-",
+      type: type || "ND",
+      weight: perCoilWeight,
+      initialWeight: perCoilWeight,
+      status: "stock",
+      createdAt: formattedDate,
+      origin: "NF",
+      source: "purchase_nf",
+    }));
+
+    const prevChildren = [...childCoils];
+    setChildCoils((prev) => [...prev, ...tempChildren]);
+
+    try {
+      if (USE_LOCAL_JSON) {
+        // Modo local: apenas mantém no estado para visualizar/testar
+        alert("Bobina 2 pronta registrada localmente (modo JSON).");
+      } else {
+        const savedChildren = [];
+        for (const child of tempChildren) {
+          const { id: tempId, ...payload } = child;
+          const saved = await saveToDb("childCoils", payload);
+          savedChildren.push(saved);
+        }
+
+        setChildCoils((prev) => {
+          const others = prev.filter((c) => !tempChildren.some((t) => t.id === c.id));
+          return [...others, ...savedChildren];
+        });
+
+        await logUserAction("ENTRADA_B2_NF", {
+          nf,
+          b2Code,
+          qty,
+          totalWeight,
+        });
+
+        setItemsToPrint(savedChildren);
+        setPrintType("coil");
+        setShowPrintModal(true);
+      }
+
+      setNewB2Purchase({
+        nf: "",
+        entryDate: new Date().toISOString().split("T")[0],
+        b2Code: "",
+        b2Name: "",
+        width: "",
+        thickness: "",
+        type: "",
+        weight: "",
+        quantity: "1",
+      });
+      setShowB2PurchaseForm(false);
+      alert("Bobina 2 pronta registrada no estoque.");
+    } catch (error) {
+      console.error("Erro ao salvar bobina 2 comprada", error);
+      alert("Erro ao salvar a bobina 2 na nuvem. Reverto a alteracao local.");
+      setChildCoils(prevChildren);
+    }
+  };
+
   const deleteMotherCoil = async (id) => {
     if (!window.confirm("Tem certeza? Isso apagará a bobina permanentemente.")) {
       return;
@@ -1267,6 +1453,53 @@ export default function App() {
       } catch (reloadError) {
         console.error('Erro ao recarregar dados após falha de exclusão', reloadError);
       }
+    }
+  };
+
+  const deleteChildCoil = async (id) => {
+    if (!window.confirm("Tem certeza? Isso apagará a bobina 2 permanentemente.")) {
+      return;
+    }
+
+    setChildCoils((prev) => prev.filter((c) => c.id !== id));
+
+    if (USE_LOCAL_JSON) return;
+
+    try {
+      await deleteFromDb("childCoils", id);
+    } catch (error) {
+      console.error("Erro ao excluir bobina 2 no Firebase", error);
+      alert("Não consegui excluir no servidor. Vou tentar recarregar os dados do banco.");
+
+      try {
+        const children = await loadFromDb("childCoils");
+        if (Array.isArray(children)) {
+          setChildCoils(children);
+        }
+      } catch (reloadError) {
+        console.error("Erro ao recarregar dados após falha de exclusão de B2", reloadError);
+      }
+    }
+  };
+
+  const updateChildCoil = async (coil) => {
+    const { entryType, ...clean } = coil || {};
+    const safeCoil = {
+      ...clean,
+      weight: parseFloat(clean.weight) || 0,
+      width: parseFloat(clean.width) || 0,
+    };
+
+    setChildCoils((prev) => prev.map((c) => (c.id === safeCoil.id ? safeCoil : c)));
+    setEditingChildCoil(null);
+
+    if (USE_LOCAL_JSON) return;
+
+    try {
+      await updateInDb("childCoils", safeCoil.id, safeCoil);
+    } catch (error) {
+      console.error("Erro ao atualizar bobina 2 no Firebase", error);
+      alert("Atualizei só localmente; não consegui salvar no servidor.");
     }
   };
 
@@ -1942,8 +2175,10 @@ export default function App() {
   // --- Define se estamos cadastrando bobina "normal" ou blank inox ---
   const family = (newMotherCoil?.family || "").toUpperCase();
   const typeUpper = (newMotherCoil?.type || "").toUpperCase();
+  const currentForm = (newMotherCoil?.form || "").toUpperCase();
   const isInoxSelected =
-    family === "INOX" || typeUpper === "INOX" || newMotherCoil?.form === "BLANK";
+    family === "INOX" || typeUpper === "INOX" || currentForm === "BLANK";
+  const isB2Industrialized = currentForm === "B2_PURCHASE";
 
   // Catálogo de produtos inox
   const inoxProducts = INITIAL_INOX_BLANK_PRODUCTS || [];
@@ -1956,6 +2191,39 @@ export default function App() {
   const selectedInoxGrade = newMotherCoil?.inoxGrade || "";
   const defaultProductForSelectedGrade =
     inoxProducts.find((p) => p.inoxGrade === selectedInoxGrade) || null;
+
+  const uniqueB2Catalog = Array.from(
+    new Map(
+      productCatalog
+        .filter((p) => p.b2Code)
+        .map((p) => [p.b2Code, p])
+    ).values()
+  ).sort((a, b) => a.b2Name.localeCompare(b.b2Name));
+
+  const handleSelectPurchasedB2 = (code) => {
+    const selected = productCatalog.find((p) => p.b2Code === code);
+    setNewB2Purchase((prev) => ({
+      ...prev,
+      b2Code: code,
+      b2Name: selected?.b2Name || prev.b2Name,
+      width: selected?.width || prev.width,
+      thickness: selected?.thickness || prev.thickness,
+      type: selected?.type || prev.type,
+    }));
+    setNewMotherCoil((prev) => ({
+      ...prev,
+      material: selected?.b2Name || prev.material,
+      thickness: selected?.thickness || prev.thickness,
+      type: selected?.type || prev.type,
+    }));
+  };
+
+  const purchaseQty = parseInt(newB2Purchase.quantity, 10) || 0;
+  const purchaseTotalWeight = parseFloat(String(newB2Purchase.weight || "").replace(",", "."));
+  const purchaseUnitWeight =
+    purchaseQty > 0 && purchaseTotalWeight
+      ? (purchaseTotalWeight / purchaseQty).toFixed(1)
+      : null;
 
   const handleSelectInoxGrade = (e) => {
   const grade = e.target.value;
@@ -2019,26 +2287,27 @@ export default function App() {
               <Plus size={32} />
             </div>
             <h2 className="text-2xl font-bold text-white">
-              {isInoxSelected ? "Novo Blank Inox" : "Nova Bobina"}
+              {isInoxSelected ? "Novo Blank Inox" : "Entrada de MP"}
             </h2>
             <p className="text-gray-400 text-sm mt-1">
               {isInoxSelected
                 ? "Cadastre chapas / blanks inox recebidos"
-                : "Cadastre a matéria prima recebida"}
+                : "Cadastre a materia-prima recebida ou bobinas 2 prontas de NF"}
             </p>
           </div>
 
           <div className="space-y-4">
-            {/* --- LINHA 0: TIPO DE MATÉRIA-PRIMA (BOBINA x BLANK INOX) --- */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
+            {/* --- LINHA 0: TIPO DE MAT?RIA-PRIMA (BOBINA x BLANK INOX x B2 NF) --- */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-3">
                 <label className="block text-xs font-bold text-blue-400/70 uppercase mb-1">
-                  Tipo de Matéria-prima
+                  Tipo de Mat?ria-prima
                 </label>
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
+                      setShowB2PurchaseForm(false);
                       setNewMotherCoil({
                         ...newMotherCoil,
                         family: "CARBONO",
@@ -2048,185 +2317,341 @@ export default function App() {
                         thickness: "",
                         width: "",
                         length: "",
-                      })
-                    }
+                      });
+                    }}
                     className={`flex-1 text-xs font-semibold rounded-lg px-3 py-2 border transition ${
-                      !isInoxSelected
+                      !isInoxSelected && !isB2Industrialized
                         ? "bg-blue-600/20 border-blue-500/60 text-blue-100"
-                        : "bg-gray-800 border-gray-700 text-gray-300 hover:border-blue-500/40"
+                        : "bg-gray-800 border-gray-700 text-gray-300 hover-border-blue-500/40"
                     }`}
                   >
-                    Bobina (aço / galv)
+                    Bobina (a?o / galv)
                   </button>
 
                   <button
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
+                      setShowB2PurchaseForm(false);
                       setNewMotherCoil({
                         ...newMotherCoil,
                         family: "INOX",
                         form: "BLANK",
                         type: "INOX",
-                      })
-                    }
+                      });
+                    }}
                     className={`flex-1 text-xs font-semibold rounded-lg px-3 py-2 border transition ${
                       isInoxSelected
                         ? "bg-emerald-600/20 border-emerald-500/60 text-emerald-100"
-                        : "bg-gray-800 border-gray-700 text-gray-300 hover:border-emerald-500/40"
+                        : "bg-gray-800 border-gray-700 text-gray-300 hover-border-emerald-500/40"
                     }`}
                   >
                     Blank Inox
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowB2PurchaseForm(true);
+                      setNewMotherCoil({
+                        ...newMotherCoil,
+                        family: "B2",
+                        form: "B2_PURCHASE",
+                        type: "",
+                        thickness: "",
+                        width: "",
+                        length: "",
+                      });
+                    }}
+                    className={`flex-1 text-xs font-semibold rounded-lg px-3 py-2 border transition ${
+                      isB2Industrialized
+                        ? "bg-indigo-600/20 border-indigo-500/60 text-indigo-100"
+                        : "bg-gray-800 border-gray-700 text-gray-300 hover-border-indigo-500/40"
+                    }`}
+                  >
+                    Bobina 2 - Industrializada
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* --- LINHA 0.1: SELETOR DE TIPO DE INOX (SEM REPETIÇÃO) --- */}
-            {isInoxSelected && (
-              <div>
-                <label className="block text-xs font-bold text-blue-400/70 uppercase mb-1">
-                  Tipo de Inox
-                </label>
-                <select
-                  value={selectedInoxGrade}
-                  onChange={handleSelectInoxGrade}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
-                >
-                  <option value="">Selecione...</option>
-                  {inoxGrades.map((grade) => (
-                    <option key={grade} value={grade}>
-                      {grade}
-                    </option>
-                  ))}
-                </select>
+            {isB2Industrialized ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Nota Fiscal"
+                    value={newB2Purchase.nf}
+                    onChange={(e) =>
+                      setNewB2Purchase((prev) => ({
+                        ...prev,
+                        nf: e.target.value,
+                      }))
+                    }
+                  />
+                  <Input
+                    label="Data Entrada"
+                    type="date"
+                    value={newB2Purchase.entryDate}
+                    onChange={(e) =>
+                      setNewB2Purchase((prev) => ({
+                        ...prev,
+                        entryDate: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
 
-                {defaultProductForSelectedGrade && (
-                  <div className="mt-2 text-[11px] text-gray-400">
-                    Medidas padrão:{" "}
-                    <span className="font-semibold">
-                      {defaultProductForSelectedGrade.measuresLabel}
+                <div>
+                  <label className="block text-xs font-bold text-blue-400/70 uppercase mb-1">
+                    Tipo de Bobina 2
+                  </label>
+                  <select
+                    className="w-full p-3 border border-gray-700 rounded-lg bg-gray-900 text-white outline-none text-sm"
+                    value={newB2Purchase.b2Code}
+                    onChange={(e) => handleSelectPurchasedB2(e.target.value)}
+                  >
+                    <option value="">Selecione...</option>
+                    {uniqueB2Catalog.map((item) => (
+                      <option key={item.b2Code} value={item.b2Code}>
+                        {item.b2Code} - {item.b2Name} ({item.width || "-"}mm)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <Input
+                  label="Descrição Bobina 2"
+                  value={newB2Purchase.b2Name}
+                  onChange={(e) =>
+                    setNewB2Purchase((prev) => ({
+                      ...prev,
+                      b2Name: e.target.value,
+                    }))
+                  }
+                  placeholder="Ex: BOBINA 2 PERFIL UE"
+                />
+
+                <div className="grid grid-cols-3 gap-3">
+                  <Input
+                    label="Largura (mm)"
+                    type="number"
+                    value={newB2Purchase.width}
+                    onChange={(e) =>
+                      setNewB2Purchase((prev) => ({
+                        ...prev,
+                        width: e.target.value,
+                      }))
+                    }
+                  />
+                  <Input
+                    label="Espessura"
+                    value={newB2Purchase.thickness}
+                    onChange={(e) =>
+                      setNewB2Purchase((prev) => ({
+                        ...prev,
+                        thickness: e.target.value,
+                      }))
+                    }
+                  />
+                  <Input
+                    label="Tipo"
+                    value={newB2Purchase.type}
+                    onChange={(e) =>
+                      setNewB2Purchase((prev) => ({
+                        ...prev,
+                        type: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Peso total (kg)"
+                    type="number"
+                    value={newB2Purchase.weight}
+                    onChange={(e) =>
+                      setNewB2Purchase((prev) => ({
+                        ...prev,
+                        weight: e.target.value,
+                      }))
+                    }
+                  />
+                  <Input
+                    label="Qtd de bobinas"
+                    type="number"
+                    value={newB2Purchase.quantity}
+                    onChange={(e) =>
+                      setNewB2Purchase((prev) => ({
+                        ...prev,
+                        quantity: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+
+                {purchaseUnitWeight && (
+                  <div className="text-xs text-gray-400">
+                    Peso por bobina aproximado:{" "}
+                    <span className="text-blue-300 font-bold">
+                      {purchaseUnitWeight} kg
                     </span>
                   </div>
                 )}
-              </div>
-            )}
 
-            {/* --- LINHA 1: CÓDIGO, NF e DATA (3 Colunas) --- */}
-            <div className="grid grid-cols-3 gap-3">
-              {/* Código Lote só aparece quando NÃO é inox */}
-              {!isInoxSelected && (
-                <div className="col-span-1">
-                  <Input
-                    label="Código Lote"
-                    value={newMotherCoil.code}
-                    onChange={(e) =>
-                      setNewMotherCoil({
-                        ...newMotherCoil,
-                        code: e.target.value,
-                      })
-                    }
-                    placeholder="Ex: 10644"
-                  />
-                </div>
-              )}
-
-              <div className={isInoxSelected ? "col-span-2" : "col-span-1"}>
-                <Input
-                  label="Nota Fiscal"
-                  value={newMotherCoil.nf}
-                  onChange={(e) =>
-                    setNewMotherCoil({
-                      ...newMotherCoil,
-                      nf: e.target.value,
-                    })
-                  }
-                  placeholder="Ex: 12345"
-                />
-              </div>
-
-              <div className="col-span-1">
-                <Input
-                  label="Data Entrada"
-                  type="date"
-                  value={newMotherCoil.entryDate}
-                  onChange={(e) =>
-                    setNewMotherCoil({
-                      ...newMotherCoil,
-                      entryDate: e.target.value,
-                    })
-                  }
-                />
-              </div>
-            </div>
-
-            {/* --- LINHA 2: 
-                  - INOX: Peso + Quantidade
-                  - Não INOX: Peso + Largura
-              --- */}
-            {isInoxSelected ? (
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="Peso (kg)"
-                  type="number"
-                  value={newMotherCoil.weight}
-                  onChange={(e) =>
-                    setNewMotherCoil({
-                      ...newMotherCoil,
-                      weight: e.target.value,
-                    })
-                  }
-                />
-                <Input
-                  label="Quantidade (peças)"
-                  type="number"
-                  value={newMotherCoil.qty || ""}
-                  onChange={(e) =>
-                    setNewMotherCoil({
-                      ...newMotherCoil,
-                      qty: e.target.value,
-                    })
-                  }
-                />
+                <Button onClick={addPurchasedChildCoil} className="w-full">
+                  Lancar Bobina 2 (NF)
+                </Button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="Peso (kg)"
-                  type="number"
-                  value={newMotherCoil.weight}
-                  onChange={(e) =>
-                    setNewMotherCoil({
-                      ...newMotherCoil,
-                      weight: e.target.value,
-                    })
-                  }
-                />
-                <Input
-                  label="Largura (mm)"
-                  type="number"
-                  value={newMotherCoil.width}
-                  onChange={(e) =>
-                    setNewMotherCoil({
-                      ...newMotherCoil,
-                      width: e.target.value,
-                    })
-                  }
-                />
-              </div>
+              <>
+                {/* --- LINHA 0.1: SELETOR DE TIPO DE INOX (SEM REPETIÇÃO) --- */}
+                {isInoxSelected && (
+                  <div>
+                    <label className="block text-xs font-bold text-blue-400/70 uppercase mb-1">
+                      Tipo de Inox
+                    </label>
+                    <select
+                      value={selectedInoxGrade}
+                      onChange={handleSelectInoxGrade}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                    >
+                      <option value="">Selecione...</option>
+                      {inoxGrades.map((grade) => (
+                        <option key={grade} value={grade}>
+                          {grade}
+                        </option>
+                      ))}
+                    </select>
+
+                    {defaultProductForSelectedGrade && (
+                      <div className="mt-2 text-[11px] text-gray-400">
+                        Medidas padrão:{" "}
+                        <span className="font-semibold">
+                          {defaultProductForSelectedGrade.measuresLabel}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* --- LINHA 1: CÓDIGO, NF e DATA (3 Colunas) --- */}
+                <div className="grid grid-cols-3 gap-3">
+                  {/* Código Lote só aparece quando NÃO é inox */}
+                  {!isInoxSelected && (
+                    <div className="col-span-1">
+                      <Input
+                        label="Código Lote"
+                        value={newMotherCoil.code}
+                        onChange={(e) =>
+                          setNewMotherCoil({
+                            ...newMotherCoil,
+                            code: e.target.value,
+                          })
+                        }
+                        placeholder="Ex: 10644"
+                      />
+                    </div>
+                  )}
+
+                  <div className={isInoxSelected ? "col-span-2" : "col-span-1"}>
+                    <Input
+                      label="Nota Fiscal"
+                      value={newMotherCoil.nf}
+                      onChange={(e) =>
+                        setNewMotherCoil({
+                          ...newMotherCoil,
+                          nf: e.target.value,
+                        })
+                      }
+                      placeholder="Ex: 12345"
+                    />
+                  </div>
+
+                  <div className="col-span-1">
+                    <Input
+                      label="Data Entrada"
+                      type="date"
+                      value={newMotherCoil.entryDate}
+                      onChange={(e) =>
+                        setNewMotherCoil({
+                          ...newMotherCoil,
+                          entryDate: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                {/* --- LINHA 2: 
+                      - INOX: Peso + Quantidade
+                      - Não INOX: Peso + Largura
+                  --- */}
+                {isInoxSelected ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    <Input
+                      label="Peso (kg)"
+                      type="number"
+                      value={newMotherCoil.weight}
+                      onChange={(e) =>
+                        setNewMotherCoil({
+                          ...newMotherCoil,
+                          weight: e.target.value,
+                        })
+                      }
+                    />
+                    <Input
+                      label="Quantidade (peças)"
+                      type="number"
+                      value={newMotherCoil.qty || ""}
+                      onChange={(e) =>
+                        setNewMotherCoil({
+                          ...newMotherCoil,
+                          qty: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4">
+                    <Input
+                      label="Peso (kg)"
+                      type="number"
+                      value={newMotherCoil.weight}
+                      onChange={(e) =>
+                        setNewMotherCoil({
+                          ...newMotherCoil,
+                          weight: e.target.value,
+                        })
+                      }
+                    />
+                    <Input
+                      label="Largura (mm)"
+                      type="number"
+                      value={newMotherCoil.width}
+                      onChange={(e) =>
+                        setNewMotherCoil({
+                          ...newMotherCoil,
+                          width: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                )}
+              </>
             )}
 
-            {/* Não tem mais campo para digitar medidas do inox:
-                elas vêm do catálogo e já foram salvas em thickness/width/length */}
-
-            <Button
-              onClick={addMotherCoil}
-              className="w-full py-3 text-lg shadow-md mt-4"
-            >
-              Confirmar Entrada
-            </Button>
+            {!isB2Industrialized && (
+              <Button
+                onClick={addMotherCoil}
+                className="w-full py-3 text-lg shadow-md mt-4"
+              >
+                Confirmar Entrada
+              </Button>
+            )}
           </div>
         </Card>
       </div>
+
 
       {/* LADO DIREITO: LISTA DE ENTRADAS */}
       <div className="lg:col-span-2 flex flex-col gap-6">
@@ -2266,14 +2691,24 @@ export default function App() {
             <List size={20} className="text-gray-400" /> Entradas Recentes
           </h3>
           <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar-dark space-y-3 max-h-[calc(100vh-260px)]">
-            {[...motherCoils]
+            {[
+              ...motherCoils.map((m) => ({ ...m, entryType: "mother" })),
+              ...childCoils
+                .filter((c) => c.source === "purchase_nf" || c.origin === "NF")
+                .map((c) => ({ ...c, entryType: "b2nf" })),
+            ]
               .sort((a, b) => {
                 const getDateValue = (item) => {
-                  if (item.entryDate && item.entryDate.length === 10) {
-                    return new Date(item.entryDate).getTime();
+                  const raw =
+                    item.entryDate ||
+                    item.date ||
+                    item.createdAt ||
+                    "";
+                  if (raw && raw.length === 10 && raw.includes("-")) {
+                    return new Date(raw).getTime();
                   }
-                  if (item.date && item.date.includes("/")) {
-                    const [dia, mes, ano] = item.date.split("/");
+                  if (raw && raw.includes("/")) {
+                    const [dia, mes, ano] = raw.split("/");
                     return new Date(`${ano}-${mes}-${dia}`).getTime();
                   }
                   return 0;
@@ -2286,9 +2721,13 @@ export default function App() {
                   return timeB - timeA;
                 }
 
-                return String(b.code).localeCompare(String(a.code), undefined, {
-                  numeric: true,
-                });
+                const codeA = a.entryType === "b2nf" ? a.b2Code : a.code;
+                const codeB = b.entryType === "b2nf" ? b.b2Code : b.code;
+
+                return String(codeB || "")
+                  .localeCompare(String(codeA || ""), undefined, {
+                    numeric: true,
+                  });
               })
               .slice(0, 50)
               .map((coil) => (
@@ -2302,7 +2741,7 @@ export default function App() {
                 >
                   <div>
                     <div className="font-bold text-gray-200 flex items-center gap-2 flex-wrap">
-                      {coil.code}
+                      {coil.entryType === "b2nf" ? coil.b2Code : coil.code}
                       <span
                         className={`text-[10px] px-2 py-0.5 rounded-full ${
                           coil.status === "stock"
@@ -2310,7 +2749,9 @@ export default function App() {
                             : "bg-gray-800 text-gray-500"
                         }`}
                       >
-                        {coil.status === "stock"
+                        {coil.entryType === "b2nf"
+                          ? "B2 NF"
+                          : coil.status === "stock"
                           ? "EM ESTOQUE"
                           : "CONSUMIDA"}
                       </span>
@@ -2323,12 +2764,16 @@ export default function App() {
                     </div>
 
                     <div className="text-sm text-gray-500 mt-1">
-                      {(coil.family || coil.type || "").toUpperCase()} |{" "}
-                      {coil.thickness} | {coil.material}
+                      {coil.entryType === "b2nf"
+                        ? `${coil.b2Name || coil.b2Code || ""}`.toUpperCase()
+                        : (coil.family || coil.type || "").toUpperCase()}{" "}
+                      | {coil.thickness || "-"} |{" "}
+                      {coil.entryType === "b2nf" ? coil.type : coil.material}
                     </div>
 
                     <div className="text-[10px] text-blue-400 mt-1 font-bold">
-                      NF: {coil.nf || "-"} | Entrada: {coil.date}
+                      NF: {coil.nf || "-"} | Entrada:{" "}
+                      {coil.entryDate || coil.date || coil.createdAt || "-"}
                     </div>
 
                     {coil.form === "BLANK" && (
@@ -2337,34 +2782,53 @@ export default function App() {
                         {coil.qty || 0} pcs
                       </div>
                     )}
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <div className="font-bold text-xl text-white">
-                        {(Number(coil.weight) || 0).toFixed(0)}{" "}
-                        <span className="text-sm text-gray-500 font-normal">
-                          kg
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {coil.width}mm
-                      </div>
                     </div>
+
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <div className="font-bold text-xl text-white">
+                        {(Number(coil.weight) || 0).toFixed(0)}{" "}
+                          <span className="text-sm text-gray-500 font-normal">
+                            kg
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                        {coil.width}mm
+                        </div>
+                      </div>
                     {coil.status === "stock" && (
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => setEditingMotherCoil(coil)}
-                          className="p-2 bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600 hover:text-white"
-                        >
-                          <Edit size={16} />
-                        </button>
-                        <button
-                          onClick={() => deleteMotherCoil(coil.id)}
-                          className="p-2 bg-red-600/20 text-red-400 rounded hover:bg-red-600 hover:text-white"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        {coil.entryType === "b2nf" ? (
+                          <>
+                            <button
+                              onClick={() => setEditingChildCoil(coil)}
+                              className="p-2 bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600 hover:text-white"
+                            >
+                              <Edit size={16} />
+                            </button>
+                            <button
+                              onClick={() => deleteChildCoil(coil.id)}
+                              className="p-2 bg-red-600/20 text-red-400 rounded hover:bg-red-600 hover:text-white"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => setEditingMotherCoil(coil)}
+                              className="p-2 bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600 hover:text-white"
+                            >
+                              <Edit size={16} />
+                            </button>
+                            <button
+                              onClick={() => deleteMotherCoil(coil.id)}
+                              className="p-2 bg-red-600/20 text-red-400 rounded hover:bg-red-600 hover:text-white"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2528,7 +2992,7 @@ const getUnitWeight = (code) => {
                     <div className="text-center text-gray-500 py-10">Nenhum corte registrado ainda.</div>
                 ) : (
                     <table className="w-full text-sm text-left text-gray-300">
-                        <thead className="bg-gray-900 text-gray-400 sticky top-0"><tr><th className="p-3">Data</th><th className="p-3">Bobina Mãe</th><th className="p-3">Saída</th><th className="p-3 text-right">Sucata</th><th className="p-3 text-right">Total</th></tr></thead>
+                        <thead className="bg-gray-900 text-gray-400 sticky top-0"><tr><th className="p-3">Data</th><th className="p-3">Entrada de MP</th><th className="p-3">Saída</th><th className="p-3 text-right">Sucata</th><th className="p-3 text-right">Total</th></tr></thead>
                         <tbody className="divide-y divide-gray-700">
                             {cuttingLogs.map(log => {
                                 const rawItems = log.generatedItems || '';
@@ -4397,7 +4861,7 @@ const handleFullRestore = (e) => {
           <div className="space-y-6">
             {/* KPI CARDS */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
-              <Card className="border-l-4 border-blue-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Estoque Mãe</h3><div className="flex flex-col"><p className="text-3xl font-bold text-white">{safeMother.filter(m => m.status === 'stock').length} <span className="text-sm text-gray-500 font-normal">bobinas</span></p><p className="text-sm text-blue-400 font-bold">{totalMotherWeight.toLocaleString('pt-BR')} kg</p></div></Card>
+              <Card className="border-l-4 border-blue-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Entrada de MP</h3><div className="flex flex-col"><p className="text-3xl font-bold text-white">{safeMother.filter(m => m.status === 'stock').length} <span className="text-sm text-gray-500 font-normal">bobinas</span></p><p className="text-sm text-blue-400 font-bold">{totalMotherWeight.toLocaleString('pt-BR')} kg</p></div></Card>
               <Card className="border-l-4 border-indigo-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Estoque B2</h3><div className="flex flex-col"><p className="text-3xl font-bold text-white">{safeChild.filter(c => c.status === 'stock').length} <span className="text-sm text-gray-500 font-normal">bobinas</span></p><p className="text-sm text-indigo-400 font-bold">{totalB2Weight.toLocaleString('pt-BR')} kg</p></div></Card>
               <Card className="border-l-4 border-emerald-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Estoque Acabado</h3><div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{totalFinishedCount}</p><span className="text-sm text-gray-500 mb-1">peças</span></div></Card>
               <Card className="border-l-4 border-purple-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Estoque Telhas (10236)</h3><div className="flex flex-col"><p className="text-3xl font-bold text-white">{tileStockCount} <span className="text-sm text-gray-500 font-normal">bobinas</span></p><p className="text-sm text-purple-400 font-bold">{tileStockWeight.toLocaleString('pt-BR')} kg</p></div></Card>
@@ -4409,9 +4873,9 @@ const handleFullRestore = (e) => {
                <Card className="h-[500px] flex flex-col overflow-hidden col-span-1 lg:col-span-1">
                  <div className="mb-4">
                      <div className="flex justify-between items-center mb-2">
-                         <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-blue-500"/> Estoque Mãe</h3>
+                         <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-blue-500"/> Entrada de MP</h3>
                          <div className="flex gap-2">
-                            <Button variant="secondary" onClick={() => { const data = filteredMotherList.map(i => ({ code: i.code, name: `${i.material} (${i.width}mm)`, count: `${i.count} bob (${i.weight}kg)` })); handleGeneratePDF('Estoque Bobina Mãe', data); }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button>
+                            <Button variant="secondary" onClick={() => { const data = filteredMotherList.map(i => ({ code: i.code, name: `${i.material} (${i.width}mm)`, count: `${i.count} bob (${i.weight}kg)` })); handleGeneratePDF('Estoque Entrada de MP', data); }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button>
                             <Button variant="secondary" onClick={() => { const data = filteredMotherList.map(i => ({ "Código": i.code, "Material": i.material, "Largura": i.width, "Qtd Bobinas": i.count, "Peso Total (kg)": i.weight })); exportToCSV(data, 'saldo_estoque_mae'); }} className="h-8 text-xs bg-blue-900/20 text-blue-400 border-blue-900/50 hover:bg-blue-900/40"><Download size={14}/> CSV</Button>
                          </div>
                      </div>
@@ -5116,7 +5580,7 @@ const renderB2DynamicReport = () => {
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mt-8 mb-4">Operacional</p>
            
            <button onClick={() => { setActiveTab('mother'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'mother' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-             <ScrollText size={20} className={activeTab === 'mother' ? "text-blue-400" : "group-hover:text-blue-400 transition-colors"}/> <span className="font-medium">Bobina Mãe</span>
+             <ScrollText size={20} className={activeTab === 'mother' ? "text-blue-400" : "group-hover:text-blue-400 transition-colors"}/> <span className="font-medium">Entrada de MP</span>
            </button>
            {/* ... outros botões ... */}
                      
@@ -5216,7 +5680,7 @@ const renderB2DynamicReport = () => {
               <div>
                 <h2 className="text-lg md:text-2xl font-bold text-white tracking-tight truncate">
                   {activeTab === 'dashboard' && "Dashboard"}
-                  {activeTab === 'mother' && "Estoque Mãe"}
+                  {activeTab === 'mother' && "Entrada de MP"}
                   {activeTab === 'cutting' && "Corte Slitter"}
                   {activeTab === 'production' && "Apontamento"}
                   {activeTab === 'shipping' && "Expedição"}
@@ -5299,6 +5763,13 @@ const renderB2DynamicReport = () => {
           coil={editingMotherCoil} 
           onClose={() => setEditingMotherCoil(null)} 
           onSave={updateMotherCoil} 
+        />
+      )}
+      {editingChildCoil && (
+        <EditChildCoilModal 
+          coil={editingChildCoil} 
+          onClose={() => setEditingChildCoil(null)} 
+          onSave={updateChildCoil} 
         />
       )}
       
