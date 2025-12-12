@@ -17,9 +17,10 @@ import {
   ComposedChart
 } from 'recharts';
 import Button from './components/ui/Button';
+import Login from './components/Login';
 import IndicatorsDashboard from './components/modals/IndicatorsDashboard.jsx';
 
-import { db, deleteFromDb, loadFromDb, saveToDb, updateInDb } from './services/api'; // Certifique-se de exportar 'db' no seu arquivo de configuração
+import { auth, db, deleteFromDb, loadFromDb, saveToDb, updateInDb, logoutUser } from './services/api'; // Certifique-se de exportar 'db' no seu arquivo de configuração
 
 import {
   collection,
@@ -27,6 +28,7 @@ import {
   onSnapshot,
   writeBatch
 } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 
 
 
@@ -768,6 +770,8 @@ const INOX_STOCK_POSITIONS = [
     
 export default function App() {
   const importFullBackupRef = useRef(null);
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [viewingCutLog, setViewingCutLog] = useState(null); // Para abrir o modal de detalhes do corte
   const [activeTab, setActiveTab] = useState('dashboard');
   // --- ESTADOS PARA O RELATÓRIO DINÂMICO B2 ---
@@ -905,6 +909,40 @@ export default function App() {
     }
   }, [newMotherCoil.code, motherCatalog]);
 
+  const logUserAction = async (action, payload = {}) => {
+    if (!user) return;
+    try {
+      await saveToDb('userLogs', {
+        action,
+        userId: user.uid,
+        userEmail: user.email,
+        timestamp: new Date().toISOString(),
+        payload
+      });
+    } catch (err) {
+      console.error('Erro ao registrar log de usuário:', err);
+    }
+  };
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser);
+      setAuthLoading(false);
+
+      if (!firebaseUser) {
+        setMotherCoils([]);
+        setChildCoils([]);
+        setMotherCatalog([]);
+        setProductCatalog([]);
+        setProductionLogs([]);
+        setCuttingLogs([]);
+        setShippingLogs([]);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
     // CARREGAR DADOS (Firebase com fallback no localStorage)
     
   
@@ -923,6 +961,8 @@ export default function App() {
 
   // 1. CARREGAMENTO EM TEMPO REAL (Conexão Viva)
   useEffect(() => {
+  if (!user) return;
+
   if (USE_LOCAL_JSON) {
     console.log("[DATA] Rodando com JSON local (sem Firebase)");
 
@@ -1005,7 +1045,7 @@ export default function App() {
   return () => {
     unsubs.forEach((u) => u && u());
   };
-}, []);
+}, [user]);
 
 
  // Roda apenas uma vez ao montar a tela
@@ -1180,6 +1220,11 @@ export default function App() {
     // 6) Persiste no Firebase (sem o ID provisório)
     const { id, ...coilDataToSend } = newCoil;
     const savedItem = await saveToDb("motherCoils", coilDataToSend);
+    await logUserAction('ENTRADA_MP', {
+      motherCode: coilDataToSend.code,
+      weight: coilDataToSend.weight,
+      nf: coilDataToSend.nf
+    });
 
     // 7) Troca o ID provisório pelo ID real
     setMotherCoils((prev) =>
@@ -1382,6 +1427,12 @@ export default function App() {
       setItemsToPrint(savedChildrenReal); 
       setPrintType('coil'); 
       setShowPrintModal(true);
+      await logUserAction('CORTE', {
+        motherCode: mother.code,
+        newChildCount: savedChildrenReal.length,
+        childCodes: savedChildrenReal.map(c => c.b2Code),
+        scrapKg: manualScrap
+      });
       
       alert("Corte salvo na nuvem!");
 
@@ -1599,6 +1650,12 @@ export default function App() {
 
         // Manda imprimir os reais
         setItemsToPrint(savedLogsReal); setPrintType('product'); setShowPrintModal(true);
+        await logUserAction('PRODUCAO', {
+          productCode: prodInfo ? prodInfo.code : selectedProductCode,
+          pieces: totalProducedPieces,
+          scrapKg: prodScrap,
+          sourceChildIds: sourceIds
+        });
         alert("Produção salva na nuvem!");
 
     } catch (error) {
@@ -1650,6 +1707,11 @@ export default function App() {
 
         // --- 5. TROCA ID ---
         setShippingLogs(prev => prev.map(l => l.id === tempId ? { ...l, id: savedLog.id } : l));
+        await logUserAction('EXPEDICAO', {
+          productCode: shipProduct,
+          quantity: qty,
+          destination: shipDest
+        });
         
         alert("Expedição salva!");
     } catch (e) {
@@ -4993,9 +5055,32 @@ const renderB2DynamicReport = () => {
     };
     reader.readAsText(file);
   };
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+    } catch (error) {
+      console.error('Erro ao sair:', error);
+    } finally {
+      setUser(null);
+    }
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
+        <p>Carregando sessão...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login onLoginSuccess={setUser} />;
+  }
+
   return (
 
-    
+
     <div className="flex h-screen bg-[#0f172a] font-sans text-gray-100 overflow-hidden">
       {ENABLE_BACKUP_BUTTON && (
         <input 
@@ -5109,7 +5194,17 @@ const renderB2DynamicReport = () => {
 
         </nav>
         <div className="px-6 py-2 mt-auto border-t border-white/5 text-center"><p className="text-[11px] text-gray-500 font-medium">© 2025 — <span className="text-gray-400 font-semibold">Sergio Betini</span></p></div>
-        <div className="p-6 border-t border-white/5 bg-black/20"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-gray-300 border border-gray-600"><User size={20}/></div><div><p className="text-white font-bold text-sm">Operador</p><p className="text-xs text-gray-500">Produção</p></div></div></div>
+        <div className="p-6 border-t border-white/5 bg-black/20">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-gray-300 border border-gray-600">
+              <User size={20}/>
+            </div>
+            <div>
+              <p className="text-white font-bold text-sm">{user?.email || 'Usuário'}</p>
+              <p className="text-xs text-gray-500">PCP / Gestão</p>
+            </div>
+          </div>
+        </div>
       </aside>
     
       {/* Main Content */}
@@ -5131,7 +5226,15 @@ const renderB2DynamicReport = () => {
                 <p className="text-xs text-gray-500 mt-0.5 font-medium uppercase tracking-wider hidden md:block">Controle de Produção</p>
               </div>
             </div>
-            <div className="flex items-center gap-4"><div className="text-right px-3 py-1.5 md:px-4 md:py-2 bg-gray-800 rounded-lg border border-gray-700"><p className="text-xs md:text-sm font-bold text-gray-300">{new Date().toLocaleDateString()}</p></div></div>
+            <div className="flex items-center gap-3">
+              <div className="hidden md:block text-right px-3 py-1.5 md:px-4 md:py-2 bg-gray-800 rounded-lg border border-gray-700">
+                <p className="text-xs md:text-sm font-bold text-gray-300">{new Date().toLocaleDateString()}</p>
+                <p className="text-[11px] text-gray-500 truncate max-w-[180px]">{user?.email}</p>
+              </div>
+              <Button variant="secondary" onClick={handleLogout} className="text-xs md:text-sm px-3 py-2">
+                <LogOut size={16} /> Sair
+              </Button>
+            </div>
          </header>
          
 

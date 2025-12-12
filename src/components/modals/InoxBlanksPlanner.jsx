@@ -110,57 +110,6 @@ export default function InoxBlanksPlanner() {
         />
       </div>
 
-      {/* Resumo MRP */}
-      <section className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-4">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-100">
-            MRP Simplificado – Inox / Blanks
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Aqui você enxerga, por produto de inox, a demanda, o estoque
-            (acabado + blanks) e o quanto precisaria comprar em kg.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              Produto
-            </div>
-            <div className="text-xs text-slate-50 font-bold mt-1 leading-tight">
-              {summary.productLabel}
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              Demanda (peças)
-            </div>
-            <div className="text-lg font-bold text-slate-50 mt-1">
-              {formatInt(summary.demandUnits)}
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              Estoque (acabado + blanks)
-            </div>
-            <div className="text-lg font-bold text-emerald-400 mt-1">
-              {formatInt(summary.totalStockUnits)}
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              Necessidade em kg
-            </div>
-            <div className="text-lg font-bold text-rose-400 mt-1">
-              {formatKg(summary.needKg)} kg
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Tabela detalhada */}
       <div className="bg-slate-900/70 border border-slate-800 rounded-xl overflow-hidden">
         <table className="min-w-full text-xs">

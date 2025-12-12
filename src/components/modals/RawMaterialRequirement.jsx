@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from "react";
-import { TrendingUp, FileText } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { TrendingUp, FileText, Plus, CheckCircle, X, Tag, Trash2 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { INITIAL_INOX_BLANK_PRODUCTS } from "../../data/inoxCatalog";
+import { loadFromDb, saveToDb, updateInDb, deleteFromDb } from "../../services/api";
 
 // ajusta o caminho se sua pasta for diferente
 
@@ -76,11 +77,101 @@ const RawMaterialRequirement = ({
   const [mpManualDemandGranularity, setMpManualDemandGranularity] =
     useState("week");
 
-  // Pedidos futuros (bobinas)
-  const [mpIncomingOrders, setMpIncomingOrders] = useState([]);
+  const [mpOrders, setMpOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState("");
+  const [orderModalOpen, setOrderModalOpen] = useState(false);
+  const [orderSaving, setOrderSaving] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState(null);
+  const [purchaseMonthlyDemand, setPurchaseMonthlyDemand] = useState(0); // kg/mês para projeção rápida
+  const [defaultLeadTimeDays, setDefaultLeadTimeDays] = useState(0); // lead time para alerta gráfico
+  const [purchaseFilter, setPurchaseFilter] = useState("all"); // all | critical | transit
+  const [selectedPurchaseGroup, setSelectedPurchaseGroup] = useState(null);
   const [mpOrderQty, setMpOrderQty] = useState("");
   const [mpOrderDate, setMpOrderDate] = useState("");
+  const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
+  const removeOrder = async (id) => {
+    try {
+      if (!id) return;
+      if (!isLocal) {
+        await deleteFromDb("mpOrders", id);
+      }
+      setMpOrders((prev) => {
+        const next = prev.filter((o) => o.id !== id);
+        if (isLocal) localStorage.setItem("mpOrdersLocal", JSON.stringify(next));
+        return next;
+      });
+    } catch (err) {
+      console.error("Erro ao excluir pedido:", err);
+      alert("Não foi possível excluir o pedido.");
+    }
+  };
+  const addSimOrder = () => {
+    if (!selectedGroup || !mpOrderDate || !mpOrderQty) return;
+    const simOrder = {
+      id: `SIM-${Date.now()}`,
+      groupId: selectedGroup.groupId,
+      eta: mpOrderDate,
+      weightKg: Number(mpOrderQty) || 0,
+      status: "simulacao",
+      createdAt: new Date().toISOString(),
+    };
+    setMpOrders((prev) => {
+      const next = [...prev, simOrder];
+      if (isLocal) localStorage.setItem("mpOrdersLocal", JSON.stringify(next));
+      return next;
+    });
+    setMpOrderQty("");
+    setMpOrderDate("");
+  };
+  const [orderForm, setOrderForm] = useState({
+    groupId: "",
+    groupKey: "",
+    eta: "",
+    weightKg: "",
+    price: "",
+    qtyBobinas: "1",
+    mill: "",
+    width: "",
+    thickness: "",
+    material: "",
+    notes: "",
+    poNumber: "",
+    nfNumber: "",
+    incoterm: "",
+    paymentTerms: "",
+    freightMode: "",
+    deliveryAddress: "Filial 01 - Metalosa",
+    contactName: "",
+    contactEmail: "",
+    contactPhone: "",
+    leadTimeDays: "",
+    status: "previsto",
+  });
 
+  useEffect(() => {
+    const fetchOrders = async () => {
+      try {
+        setOrdersLoading(true);
+        if (isLocal) {
+          const cached = localStorage.getItem("mpOrdersLocal");
+          if (cached) {
+            setMpOrders(JSON.parse(cached));
+          }
+        } else {
+          const data = await loadFromDb("mpOrders");
+          setMpOrders(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar pedidos de MP:", error);
+        setOrdersError("Não foi possível carregar os pedidos.");
+      } finally {
+        setOrdersLoading(false);
+      }
+    };
+
+    fetchOrders();
+  }, []);
   // ---------- ESTADOS ABA INOX ----------
   const [inoxSearch, setInoxSearch] = useState("");
   const [selectedInoxProductId, setSelectedInoxProductId] = useState(null);
@@ -349,6 +440,8 @@ const RawMaterialRequirement = ({
   let totalDemandSimulated = 0;
   let initialStock = selectedGroup ? selectedGroup.available : 0;
   let activeOrders = [];
+  let openOrders = [];
+  let openOrdersSummary = { qty: 0, weight: 0, nearest: null };
   let dailyStatement = [];
   let daysToDeadline = null;
   let minStock = 0;
@@ -379,11 +472,32 @@ const RawMaterialRequirement = ({
     // Estoque inicial = Mãe + B2
     initialStock = motherStock + b2Stock;
 
-    activeOrders = mpIncomingOrders.filter((o) => o.groupId === selectedMpCode);
-    const totalIncoming = activeOrders.reduce(
-      (acc, o) => acc + o.qty,
-      0
+    // Separação de pedidos reais (previsto/firme) e simulação
+    const allForGroup = mpOrders.filter(
+      (o) =>
+        (o.groupKey || o.groupId) === selectedMpCode ||
+        (!selectedMpCode && o.groupId)
     );
+    activeOrders = allForGroup; // todos entram no gráfico
+    openOrders = activeOrders.filter((o) => {
+      const status = (o.status || "previsto").toLowerCase();
+      return status !== "firme" && status !== "simulacao";
+    });
+    openOrdersSummary.qty = openOrders.length;
+    openOrdersSummary.weight = openOrders.reduce((acc, o) => {
+      const w = Number(o.actualWeightKg) || Number(o.weightKg) || 0;
+      return acc + w;
+    }, 0);
+    const dates = openOrders
+      .map((o) => new Date(o.eta || o.date || 0))
+      .filter((d) => !Number.isNaN(d.getTime()))
+      .sort((a, b) => a - b);
+    openOrdersSummary.nearest = dates[0] || null;
+
+    const totalIncoming = activeOrders.reduce((acc, o) => {
+      const weight = Number(o.actualWeightKg) || Number(o.weightKg) || 0;
+      return acc + weight;
+    }, 0);
 
     // Datas da simulação
     const startDate = mpManualStartDate
@@ -438,15 +552,16 @@ const RawMaterialRequirement = ({
         d1.getFullYear() === d2.getFullYear();
 
       const inflows = activeOrders.filter((o) => {
-        if (!o.date) return false;
-        const oDate = new Date(o.date + "T00:00:00");
+        const refDate = o.eta || o.date;
+        if (!refDate) return false;
+        const oDate = new Date(refDate + "T00:00:00");
         return sameDay(oDate, simDate);
       });
 
-      const inflowQty = inflows.reduce(
-        (acc, o) => acc + (Number(o.qty) || 0),
-        0
-      );
+      const inflowQty = inflows.reduce((acc, o) => {
+        const weight = Number(o.actualWeightKg) || Number(o.weightKg) || 0;
+        return acc + weight;
+      }, 0);
 
       // Saídas
       let dailyDemand = 0;
@@ -502,10 +617,10 @@ const RawMaterialRequirement = ({
     }
 
     // Gráfico
-    const range = maxStock - minStockVal || 1;
-    const padding = range * 0.1;
-    const gMax = maxStock + padding;
-    const gMin = minStockVal - padding;
+    const baseMax = Math.max(maxStock, mpMinStock, initialStock);
+    const padding = Math.max(baseMax * 0.1, 1);
+    const gMin = 0; // ancora o eixo em zero para não distorcer
+    const gMax = baseMax + padding;
     const gRange = gMax - gMin;
 
     const chartPaddingLeft = 60;
@@ -557,7 +672,7 @@ const RawMaterialRequirement = ({
       ...d,
     }));
 
-    const rawTicks = [gMax, (gMax + gMin) / 2, Math.max(0, gMin)];
+    const rawTicks = [gMax, gMax / 2, gMin];
     graphYTicks = rawTicks.map((value) => ({
       value,
       y: getY(value),
@@ -787,25 +902,148 @@ const RawMaterialRequirement = ({
   }
 
   // ---------- HANDLERS BOBINAS ----------
-  const handleAddOrder = () => {
-    if (!selectedMpCode || !mpOrderQty || !mpOrderDate) return;
+  const openOrderForm = (prefillCode = "", existingOrder = null) => {
+    if (existingOrder) {
+      setEditingOrderId(existingOrder.id);
+      setOrderForm({
+        groupId: existingOrder.groupId || "",
+        groupKey: existingOrder.groupKey || existingOrder.groupId || "",
+        eta: existingOrder.eta || existingOrder.date || "",
+        weightKg: existingOrder.weightKg || "",
+        price: existingOrder.price || "",
+        qtyBobinas: existingOrder.qtyBobinas || "1",
+        mill: existingOrder.mill || "",
+        width: existingOrder.width || "",
+        thickness: existingOrder.thickness || "",
+        material: existingOrder.material || "",
+        notes: existingOrder.notes || "",
+        poNumber: existingOrder.poNumber || "",
+        nfNumber: existingOrder.nfNumber || "",
+        incoterm: existingOrder.incoterm || "",
+        paymentTerms: existingOrder.paymentTerms || "",
+        freightMode: existingOrder.freightMode || "",
+        deliveryAddress: existingOrder.deliveryAddress || "Filial 01 - Metalosa",
+        contactName: existingOrder.contactName || "",
+        contactEmail: existingOrder.contactEmail || "",
+        contactPhone: existingOrder.contactPhone || "",
+        status: existingOrder.status || "previsto",
+      });
+      setOrderModalOpen(true);
+      return;
+    }
 
-    setMpIncomingOrders((prev) => [
+    const catalogMatch = motherCatalog.find(
+      (m) => String(m.code) === String(prefillCode || selectedMpCode)
+    );
+    const group = coilGroups.find((g) => g.groupId === selectedMpCode);
+
+    setEditingOrderId(null);
+    setOrderForm((prev) => ({
       ...prev,
-      {
-        id: Date.now(),
-        groupId: selectedMpCode,
-        date: mpOrderDate,
-        qty: Number(mpOrderQty),
-      },
-    ]);
-
-    setMpOrderQty("");
-    setMpOrderDate("");
+      groupId: prefillCode || selectedMpCode || "",
+      groupKey: group?.groupId || selectedMpCode || "",
+      eta: "",
+      weightKg: "",
+      price: "",
+      qtyBobinas: "1",
+      mill: "",
+      width: catalogMatch?.width || "",
+      thickness: catalogMatch?.thickness || "",
+      material: catalogMatch?.description || "",
+      notes: "",
+      poNumber: "",
+      nfNumber: "",
+      incoterm: "",
+      paymentTerms: "",
+      freightMode: "",
+      deliveryAddress: "Filial 01 - Metalosa",
+      contactName: "",
+      contactEmail: "",
+      contactPhone: "",
+      leadTimeDays: "",
+      status: "previsto",
+    }));
+    setOrderModalOpen(true);
   };
 
-  const removeOrder = (id) =>
-    setMpIncomingOrders((prev) => prev.filter((o) => o.id !== id));
+  const handleSaveOrder = async () => {
+    if (!orderForm.groupId || !orderForm.weightKg || !orderForm.eta) {
+      alert("Informe código da bobina, data prevista e peso.");
+      return;
+    }
+
+    const payload = {
+      groupId: orderForm.groupId,
+      groupKey: orderForm.groupKey || selectedMpCode,
+      eta: orderForm.eta,
+      weightKg: Number(orderForm.weightKg) || 0,
+      price: Number(orderForm.price) || 0,
+      qtyBobinas: Number(orderForm.qtyBobinas) || 1,
+      mill: orderForm.mill || "",
+      width: orderForm.width,
+      thickness: orderForm.thickness,
+      material: orderForm.material,
+      notes: orderForm.notes,
+      poNumber: orderForm.poNumber,
+      nfNumber: orderForm.nfNumber,
+      incoterm: orderForm.incoterm,
+    paymentTerms: orderForm.paymentTerms,
+    freightMode: orderForm.freightMode,
+    deliveryAddress: orderForm.deliveryAddress,
+    contactName: orderForm.contactName,
+    contactEmail: orderForm.contactEmail,
+    contactPhone: orderForm.contactPhone,
+    leadTimeDays: orderForm.leadTimeDays,
+    status: orderForm.status || "previsto",
+    createdAt: new Date().toISOString(),
+  };
+
+    try {
+      setOrderSaving(true);
+      if (editingOrderId) {
+        // update existing
+        if (isLocal) {
+          setMpOrders((prev) => {
+            const next = prev.map((o) => (o.id === editingOrderId ? { ...o, ...payload } : o));
+            localStorage.setItem("mpOrdersLocal", JSON.stringify(next));
+            return next;
+          });
+        } else {
+          await updateInDb("mpOrders", editingOrderId, payload);
+          setMpOrders((prev) => prev.map((o) => (o.id === editingOrderId ? { ...o, ...payload } : o)));
+        }
+      } else {
+        if (isLocal) {
+          const tempSaved = { ...payload, id: `TEMP-${Date.now()}` };
+          setMpOrders((prev) => {
+            const next = [tempSaved, ...prev];
+            localStorage.setItem("mpOrdersLocal", JSON.stringify(next));
+            return next;
+          });
+        } else {
+          const saved = await saveToDb("mpOrders", payload);
+          setMpOrders((prev) => {
+            const next = [saved, ...prev];
+            return next;
+          });
+        }
+      }
+      setOrderModalOpen(false);
+      setEditingOrderId(null);
+    } catch (error) {
+      console.error("Erro ao salvar pedido:", error);
+      alert("Não foi possível salvar o pedido. Tente novamente.");
+    } finally {
+      setOrderSaving(false);
+    }
+  };
+
+  const markOrderAsFirm = async (orderId) => {
+    const found = mpOrders.find((o) => o.id === orderId);
+    if (!found) return;
+    // Abre modal de edição já com status firme
+    openOrderForm(found.groupId || found.groupKey, { ...found, status: "firme" });
+  };
 
   const handleAddInoxOrder = () => {
     if (!selectedInoxRow || !inoxOrderQty || !inoxOrderDate) return;
@@ -903,8 +1141,11 @@ const RawMaterialRequirement = ({
 
       if (activeOrders && activeOrders.length > 0) {
         const pedidosBody = [...activeOrders]
-          .sort((a, b) => new Date(a.date) - new Date(b.date))
-          .map((o) => [formatDate(o.date), formatKg(o.qty)]);
+          .sort((a, b) => new Date(a.eta || a.date) - new Date(b.eta || b.date))
+          .map((o) => [
+            formatDate(o.eta || o.date),
+            formatKg(o.actualWeightKg || o.weightKg),
+          ]);
 
         autoTable(doc, {
           startY: currentY + 8,
@@ -926,6 +1167,7 @@ const RawMaterialRequirement = ({
 
   // ---------- RENDER ----------
   return (
+    <>
     <div className="space-y-6 pb-20 animate-fade-in">
       {/* Header + Tabs */}
       <div className="flex gap-4 bg-gray-800 p-4 rounded-xl border border-gray-700 items-end">
@@ -959,6 +1201,17 @@ const RawMaterialRequirement = ({
               }`}
             >
               Inox (Blanks)
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("purchases")}
+              className={`ml-1 px-3 py-1 text-xs font-semibold rounded-md ${
+                activeTab === "purchases"
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-300 hover:bg-gray-800"
+              }`}
+            >
+              Gestão de Compras
             </button>
           </div>
         </div>
@@ -1002,10 +1255,60 @@ const RawMaterialRequirement = ({
       </div>
 
       {/* ===================== ABA BOBINAS ===================== */}
-      {activeTab === "coil" && (
+          {activeTab === "coil" && (
         <>
           {selectedGroup && (
             <div className="space-y-6">
+              <div className="flex justify-between items-center bg-gray-900 border border-gray-800 rounded-xl px-4 py-3">
+                <div>
+                  <p className="text-xs text-gray-400 uppercase tracking-wide">MP selecionada</p>
+                  <p className="text-sm text-white font-semibold">
+                    {selectedGroup.type} · {selectedGroup.thickness}mm
+                  </p>
+                </div>
+              </div>
+
+              {openOrdersSummary.qty > 0 && (
+                <div className="bg-amber-900/30 border border-amber-700 text-amber-100 rounded-xl px-4 py-3 flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold">Pedidos em aberto para esta MP</p>
+                      <p className="text-xs text-amber-200/90">
+                        {openOrdersSummary.qty} pedido(s) · {formatKg(openOrdersSummary.weight)} kg
+                        {openOrdersSummary.nearest
+                          ? ` · Próximo: ${openOrdersSummary.nearest.toLocaleDateString("pt-BR")}`
+                          : ""}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const firstCode =
+                          selectedGroup.codesIncluded && selectedGroup.codesIncluded.size > 0
+                            ? Array.from(selectedGroup.codesIncluded)[0]
+                            : selectedGroup.groupId;
+                        openOrderForm(firstCode);
+                      }}
+                      className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold"
+                    >
+                      Ajustar pedidos
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {openOrders.slice(0, 3).map((o) => (
+                      <span
+                        key={o.id}
+                        className="text-[11px] bg-amber-800/60 border border-amber-700 rounded px-2 py-1 flex items-center gap-1"
+                      >
+                        {formatDate(o.eta || o.date)} · {formatKg(o.weightKg || o.actualWeightKg)} kg
+                      </span>
+                    ))}
+                    {openOrdersSummary.qty > 3 && (
+                      <span className="text-[11px] text-amber-200">+{openOrdersSummary.qty - 3} mais</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Configuração do modo manual */}
               <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
                 <h3 className="text-lg font-semibold text-white mb-3">
@@ -1344,8 +1647,9 @@ const RawMaterialRequirement = ({
                   {/* Linhas de pedidos em trânsito */}
                   {selectedGroup &&
                     activeOrders.map((o) => {
-                      if (!o.date) return null;
-                      const oDate = new Date(o.date + "T00:00:00");
+                      const refDate = o.eta || o.date;
+                      if (!refDate) return null;
+                      const oDate = new Date(refDate + "T00:00:00");
 
                       const idx = dailyStatement.findIndex(
                         (d) =>
@@ -1375,7 +1679,7 @@ const RawMaterialRequirement = ({
                             fill="#6ee7b7"
                             fontSize="9"
                           >
-                            +{formatKg(o.qty)} kg
+                            +{formatKg(o.weightKg || o.actualWeightKg)} kg
                           </text>
                         </g>
                       );
@@ -1449,71 +1753,80 @@ const RawMaterialRequirement = ({
                 </p>
               </div>
 
-              {/* Pedidos em trânsito */}
+              {/* Área de pedidos (simulação simples) */}
               <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                <h3 className="text-lg font-semibold text-white mb-3">
-                  Pedidos em Trânsito (Entradas Futuras)
-                </h3>
-                <div className="flex gap-4 mb-4">
-                  <input
-                    type="number"
-                    placeholder="Quantidade (kg)"
-                    value={mpOrderQty}
-                    onChange={(e) => setMpOrderQty(e.target.value)}
-                    className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white w-40"
-                  />
-                  <input
-                    type="date"
-                    value={mpOrderDate}
-                    onChange={(e) => setMpOrderDate(e.target.value)}
-                    className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white w-40"
-                  />
-                  <button
-                    onClick={handleAddOrder}
-                    className="px-4 py-2 bg-green-600 rounded hover:bg-green-500"
-                  >
-                    Adicionar Pedido
-                  </button>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">
+                      Pedidos de Bobina (simulação)
+                    </h3>
+                    <p className="text-sm text-gray-400">
+                      Use apenas data prevista e peso para simular entradas.
+                    </p>
+                  </div>
                 </div>
 
-                <table className="w-full text-left text-sm text-gray-400">
-                  <thead className="text-xs text-gray-700 uppercase bg-gray-700">
-                    <tr>
-                      <th>Data</th>
-                      <th>Quantidade (kg)</th>
-                      <th>Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeOrders.map((o) => (
-                      <tr
-                        key={o.id}
-                        className="bg-gray-800 border-b border-gray-700"
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-400 font-semibold mb-1">Data prevista</label>
+                    <input
+                      type="date"
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                      value={mpOrderDate}
+                      onChange={(e) => setMpOrderDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 font-semibold mb-1">Peso previsto (kg)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                      value={mpOrderQty}
+                      onChange={(e) => setMpOrderQty(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <div className="w-full">
+                      <label className="block text-xs text-gray-400 font-semibold mb-1"> </label>
+                      <button
+                        className="w-full px-4 py-2 bg-green-600 rounded hover:bg-green-500 text-white text-sm"
+                        onClick={addSimOrder}
+                        title="Adicionar apenas na simulação local"
                       >
-                        <td>{formatDate(o.date)}</td>
-                        <td>{formatKg(o.qty)}</td>
-                        <td>
-                          <button
-                            onClick={() => removeOrder(o.id)}
-                            className="text-red-400 hover:text-red-300"
+                        Adicionar simulação
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-sm text-gray-500 mt-3">
+                  Entrada apenas para simulação local. Para pedidos reais, clique em "Gestão de compras".
+                </p>
+                {mpOrders.some((o) => (o.status || "previsto").toLowerCase() === "simulacao") && (
+                  <div className="mt-3 bg-gray-900/80 border border-gray-700 rounded-lg p-3 text-sm text-gray-300">
+                    <p className="font-semibold text-white mb-2">Pedidos simulados para o gráfico</p>
+                    <div className="flex flex-wrap gap-2">
+                      {mpOrders
+                        .filter((o) => (o.status || "previsto").toLowerCase() === "simulacao")
+                        .map((o) => (
+                          <span
+                            key={o.id}
+                            className="text-[11px] bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-200 inline-flex items-center gap-2"
                           >
-                            Remover
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {activeOrders.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={3}
-                          className="py-2 text-center text-gray-500"
-                        >
-                          Nenhum pedido registrado.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                            {formatDate(o.eta || o.date)} · {formatKg(o.weightKg)} kg
+                            <button
+                              onClick={() => removeOrder(o.id)}
+                              className="text-red-400 hover:text-red-300"
+                              title="Excluir simulação"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Botão PDF */}
@@ -1540,10 +1853,19 @@ const RawMaterialRequirement = ({
                     : "border-gray-700 bg-gray-800 hover:bg-gray-700"
                 }`}
               >
-                <p className="text-sm text-gray-400">{g.type}</p>
-                <p className="text-xl font-bold text-white">
-                  {g.thickness}mm
-                </p>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm text-gray-400">{g.type}</p>
+                    <p className="text-xl font-bold text-white">
+                      {g.thickness}mm
+                    </p>
+                  </div>
+                  {g.codesIncluded && g.codesIncluded.size > 0 && (
+                    <span className="text-[11px] text-gray-400 bg-gray-900/60 border border-gray-700 rounded px-2 py-1">
+                      {Array.from(g.codesIncluded)[0]}
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-gray-400 mt-2">
                   Estoque: {formatKg(g.available)} kg
                 </p>
@@ -2124,7 +2446,694 @@ const RawMaterialRequirement = ({
           </div>
         </div>
       )}
+
+      {/* ===================== GESTÃO DE COMPRAS ===================== */}
+      {activeTab === "purchases" && (
+        <div className="space-y-6">
+          {(() => {
+            const purchaseOrders = mpOrders
+              .filter((o) => (o.status || "previsto").toLowerCase() !== "simulacao")
+              .filter((o) => !selectedMpCode || (o.groupKey || o.groupId) === selectedMpCode)
+              .sort((a, b) => new Date(a.eta || a.date || 0) - new Date(b.eta || b.date || 0));
+
+            if (!selectedMpCode || purchaseOrders.length === 0) return null;
+
+            const baseStock = (() => {
+              const g = coilGroups.find((g) => g.groupId === selectedMpCode);
+              return g ? (Number(g.motherStockWeight || 0) + Number(g.b2StockWeight || 0)) : 0;
+            })();
+            const dailyConsume = (Number(purchaseMonthlyDemand) || 0) / 30;
+            const leadTimeDays = Number(defaultLeadTimeDays) || 0;
+
+            const baseDate = new Date();
+            baseDate.setHours(0, 0, 0, 0);
+
+            let balance = baseStock;
+            const projectionPoints = [{ date: new Date(baseDate), balance, weight: 0 }];
+            let prevDate = new Date(baseDate);
+            let ruptureDate = null;
+
+            purchaseOrders.forEach((o) => {
+              const ref = o.eta || o.date;
+              if (!ref) return;
+              const d = new Date(ref + "T00:00:00");
+              const daysGap = Math.max(0, Math.round((d.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24)));
+              if (daysGap > 0 && dailyConsume > 0) {
+                balance = Math.max(0, balance - dailyConsume * daysGap);
+                if (!ruptureDate && balance <= 0) {
+                  ruptureDate = new Date(prevDate.getTime() + Math.ceil(balance / (dailyConsume || 1)) * 24 * 60 * 60 * 1000);
+                }
+                projectionPoints.push({ date: new Date(d.getTime() - 1), balance, weight: 0 });
+              }
+              const weight = Number(o.actualWeightKg) || Number(o.weightKg) || 0;
+              balance += weight;
+              projectionPoints.push({ date: d, balance, weight });
+              prevDate = d;
+            });
+
+            if (projectionPoints.length === 1) {
+              const d = new Date(baseDate);
+              d.setDate(d.getDate() + 30);
+              projectionPoints.push({ date: d, balance, weight: 0 });
+            }
+
+            const gMax = Math.max(...projectionPoints.map((p) => p.balance), baseStock) * 1.1 + 1;
+            const gMin = 0;
+            const gRange = gMax - gMin || 1;
+            const chartW = 1000;
+            const chartH = 220;
+            const padL = 60, padR = 20, padT = 20, padB = 30;
+            const innerW = chartW - padL - padR;
+            const innerH = chartH - padT - padB;
+            const getX = (i) =>
+              padL + (i / Math.max(1, projectionPoints.length - 1)) * innerW;
+            const getY = (val) => padT + innerH - ((val - gMin) / gRange) * innerH;
+
+            const projPointsStr = projectionPoints
+              .map((p, i) => `${getX(i)},${getY(p.balance)}`)
+              .join(" ");
+
+            const projArea = `${projPointsStr} L ${padL + innerW},${padT + innerH} L ${padL},${
+              padT + innerH
+            } Z`;
+
+            if (!selectedMpCode) return null;
+
+            return null;
+          })()}
+
+          <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Gestão de Compras — Bobinas</h3>
+                <p className="text-sm text-gray-400">
+                  Visão em tabela com quick view. Clique em uma linha para abrir detalhes e projeção.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {["todos", "criticos", "aguardando"].map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setPurchaseFilter(f)}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+                      purchaseFilter === f
+                        ? "bg-emerald-600 border-emerald-500 text-white"
+                        : "bg-gray-900 border-gray-700 text-gray-300 hover:border-emerald-400"
+                    }`}
+                  >
+                    {f === "todos" && "Todos"}
+                    {f === "criticos" && "Críticos"}
+                    {f === "aguardando" && "Aguardando entrega"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {(() => {
+            const monthlyDemand = Number(purchaseMonthlyDemand) || 0;
+            const dailyDemand = monthlyDemand > 0 ? monthlyDemand / 30 : 0;
+            const groups = coilGroups.map((g) => {
+              const stock = (Number(g.motherStockWeight) || 0) + (Number(g.b2StockWeight) || 0);
+              const coverageDays = dailyDemand > 0 ? Math.floor(stock / dailyDemand) : 999;
+              const groupOrders = mpOrders.filter(
+                (o) =>
+                  (o.status || "previsto").toLowerCase() !== "simulacao" &&
+                  (o.groupId === g.groupId || o.groupKey === g.groupId)
+              );
+              const hasFirm = groupOrders.some((o) => (o.status || "").toLowerCase() === "firme");
+              const hasPred = groupOrders.some((o) => (o.status || "").toLowerCase() !== "firme");
+              let purchaseStatus = "Sem pedido";
+              if (hasFirm) purchaseStatus = "Em trânsito";
+              else if (hasPred) purchaseStatus = "Pedido feito";
+              const minStock = Number(mpMinStock) || 0;
+              const coverageTag =
+                coverageDays < 10 ? "critico" : coverageDays < 30 ? "alerta" : "ok";
+              return { ...g, stock, coverageDays, purchaseStatus, coverageTag, groupOrders };
+            });
+
+            const filtered =
+              purchaseFilter === "criticos"
+                ? groups.filter((g) => g.coverageTag === "critico")
+                : purchaseFilter === "aguardando"
+                ? groups.filter((g) => g.purchaseStatus !== "Sem pedido")
+                : groups;
+
+            const progress = (current, target) => {
+              if (target <= 0) return 1;
+              return Math.min(1, Math.max(0, current / target));
+            };
+
+            const renderStatusPill = (status) => {
+              if (status === "Em trânsito")
+                return <span className="px-2 py-1 text-xs rounded-full bg-blue-900/50 border border-blue-600 text-blue-100">Em trânsito</span>;
+              if (status === "Pedido feito")
+                return <span className="px-2 py-1 text-xs rounded-full bg-amber-900/50 border border-amber-600 text-amber-100">Pedido feito</span>;
+              return <span className="px-2 py-1 text-xs rounded-full bg-gray-800 border border-gray-600 text-gray-200">Sem pedido</span>;
+            };
+
+            return (
+              <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-gray-200">
+                    <thead className="text-xs uppercase bg-gray-900 text-gray-400">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Item</th>
+                        <th className="px-3 py-2 text-left">Estoque físico</th>
+                        <th className="px-3 py-2 text-left">Cobertura (dias)</th>
+                        <th className="px-3 py-2 text-left">Status compra</th>
+                        <th className="px-3 py-2 text-right">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((g) => {
+                        const bar = progress(g.stock, (Number(mpMinStock) || 1) * 2);
+                        const coverageClass =
+                          g.coverageTag === "critico"
+                            ? "text-red-300 bg-red-900/40"
+                            : g.coverageTag === "alerta"
+                            ? "text-amber-300 bg-amber-900/40"
+                            : "text-emerald-300 bg-emerald-900/40";
+                        return (
+                          <tr
+                            key={g.groupId}
+                            className="border-b border-gray-700/70 hover:bg-gray-700/40 cursor-pointer"
+                            onClick={() => setSelectedPurchaseGroup(g)}
+                          >
+                            <td className="px-3 py-3">
+                              <div className="font-semibold text-white">
+                                {g.type} {g.thickness}mm <span className="text-gray-400">· {g.groupId}</span>
+                              </div>
+                              <div className="text-xs text-gray-400">
+                                {g.codesIncluded ? Array.from(g.codesIncluded).slice(0, 3).join(", ") : ""}
+                                {g.codesIncluded && g.codesIncluded.size > 3 ? "..." : ""}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3">
+                              <div className="flex items-center gap-3">
+                                <div className="w-36 h-2 bg-gray-900 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-2 bg-emerald-500 rounded-full"
+                                    style={{ width: `${bar * 100}%` }}
+                                  />
+                                </div>
+                                <span className="text-sm text-gray-100">{formatKg(g.stock)} kg</span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-3">
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${coverageClass}`}>
+                                {g.coverageDays === 999 ? "—" : `${g.coverageDays}d`}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3">{renderStatusPill(g.purchaseStatus)}</td>
+                            <td className="px-3 py-3 text-right">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedPurchaseGroup(g);
+                                }}
+                                className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white text-xs font-semibold"
+                              >
+                                Ver
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {filtered.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="px-3 py-6 text-center text-gray-400">
+                            Nenhum item encontrado para este filtro.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
     </div>
+
+    {selectedPurchaseGroup && (() => {
+      const g = selectedPurchaseGroup;
+      const monthlyDemand = Number(purchaseMonthlyDemand) || 0;
+      const dailyDemand = monthlyDemand > 0 ? monthlyDemand / 30 : 0;
+      const minStock = Number(mpMinStock) || 0;
+      const ordersForGroup = mpOrders.filter(
+        (o) =>
+          (o.status || "previsto").toLowerCase() !== "simulacao" &&
+          (o.groupId === g.groupId || o.groupKey === g.groupId)
+      );
+      const now = new Date();
+      const points = [];
+      let balance = (Number(g.motherStockWeight) || 0) + (Number(g.b2StockWeight) || 0);
+      for (let i = 0; i <= 120; i += 10) {
+        const d = new Date(now);
+        d.setDate(d.getDate() + i);
+        const incoming = ordersForGroup
+          .filter((o) => {
+            const eta = o.eta || o.date;
+            if (!eta) return false;
+            return new Date(eta) <= d;
+          })
+          .reduce((sum, o) => sum + (Number(o.actualWeightKg) || Number(o.weightKg) || 0), 0);
+        const consumption = dailyDemand * i;
+        const projected = Math.max(0, balance + incoming - consumption);
+        points.push({ d, projected });
+      }
+      return (
+        <div className="fixed inset-0 bg-black/70 z-40 flex justify-end">
+          <div className="w-full md:w-[40%] lg:w-[38%] bg-gray-900 border-l border-gray-700 h-full overflow-y-auto">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+              <div>
+                <div className="text-xs uppercase text-gray-400">MP</div>
+                <div className="text-lg font-semibold text-white">
+                  {g.type} {g.thickness}mm · {g.groupId}
+                </div>
+                <div className="text-sm text-gray-400">
+                  Estoque: {formatKg((Number(g.motherStockWeight) || 0) + (Number(g.b2StockWeight) || 0))} kg
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedPurchaseGroup(null)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="flex items-center gap-2 text-sm text-gray-300">
+                <span className="text-gray-400">Status:</span>
+                {(() => {
+                  const hasFirm = ordersForGroup.some((o) => (o.status || "").toLowerCase() === "firme");
+                  const hasPred = ordersForGroup.some((o) => (o.status || "").toLowerCase() !== "firme");
+                  if (hasFirm) return <span className="text-blue-300">Em trânsito</span>;
+                  if (hasPred) return <span className="text-amber-300">Pedido feito</span>;
+                  return <span className="text-gray-300">Sem pedido</span>;
+                })()}
+              </div>
+
+              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+                <div className="flex items-center justify-between text-sm text-gray-400 mb-2">
+                  <span>Projeção de estoque (ajuste demanda mensal acima)</span>
+                  <span className="text-xs text-gray-500">Estoque mínimo: {formatKg(minStock)} kg</span>
+                </div>
+                <svg viewBox="0 0 600 200" className="w-full h-48 bg-gray-900 rounded-lg border border-gray-800">
+                  {(() => {
+                    const padL = 50;
+                    const padR = 10;
+                    const padT = 10;
+                    const padB = 30;
+                    const innerW = 600 - padL - padR;
+                    const innerH = 200 - padT - padB;
+                    const maxY = Math.max(
+                      minStock,
+                      ...points.map((p) => p.projected),
+                      ((Number(g.motherStockWeight) || 0) + (Number(g.b2StockWeight) || 0)) * 1.2
+                    );
+                    const getX = (idx) => padL + (innerW / (points.length - 1)) * idx;
+                    const getY = (val) => padT + innerH - (innerH * val) / (maxY || 1);
+                    const path = points
+                      .map((p, idx) => `${idx === 0 ? "M" : "L"} ${getX(idx)} ${getY(p.projected)}`)
+                      .join(" ");
+                    return (
+                      <>
+                        <line
+                          x1={padL}
+                          y1={getY(minStock)}
+                          x2={padL + innerW}
+                          y2={getY(minStock)}
+                          stroke="#f97316"
+                          strokeDasharray="4 4"
+                        />
+                        <path d={path} fill="none" stroke="#60a5fa" strokeWidth={2} />
+                        {points.map((p, idx) => (
+                          <circle key={idx} cx={getX(idx)} cy={getY(p.projected)} r={3} fill="#60a5fa" />
+                        ))}
+                        <text x={padL} y={padT + innerH + 16} fill="#9ca3af" fontSize="10" textAnchor="start">
+                          {points[0].d.toLocaleDateString("pt-BR")}
+                        </text>
+                        <text
+                          x={padL + innerW}
+                          y={padT + innerH + 16}
+                          fill="#9ca3af"
+                          fontSize="10"
+                          textAnchor="end"
+                        >
+                          {points[points.length - 1].d.toLocaleDateString("pt-BR")}
+                        </text>
+                      </>
+                    );
+                  })()}
+                </svg>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm text-gray-400">Pedidos cadastrados</div>
+                <div className="flex flex-col gap-2">
+                  {ordersForGroup.length === 0 && (
+                    <div className="text-gray-500 text-sm">Nenhum pedido para esta MP.</div>
+                  )}
+                  {ordersForGroup.map((o) => (
+                    <div
+                      key={o.id}
+                      className="flex items-center justify-between bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-white font-semibold">
+                          {formatDate(o.eta || o.date)} · {formatKg(o.weightKg)} kg
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          {o.mill || "-"} · {o.width || "-"}mm · {o.thickness || "-"}mm
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openOrderForm(o.groupId || o.groupKey, o)}
+                          className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white text-xs"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => removeOrder(o.id)}
+                          className="px-2 py-1 bg-red-700 hover:bg-red-600 rounded text-white text-xs flex items-center gap-1"
+                        >
+                          <Trash2 size={12} /> Excluir
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-gray-900 border-t border-gray-800 p-4 flex items-center justify-between gap-3">
+              <div className="text-sm text-gray-400">
+                Ajuste a demanda mensal para simular cobertura e risco de ruptura.
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const firstCode =
+                      g.codesIncluded && g.codesIncluded.size > 0
+                        ? Array.from(g.codesIncluded)[0]
+                        : g.groupId;
+                    openOrderForm(firstCode);
+                  }}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-500 rounded text-white text-sm font-semibold flex items-center gap-2"
+                >
+                  <Plus size={16} /> Novo pedido
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    })()}
+
+    {orderModalOpen && (
+      <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+        <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-5xl shadow-2xl">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+            <div>
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Tag size={18} className="text-emerald-400" />
+                Novo pedido de bobina
+              </h3>
+              <p className="text-sm text-gray-400">
+                Cadastre peso previsto e dados do pedido. Marque como firme quando faturado.
+              </p>
+            </div>
+            <button
+              onClick={() => setOrderModalOpen(false)}
+              className="text-gray-400 hover:text-white"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="p-5 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">Código MP (catálogo)</label>
+                <select
+                  value={orderForm.groupId}
+                  onChange={(e) => {
+                  const selected = e.target.value;
+                  const catalogMatch = motherCatalog.find((m) => String(m.code) === String(selected));
+                  const group = coilGroups.find((g) =>
+                    g.codesIncluded ? g.codesIncluded.has(selected) : false
+                  );
+                  setOrderForm((prev) => ({
+                    ...prev,
+                    groupId: selected,
+                    groupKey: group?.groupId || prev.groupKey || selectedMpCode,
+                    width: catalogMatch?.width || prev.width,
+                    thickness: catalogMatch?.thickness || prev.thickness,
+                    material: catalogMatch?.description || prev.material,
+                  }));
+                }}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+              >
+                <option value="">Selecione...</option>
+                {motherCatalog.map((m) => (
+                  <option key={m.code} value={m.code}>
+                    {m.code} — {m.description}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 font-semibold mb-1">Data prevista</label>
+              <input
+                type="date"
+                value={orderForm.eta}
+                onChange={(e) => setOrderForm((prev) => ({ ...prev, eta: e.target.value }))}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 font-semibold mb-1">Peso previsto (kg)</label>
+              <input
+                type="number"
+                min="0"
+                value={orderForm.weightKg}
+                onChange={(e) => setOrderForm((prev) => ({ ...prev, weightKg: e.target.value }))}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 font-semibold mb-1">Preço (R$/kg)</label>
+              <input
+                type="number"
+                min="0"
+                value={orderForm.price}
+                onChange={(e) => setOrderForm((prev) => ({ ...prev, price: e.target.value }))}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 font-semibold mb-1">Usina</label>
+              <input
+                type="text"
+                value={orderForm.mill}
+                onChange={(e) => setOrderForm((prev) => ({ ...prev, mill: e.target.value }))}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 font-semibold mb-1">Quantidade de bobinas</label>
+              <input
+                type="number"
+                min="1"
+                value={orderForm.qtyBobinas}
+                onChange={(e) => setOrderForm((prev) => ({ ...prev, qtyBobinas: e.target.value }))}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 font-semibold mb-1">Largura (mm)</label>
+              <input
+                type="number"
+                min="0"
+                value={orderForm.width}
+                onChange={(e) => setOrderForm((prev) => ({ ...prev, width: e.target.value }))}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 font-semibold mb-1">Espessura (mm)</label>
+              <input
+                type="text"
+                value={orderForm.thickness}
+                onChange={(e) => setOrderForm((prev) => ({ ...prev, thickness: e.target.value }))}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+              />
+            </div>
+              <div>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">Status do pedido</label>
+                <select
+                  value={orderForm.status}
+                  onChange={(e) => setOrderForm((prev) => ({ ...prev, status: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                >
+                  <option value="previsto">Previsto</option>
+                  <option value="firme">Firme</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">Lead time fornecedor (dias)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={orderForm.leadTimeDays}
+                  onChange={(e) => setOrderForm((prev) => ({ ...prev, leadTimeDays: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                  placeholder="Ex: 30"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-800 pt-4">
+              <div>
+                <p className="text-xs uppercase text-gray-400 font-semibold mb-2">Comercial</p>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">Pedido de compra (PO)</label>
+                <input
+                  type="text"
+                  value={orderForm.poNumber}
+                  onChange={(e) => setOrderForm((prev) => ({ ...prev, poNumber: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">NF / ordem</label>
+                <input
+                  type="text"
+                  value={orderForm.nfNumber}
+                  onChange={(e) => setOrderForm((prev) => ({ ...prev, nfNumber: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">Incoterm / Frete</label>
+                <input
+                  type="text"
+                  value={orderForm.incoterm}
+                  onChange={(e) => setOrderForm((prev) => ({ ...prev, incoterm: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                  placeholder="Ex: CIF, FOB..."
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">Condição de pagamento</label>
+                <input
+                  type="text"
+                  value={orderForm.paymentTerms}
+                  onChange={(e) => setOrderForm((prev) => ({ ...prev, paymentTerms: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                  placeholder="Ex: 30/60, à vista..."
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-800 pt-4">
+              <div className="md:col-span-3">
+                <p className="text-xs uppercase text-gray-400 font-semibold mb-2">Logística e Contato</p>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">Modal / Transporte</label>
+                <select
+                  value={orderForm.freightMode}
+                  onChange={(e) => setOrderForm((prev) => ({ ...prev, freightMode: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                >
+                  <option value="">Selecione...</option>
+                  <option value="Rodoviário">Rodoviário</option>
+                  <option value="Ferroviário">Ferroviário</option>
+                  <option value="Aéreo">Aéreo</option>
+                  <option value="Coleta">Coleta</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">Contato comercial</label>
+                <input
+                  type="text"
+                  value={orderForm.contactName}
+                  onChange={(e) => setOrderForm((prev) => ({ ...prev, contactName: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                  placeholder="Nome do vendedor"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">E-mail contato</label>
+                <input
+                  type="email"
+                  value={orderForm.contactEmail}
+                  onChange={(e) => setOrderForm((prev) => ({ ...prev, contactEmail: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">Telefone contato</label>
+                <input
+                  type="text"
+                  value={orderForm.contactPhone}
+                  onChange={(e) => setOrderForm((prev) => ({ ...prev, contactPhone: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-800 pt-4">
+              <div className="md:col-span-2">
+                <p className="text-xs uppercase text-gray-400 font-semibold mb-2">Entrega</p>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">Filial de entrega</label>
+                <select
+                  value={orderForm.deliveryAddress}
+                  onChange={(e) => setOrderForm((prev) => ({ ...prev, deliveryAddress: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                >
+                  <option value="Filial 01 - Metalosa">Filial 01 - Metalosa</option>
+                  <option value="Filial 08 - Cometa">Filial 08 - Cometa</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <p className="text-xs uppercase text-gray-400 font-semibold mb-2">Material / Observações</p>
+                <textarea
+                  value={orderForm.notes}
+                  onChange={(e) => setOrderForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  rows={2}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                  placeholder="Ex: aço galv., requisito comercial, detalhes de cor..."
+                />
+                {orderForm.material && (
+                  <p className="text-xs text-gray-500 mt-1">Descrição catálogo: {orderForm.material}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="px-5 py-4 border-t border-gray-800 flex justify-end gap-3">
+            <button
+              onClick={() => setOrderModalOpen(false)}
+              className="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSaveOrder}
+              disabled={orderSaving}
+              className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-50"
+            >
+              {orderSaving ? "Salvando..." : "Salvar pedido"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 
