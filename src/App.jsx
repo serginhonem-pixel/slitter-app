@@ -2704,20 +2704,29 @@ export default function App() {
                 .map((c) => ({ ...c, entryType: "b2nf" })),
             ]
               .sort((a, b) => {
-                const getDateValue = (item) => {
-                  const raw =
-                    item.entryDate ||
-                    item.date ||
-                    item.createdAt ||
-                    "";
-                  if (raw && raw.length === 10 && raw.includes("-")) {
-                    return new Date(raw).getTime();
-                  }
-                  if (raw && raw.includes("/")) {
-                    const [dia, mes, ano] = raw.split("/");
-                    return new Date(`${ano}-${mes}-${dia}`).getTime();
+                const parseDateSafe = (raw) => {
+                  if (!raw) return 0;
+                  if (raw instanceof Date) return raw.getTime();
+                  if (typeof raw === "number") return raw;
+                  if (typeof raw === "string") {
+                    if (raw.length === 10 && raw.includes("-")) {
+                      return new Date(raw).getTime();
+                    }
+                    if (raw.includes("/")) {
+                      const [dia, mes, ano] = raw.split("/");
+                      return new Date(`${ano}-${mes}-${dia}`).getTime();
+                    }
                   }
                   return 0;
+                };
+
+                const getDateValue = (item) => {
+                  return (
+                    parseDateSafe(item.entryDate) ||
+                    parseDateSafe(item.date) ||
+                    parseDateSafe(item.createdAt) ||
+                    0
+                  );
                 };
 
                 const timeA = getDateValue(a);
