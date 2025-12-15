@@ -5199,7 +5199,7 @@ const handleFullRestore = (e) => {
         return (
           <div className="space-y-6">
             {/* BUSCA GLOBAL */}
-            <Card className="p-4">
+            <Card className="p-4 relative z-30">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <h3 className="text-white font-bold text-sm">Busca global</h3>
