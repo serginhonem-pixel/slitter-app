@@ -976,6 +976,8 @@ export default function App() {
   // Junto com os outros useState
   const [cuttingDate, setCuttingDate] = useState(new Date().toISOString().split('T')[0]);
   const [dashSearchFinished, setDashSearchFinished] = useState('');
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   // Junto com os outros useState
 
   // --- ESTADOS DE RELATÓRIOS ---
@@ -5035,8 +5037,244 @@ const handleFullRestore = (e) => {
             );
         };
 
+        const normalizeThicknessNumberDash = (value) => {
+            if (value === null || value === undefined) return null;
+            const raw = String(value).trim();
+            if (!raw) return null;
+
+            if (/[.,]/.test(raw)) {
+                const n = parseFloat(raw.replace(",", "."));
+                return Number.isFinite(n) ? n : null;
+            }
+
+            const digits = raw.replace(/[^\d]/g, "");
+            if (!digits) return null;
+            const n = Number(digits);
+            if (!Number.isFinite(n)) return null;
+
+            if (digits.length === 1) return n / 10;
+            if (digits.length === 2) return n < 30 ? n / 10 : n / 100;
+            return n / 100;
+        };
+
+        const scrollToSection = (id) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.scrollIntoView({ behavior: "smooth", block: "start" });
+        };
+
+        const openGlobalResult = (result) => {
+            setIsGlobalSearchOpen(false);
+            setGlobalSearchQuery("");
+
+            if (!result) return;
+
+            if (result.kind === "mother") {
+                scrollToSection("dash-mother");
+                handleViewStockDetails(result.code, "mother");
+                return;
+            }
+
+            if (result.kind === "b2") {
+                scrollToSection("dash-b2");
+                handleViewStockDetails(result.code, "b2");
+                return;
+            }
+
+            if (result.kind === "product") {
+                setDashSearchFinished(result.code);
+                setFinishedPage(1);
+                scrollToSection("dash-finished");
+            }
+        };
+
+        const globalQ = String(globalSearchQuery || "").trim().toLowerCase();
+
+        const globalMatchesMother = globalQ
+            ? Object.values(motherStockByCode)
+                  .filter((i) => {
+                      const code = String(i.code || "").toLowerCase();
+                      const material = String(i.material || "").toLowerCase();
+                      const width = String(i.width || "").toLowerCase();
+                      return code.includes(globalQ) || material.includes(globalQ) || width.includes(globalQ);
+                  })
+                  .slice(0, 6)
+                  .map((i) => ({
+                      kind: "mother",
+                      code: i.code,
+                      title: `${i.code} • ${safeNum(i.width) || ""}mm`,
+                      subtitle: `${i.material} • ${i.count} bob • ${(safeNum(i.weight) || 0).toFixed(0)} kg`,
+                  }))
+            : [];
+
+        const globalMatchesB2 = globalQ
+            ? Object.values(childStockByCode)
+                  .filter((i) => {
+                      const code = String(i.code || "").toLowerCase();
+                      const name = String(i.name || "").toLowerCase();
+                      return code.includes(globalQ) || name.includes(globalQ);
+                  })
+                  .slice(0, 6)
+                  .map((i) => ({
+                      kind: "b2",
+                      code: i.code,
+                      title: `${i.code}`,
+                      subtitle: `${i.name} • ${i.count} bob • ${(safeNum(i.weight) || 0).toFixed(0)} kg`,
+                  }))
+            : [];
+
+        const globalMatchesProducts = globalQ
+            ? finishedStockList
+                  .filter((i) => {
+                      const code = String(i.code || "").toLowerCase();
+                      const name = String(i.name || "").toLowerCase();
+                      return code.includes(globalQ) || name.includes(globalQ);
+                  })
+                  .slice(0, 6)
+                  .map((i) => ({
+                      kind: "product",
+                      code: i.code,
+                      title: `${i.code}`,
+                      subtitle: `${i.name} • ${safeNum(i.count) || 0} pçs`,
+                  }))
+            : [];
+
+        const motherStockRaw = safeMother.filter((m) => m?.status === "stock");
+
+        const motherAggByCode = motherStockRaw.reduce((acc, m) => {
+            const codeRaw = normalizeCode(m.code);
+            if (!codeRaw) return acc;
+            const catalogItem = catalogByCode[codeRaw];
+            const materialName = catalogItem?.description || m.material || `BOBINA ${m.code}`;
+            if (!acc[codeRaw]) acc[codeRaw] = { code: m.code, material: materialName, count: 0, weight: 0 };
+            acc[codeRaw].count += 1;
+            acc[codeRaw].weight += safeNum(m.remainingWeight) || safeNum(m.weight);
+            return acc;
+        }, {});
+
+        const topMotherCodes = Object.values(motherAggByCode)
+            .sort((a, b) => (b.count || 0) - (a.count || 0))
+            .slice(0, 5);
+
+        const motherAggByMaterial = motherStockRaw.reduce((acc, m) => {
+            const codeRaw = normalizeCode(m.code);
+            const catalogItem = catalogByCode[codeRaw];
+            const materialName = catalogItem?.description || m.material || `BOBINA ${m.code}`;
+            if (!acc[materialName]) acc[materialName] = { material: materialName, count: 0, weight: 0 };
+            acc[materialName].count += 1;
+            acc[materialName].weight += safeNum(m.remainingWeight) || safeNum(m.weight);
+            return acc;
+        }, {});
+
+        const topMotherMaterials = Object.values(motherAggByMaterial)
+            .sort((a, b) => (b.weight || 0) - (a.weight || 0))
+            .slice(0, 5);
+
+        const motherAggByWidth = motherStockRaw.reduce((acc, m) => {
+            const w = safeNum(m.width) || 0;
+            const key = String(w || "");
+            if (!key) return acc;
+            if (!acc[key]) acc[key] = { width: w, count: 0 };
+            acc[key].count += 1;
+            return acc;
+        }, {});
+
+        const topMotherWidths = Object.values(motherAggByWidth)
+            .sort((a, b) => (b.count || 0) - (a.count || 0))
+            .slice(0, 5);
+
+        const motherAggByThickness = motherStockRaw.reduce((acc, m) => {
+            const t = normalizeThicknessNumberDash(m.thickness);
+            if (!Number.isFinite(t)) return acc;
+            const key = t.toFixed(2);
+            if (!acc[key]) acc[key] = { thickness: t, count: 0 };
+            acc[key].count += 1;
+            return acc;
+        }, {});
+
+        const topMotherThicknesses = Object.values(motherAggByThickness)
+            .sort((a, b) => (b.count || 0) - (a.count || 0))
+            .slice(0, 5);
+
         return (
           <div className="space-y-6">
+            {/* BUSCA GLOBAL */}
+            <Card className="p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-white font-bold text-sm">Busca global</h3>
+                  <p className="text-xs text-gray-500">Procura em MP, B2 e Produto Acabado</p>
+                </div>
+              </div>
+              <div className="relative mt-3">
+                <Search className="absolute left-3 top-2.5 text-gray-500" size={16} />
+                <input
+                  value={globalSearchQuery}
+                  onChange={(e) => { setGlobalSearchQuery(e.target.value); setIsGlobalSearchOpen(true); }}
+                  onFocus={() => setIsGlobalSearchOpen(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") { setIsGlobalSearchOpen(false); return; }
+                    if (e.key === "Enter") {
+                      const first = globalMatchesMother[0] || globalMatchesB2[0] || globalMatchesProducts[0];
+                      if (first) openGlobalResult(first);
+                    }
+                  }}
+                  placeholder="Digite código, material, largura..."
+                  className="w-full bg-gray-900 border border-gray-700 rounded-xl py-2 pl-10 pr-3 text-sm text-white focus:border-blue-500 outline-none"
+                />
+
+                {isGlobalSearchOpen && globalQ && (
+                  <div
+                    className="absolute z-50 mt-2 w-full rounded-xl border border-white/10 bg-slate-950/95 backdrop-blur shadow-2xl overflow-hidden"
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    <div className="max-h-80 overflow-auto custom-scrollbar-dark">
+                      {(globalMatchesMother.length === 0 && globalMatchesB2.length === 0 && globalMatchesProducts.length === 0) ? (
+                        <div className="p-3 text-sm text-gray-400">Nenhum resultado.</div>
+                      ) : (
+                        <div className="divide-y divide-white/5">
+                          {globalMatchesMother.length > 0 && (
+                            <div className="p-2">
+                              <div className="px-2 py-1 text-[11px] uppercase tracking-widest text-gray-500 font-bold">MP</div>
+                              {globalMatchesMother.map((r, idx) => (
+                                <button key={`m-${idx}`} onClick={() => openGlobalResult(r)} className="w-full text-left px-2 py-2 rounded-lg hover:bg-white/5 transition-colors">
+                                  <div className="text-sm text-white font-semibold">{r.title}</div>
+                                  <div className="text-xs text-gray-400">{r.subtitle}</div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {globalMatchesB2.length > 0 && (
+                            <div className="p-2">
+                              <div className="px-2 py-1 text-[11px] uppercase tracking-widest text-gray-500 font-bold">B2</div>
+                              {globalMatchesB2.map((r, idx) => (
+                                <button key={`b2-${idx}`} onClick={() => openGlobalResult(r)} className="w-full text-left px-2 py-2 rounded-lg hover:bg-white/5 transition-colors">
+                                  <div className="text-sm text-white font-semibold">{r.title}</div>
+                                  <div className="text-xs text-gray-400">{r.subtitle}</div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {globalMatchesProducts.length > 0 && (
+                            <div className="p-2">
+                              <div className="px-2 py-1 text-[11px] uppercase tracking-widest text-gray-500 font-bold">Produto</div>
+                              {globalMatchesProducts.map((r, idx) => (
+                                <button key={`p-${idx}`} onClick={() => openGlobalResult(r)} className="w-full text-left px-2 py-2 rounded-lg hover:bg-white/5 transition-colors">
+                                  <div className="text-sm text-white font-semibold">{r.title}</div>
+                                  <div className="text-xs text-gray-400">{r.subtitle}</div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
             {/* KPI CARDS */}
             <div className="kpi-cards grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
               <Card className="border-l-4 border-blue-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Entrada de MP</h3><div className="flex flex-col"><p className="text-3xl font-bold text-white">{safeMother.filter(m => m.status === 'stock').length} <span className="text-sm text-gray-500 font-normal">bobinas</span></p><p className="text-sm text-blue-400 font-bold">{totalMotherWeight.toLocaleString('pt-BR')} kg</p></div></Card>
@@ -5046,9 +5284,78 @@ const handleFullRestore = (e) => {
               <Card className="border-l-4 border-amber-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Sucata Total</h3><div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{totalScrapAll.toFixed(1)}</p><span className="text-sm text-gray-500 mb-1">kg</span></div></Card>
             </div>
 
+            {/* PONTOS DE ATENÇÃO (SEM HISTÓRICO) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+              <Card className="p-4">
+                <h3 className="text-white font-bold text-sm mb-1">Top códigos (MP)</h3>
+                <p className="text-xs text-gray-500 mb-3">Mais bobinas em estoque</p>
+                <div className="space-y-2">
+                  {topMotherCodes.map((i, idx) => (
+                    <button key={idx} onClick={() => handleViewStockDetails(i.code, 'mother')} className="w-full text-left rounded-lg px-2 py-1.5 hover:bg-white/5 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-white font-semibold">{i.code}</span>
+                        <span className="text-xs text-gray-400">{i.count} bob</span>
+                      </div>
+                      <div className="text-xs text-gray-500 truncate">{i.material} • {(safeNum(i.weight) || 0).toFixed(0)} kg</div>
+                    </button>
+                  ))}
+                  {topMotherCodes.length === 0 && <div className="text-sm text-gray-500">Sem dados.</div>}
+                </div>
+              </Card>
+
+              <Card className="p-4">
+                <h3 className="text-white font-bold text-sm mb-1">Top materiais (MP)</h3>
+                <p className="text-xs text-gray-500 mb-3">Maior peso total</p>
+                <div className="space-y-2">
+                  {topMotherMaterials.map((i, idx) => (
+                    <div key={idx} className="rounded-lg px-2 py-1.5 hover:bg-white/5 transition-colors">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-white font-semibold truncate" title={i.material}>{i.material}</span>
+                        <span className="text-xs text-gray-400 whitespace-nowrap">{(safeNum(i.weight) || 0).toFixed(0)} kg</span>
+                      </div>
+                      <div className="text-xs text-gray-500">{i.count} bobinas</div>
+                    </div>
+                  ))}
+                  {topMotherMaterials.length === 0 && <div className="text-sm text-gray-500">Sem dados.</div>}
+                </div>
+              </Card>
+
+              <Card className="p-4">
+                <h3 className="text-white font-bold text-sm mb-1">Top larguras (MP)</h3>
+                <p className="text-xs text-gray-500 mb-3">Mais bobinas por largura</p>
+                <div className="space-y-2">
+                  {topMotherWidths.map((i, idx) => (
+                    <div key={idx} className="rounded-lg px-2 py-1.5 hover:bg-white/5 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-white font-semibold">{i.width} mm</span>
+                        <span className="text-xs text-gray-400">{i.count} bob</span>
+                      </div>
+                    </div>
+                  ))}
+                  {topMotherWidths.length === 0 && <div className="text-sm text-gray-500">Sem dados.</div>}
+                </div>
+              </Card>
+
+              <Card className="p-4">
+                <h3 className="text-white font-bold text-sm mb-1">Top espessuras (MP)</h3>
+                <p className="text-xs text-gray-500 mb-3">Mais bobinas por espessura</p>
+                <div className="space-y-2">
+                  {topMotherThicknesses.map((i, idx) => (
+                    <div key={idx} className="rounded-lg px-2 py-1.5 hover:bg-white/5 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-white font-semibold">{(Number(i.thickness) || 0).toFixed(2).replace('.', ',')} mm</span>
+                        <span className="text-xs text-gray-400">{i.count} bob</span>
+                      </div>
+                    </div>
+                  ))}
+                  {topMotherThicknesses.length === 0 && <div className="text-sm text-gray-500">Sem dados.</div>}
+                </div>
+              </Card>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                {/* TABELA 1: MÃE */}
-               <Card className="h-[500px] flex flex-col overflow-hidden col-span-1 lg:col-span-1">
+               <Card id="dash-mother" className="h-[500px] flex flex-col overflow-hidden col-span-1 lg:col-span-1">
                  <div className="mb-4">
                      <div className="flex justify-between items-center mb-2">
                           <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-blue-500"/> Entrada de MP</h3>
@@ -5078,7 +5385,7 @@ const handleFullRestore = (e) => {
                </Card>
                
                {/* TABELA 2: B2 */}
-               <Card className="h-[500px] flex flex-col overflow-hidden">
+               <Card id="dash-b2" className="h-[500px] flex flex-col overflow-hidden">
                  <div className="mb-4">
                      <div className="flex justify-between items-center mb-2"><h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-indigo-500"/> Estoque B2</h3><div className="flex gap-2"><Button variant="secondary" onClick={() => { const data = filteredB2List.map(i => ({ code: i.code, name: i.name, count: `${i.count} bob (${i.weight}kg)` })); handleGeneratePDF('Estoque Bobina 2 (Slitter)', data); }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button><Button 
   variant="secondary" 
@@ -5173,7 +5480,7 @@ const handleFullRestore = (e) => {
                </Card>
 
                {/* TABELA 3: ACABADO */}
-               <Card className="h-[500px] flex flex-col border-l-4 border-emerald-500/50 overflow-hidden">
+               <Card id="dash-finished" className="h-[500px] flex flex-col border-l-4 border-emerald-500/50 overflow-hidden">
                  <div className="mb-4">
                      <div className="flex justify-between items-center mb-2"><h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg"><Package className="text-emerald-500"/> Produto Acabado</h3><div className="flex gap-2"><Button variant="secondary" onClick={() => { const data = filteredFinishedList.map(i => ({ code: i.code, name: i.name, count: i.count })); handleGeneratePDF('Produto Acabado', data); }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button><Button variant="secondary" onClick={() => { const data = filteredFinishedList.map(i => ({ "Código": i.code, "Produto": i.name, "Saldo Atual": i.count })); exportToCSV(data, 'saldo_produto_acabado'); }} className="h-8 text-xs bg-emerald-900/20 text-emerald-400 border-emerald-900/50 hover:bg-emerald-900/40" title="Baixar CSV"><Download size={14}/> CSV</Button></div></div>
                      <div className="relative"><Search className="absolute left-2 top-2 text-gray-500" size={14}/><input type="text" placeholder="Buscar produto..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-blue-500 outline-none" value={dashSearchFinished} onChange={e => setDashSearchFinished(e.target.value)} /></div>
