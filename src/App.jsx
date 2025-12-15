@@ -89,7 +89,13 @@ const ITEMS_PER_PAGE = 50;
 
 // --- Componentes UI ---
 
-const Card = ({ children, className = "" }) => <div className={`bg-gray-800 rounded-xl shadow-lg border border-gray-700 p-6 ${className}`}>{children}</div>;
+const Card = ({ children, className = "" }) => (
+  <div
+    className={`bg-slate-900/50 backdrop-blur rounded-2xl shadow-xl shadow-black/20 border border-white/5 p-6 ${className}`}
+  >
+    {children}
+  </div>
+);
 
 const Input = ({ label, value, onChange, type = "text", placeholder = "", min, disabled = false, readOnly = false }) => (
   <div className="mb-4">
@@ -208,8 +214,8 @@ const DailyGlobalModal = ({ group, onClose }) => {
 const PrintLabelsModal = ({ items, onClose, type = 'coil' }) => {
   return (
     <div className="fixed inset-0 bg-black/90 z-[60] flex flex-col items-center justify-center overflow-hidden">
-      <div className="bg-gray-900 w-full p-4 border-b border-gray-700 flex justify-between items-center print:hidden">
-        <h3 className="text-white font-bold text-lg">Imprimir Etiquetas ({items.length})</h3>
+        <div className="bg-gray-900 w-full p-4 border-b border-gray-700 flex justify-between items-center print:hidden">
+         <h3 className="text-white font-bold text-lg">Imprimir Etiquetas ({items.length})</h3>
         <div className="flex gap-2">
           <Button onClick={() => window.print()} variant="primary"><Printer size={18} /> Imprimir</Button>
           <Button onClick={onClose} variant="secondary"><X size={18} /> Fechar</Button>
@@ -4768,6 +4774,82 @@ const handleFullRestore = (e) => {
             document.body.removeChild(link);
         };
 
+        const exportToExcelXml = (sheets, filename) => {
+            if (!Array.isArray(sheets) || sheets.length === 0) return alert("Nada para exportar.");
+
+            const xmlEscape = (value) =>
+                String(value ?? "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&apos;");
+
+            const sanitizeSheetName = (name) =>
+                String(name || "Planilha")
+                    .slice(0, 31)
+                    .replace(/[\[\]\*\/\\\?\:]/g, " ")
+                    .trim() || "Planilha";
+
+            const cellXml = (value, styleId) => {
+                if (value === null || value === undefined || value === "") {
+                    return styleId
+                        ? `<Cell ss:StyleID="${styleId}"><Data ss:Type="String"></Data></Cell>`
+                        : `<Cell><Data ss:Type="String"></Data></Cell>`;
+                }
+                const isNumber = typeof value === "number" && Number.isFinite(value);
+                const type = isNumber ? "Number" : "String";
+                const cellOpen = styleId ? `<Cell ss:StyleID="${styleId}">` : `<Cell>`;
+                return `${cellOpen}<Data ss:Type="${type}">${xmlEscape(isNumber ? String(value) : String(value))}</Data></Cell>`;
+            };
+
+            const tableXml = (rows) => {
+                const safeRows = Array.isArray(rows) ? rows : [];
+                const headers = [];
+
+                safeRows.forEach((row) => {
+                    Object.keys(row || {}).forEach((key) => {
+                        if (!headers.includes(key)) headers.push(key);
+                    });
+                });
+
+                const headerRow = `<Row>${headers.map((h) => cellXml(h)).join("")}</Row>`;
+                const dataRows = safeRows
+                    .map((row) => {
+                        const cells = headers.map((h) => {
+                            const v = row?.[h] ?? "";
+                            const styleId = h === "Espessura (mm)" && typeof v === "number" ? "sDecimal2" : undefined;
+                            return cellXml(v, styleId);
+                        });
+                        return `<Row>${cells.join("")}</Row>`;
+                    })
+                    .join("");
+
+                return `<Table>${headerRow}${dataRows}</Table>`;
+            };
+
+            const workbookXml =
+                `<?xml version="1.0"?>` +
+                `<?mso-application progid="Excel.Sheet"?>` +
+                `<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:html="http://www.w3.org/TR/REC-html40">` +
+                `<Styles><Style ss:ID="sDecimal2"><NumberFormat ss:Format="0.00"/></Style></Styles>` +
+                sheets
+                    .map((sheet) => {
+                        const name = sanitizeSheetName(sheet?.name);
+                        return `<Worksheet ss:Name="${xmlEscape(name)}">${tableXml(sheet?.rows || [])}</Worksheet>`;
+                    })
+                    .join("") +
+                `</Workbook>`;
+
+            const blob = new Blob([workbookXml], { type: "application/vnd.ms-excel;charset=utf-8;" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `${filename}.xls`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+
         const handleGeneratePDF = (title, data) => {
             const printWindow = window.open('', '', 'height=600,width=800');
             if (!printWindow) return alert("Pop-up bloqueado! Permita pop-ups.");
@@ -4872,10 +4954,91 @@ const handleFullRestore = (e) => {
         const tileStockWeight = safeMother.filter(m => m.status === 'stock' && String(m.code) === '10236').reduce((acc, m) => acc + safeNum(m.remainingWeight || m.weight), 0);
         const totalScrapAll = safeProd.reduce((acc, l) => acc + safeNum(l.scrap), 0) + safeMother.reduce((acc, m) => acc + safeNum(m.cutWaste), 0);
 
+        const exportMotherStockExcel = () => {
+            const getMotherMaterialName = (coil) => {
+                const codeRaw = normalizeCode(coil?.code);
+                const catalogItem = catalogByCode[codeRaw];
+                return catalogItem?.description || coil?.material || `BOBINA ${coil?.code || ""}`;
+            };
+
+            const normalizeThicknessNumber = (value) => {
+                if (value === null || value === undefined) return null;
+                const raw = String(value).trim();
+                if (!raw) return null;
+
+                if (/[.,]/.test(raw)) {
+                    const n = parseFloat(raw.replace(",", "."));
+                    return Number.isFinite(n) ? n : null;
+                }
+
+                const digits = raw.replace(/[^\d]/g, "");
+                if (!digits) return null;
+                const n = Number(digits);
+                if (!Number.isFinite(n)) return null;
+
+                // Padrão observado nos relatórios/imports:
+                // Heurística baseada nos dados reais do app/import:
+                // - 1 dígito: décimos (ex: 4 -> 0.40, 8 -> 0.80)
+                // - 2 dígitos: abaixo de 30 costuma ser 1.xx/2.x (ex: 12 -> 1.20, 19 -> 1.90, 26 -> 2.60)
+                //   acima disso costuma ser 0.xx (ex: 40 -> 0.40, 75 -> 0.75)
+                // - 3+ dígitos: centésimos (ex: 125 -> 1.25, 225 -> 2.25, 300 -> 3.00)
+                if (digits.length === 1) return n / 10;
+                if (digits.length === 2) return n < 30 ? n / 10 : n / 100;
+                return n / 100;
+            };
+
+            const query = String(dashSearchMother || "").toLowerCase().trim();
+
+            const summaryRows = filteredMotherList.map((i) => ({
+                "Código": i.code,
+                "Material": i.material,
+                "Largura (mm)": safeNum(i.width) || "",
+                "Qtd Bobinas": safeNum(i.count) || 0,
+                "Peso Total (kg)": safeNum(i.weight) || 0,
+                "Tipo": i.type || "",
+            }));
+
+            const detailedRows = safeMother
+                .filter((m) => m?.status === "stock")
+                .filter((m) => {
+                    if (!query) return true;
+                    const materialName = getMotherMaterialName(m);
+                    return (
+                        String(m?.code || "").toLowerCase().includes(query) ||
+                        String(materialName || "").toLowerCase().includes(query)
+                    );
+                })
+                .map((m) => ({
+                    "ID": m.id || "",
+                    "Data": m.date || m.entryDate || "",
+                    "Código": m.code || "",
+                    "NF": m.nf || "",
+                    "Material": getMotherMaterialName(m),
+                    "Largura (mm)": safeNum(m.width) || "",
+                    "Espessura (mm)": normalizeThicknessNumber(m.thickness) ?? "",
+                    "Tipo": m.type || "",
+                    "Peso Original (kg)": safeNum(m.originalWeight || m.weight) || 0,
+                    "Peso Saldo (kg)": safeNum(m.remainingWeight || m.weight) || 0,
+                    "Família": m.family || "",
+                    "Forma": m.form || "",
+                    "Inox": m.inoxGrade || "",
+                    "Qtd (inox)": m.qty || "",
+                    "Comprimento": m.length || "",
+                }));
+
+            exportToExcelXml(
+                [
+                    { name: "Resumo", rows: summaryRows },
+                    { name: "Bobinas", rows: detailedRows },
+                ],
+                "saldo_estoque_mae"
+            );
+        };
+
         return (
           <div className="space-y-6">
             {/* KPI CARDS */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
+            <div className="kpi-cards grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
               <Card className="border-l-4 border-blue-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Entrada de MP</h3><div className="flex flex-col"><p className="text-3xl font-bold text-white">{safeMother.filter(m => m.status === 'stock').length} <span className="text-sm text-gray-500 font-normal">bobinas</span></p><p className="text-sm text-blue-400 font-bold">{totalMotherWeight.toLocaleString('pt-BR')} kg</p></div></Card>
               <Card className="border-l-4 border-indigo-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Estoque B2</h3><div className="flex flex-col"><p className="text-3xl font-bold text-white">{safeChild.filter(c => c.status === 'stock').length} <span className="text-sm text-gray-500 font-normal">bobinas</span></p><p className="text-sm text-indigo-400 font-bold">{totalB2Weight.toLocaleString('pt-BR')} kg</p></div></Card>
               <Card className="border-l-4 border-emerald-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Estoque Acabado</h3><div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{totalFinishedCount}</p><span className="text-sm text-gray-500 mb-1">peças</span></div></Card>
@@ -4888,9 +5051,10 @@ const handleFullRestore = (e) => {
                <Card className="h-[500px] flex flex-col overflow-hidden col-span-1 lg:col-span-1">
                  <div className="mb-4">
                      <div className="flex justify-between items-center mb-2">
-                         <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-blue-500"/> Entrada de MP</h3>
-                         <div className="flex gap-2">
-                            <Button variant="secondary" onClick={() => { const data = filteredMotherList.map(i => ({ code: i.code, name: `${i.material} (${i.width}mm)`, count: `${i.count} bob (${i.weight}kg)` })); handleGeneratePDF('Estoque Entrada de MP', data); }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button>
+                          <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-blue-500"/> Entrada de MP</h3>
+                          <div className="mother-mp-actions flex gap-2">
+                             <Button variant="secondary" onClick={() => { const data = filteredMotherList.map(i => ({ code: i.code, name: `${i.material} (${i.width}mm)`, count: `${i.count} bob (${i.weight}kg)` })); handleGeneratePDF('Estoque Entrada de MP', data); }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button>
+                             <Button variant="secondary" onClick={exportMotherStockExcel} className="h-8 text-xs bg-blue-900/20 text-blue-400 border-blue-900/50 hover:bg-blue-900/40" title="Baixar Excel (Resumo + Bobinas)"><Download size={14}/> EXCEL</Button>
                             <Button variant="secondary" onClick={() => { const data = filteredMotherList.map(i => ({ "Código": i.code, "Material": i.material, "Largura": i.width, "Qtd Bobinas": i.count, "Peso Total (kg)": i.weight })); exportToCSV(data, 'saldo_estoque_mae'); }} className="h-8 text-xs bg-blue-900/20 text-blue-400 border-blue-900/50 hover:bg-blue-900/40"><Download size={14}/> CSV</Button>
                          </div>
                      </div>
@@ -4991,7 +5155,7 @@ const handleFullRestore = (e) => {
 >
   <Download size={14}/> CSV
 </Button></div></div>
-                     <div className="relative"><Search className="absolute left-2 top-2 text-gray-500" size={14}/><input type="text" placeholder="Buscar..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-indigo-500 outline-none" value={dashSearchB2} onChange={e => setDashSearchB2(e.target.value)} /></div>
+                     <div className="relative"><Search className="absolute left-2 top-2 text-gray-500" size={14}/><input type="text" placeholder="Buscar..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-blue-500 outline-none" value={dashSearchB2} onChange={e => setDashSearchB2(e.target.value)} /></div>
                  </div>
                  <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
                    <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
@@ -5012,7 +5176,7 @@ const handleFullRestore = (e) => {
                <Card className="h-[500px] flex flex-col border-l-4 border-emerald-500/50 overflow-hidden">
                  <div className="mb-4">
                      <div className="flex justify-between items-center mb-2"><h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg"><Package className="text-emerald-500"/> Produto Acabado</h3><div className="flex gap-2"><Button variant="secondary" onClick={() => { const data = filteredFinishedList.map(i => ({ code: i.code, name: i.name, count: i.count })); handleGeneratePDF('Produto Acabado', data); }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button><Button variant="secondary" onClick={() => { const data = filteredFinishedList.map(i => ({ "Código": i.code, "Produto": i.name, "Saldo Atual": i.count })); exportToCSV(data, 'saldo_produto_acabado'); }} className="h-8 text-xs bg-emerald-900/20 text-emerald-400 border-emerald-900/50 hover:bg-emerald-900/40" title="Baixar CSV"><Download size={14}/> CSV</Button></div></div>
-                     <div className="relative"><Search className="absolute left-2 top-2 text-gray-500" size={14}/><input type="text" placeholder="Buscar produto..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-emerald-500 outline-none" value={dashSearchFinished} onChange={e => setDashSearchFinished(e.target.value)} /></div>
+                     <div className="relative"><Search className="absolute left-2 top-2 text-gray-500" size={14}/><input type="text" placeholder="Buscar produto..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-blue-500 outline-none" value={dashSearchFinished} onChange={e => setDashSearchFinished(e.target.value)} /></div>
                  </div>
                  <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
                    <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
@@ -5576,7 +5740,7 @@ const renderB2DynamicReport = () => {
       <div className={`fixed inset-0 z-30 bg-black/50 md:hidden ${isSidebarOpen ? 'block' : 'hidden'}`} onClick={() => setSidebarOpen(false)}></div>
 
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-black/90 text-gray-300 flex flex-col border-r border-white/5 shadow-2xl backdrop-blur-sm transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:w-72`}>
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-950/70 text-gray-300 flex flex-col border-r border-white/5 shadow-2xl backdrop-blur-sm transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:w-72`}>
         <div className="h-20 flex items-center px-6 border-b border-white/5 font-bold text-xl tracking-wider bg-black/20">
            <img 
              src="/logo.png" 
@@ -5588,40 +5752,40 @@ const renderB2DynamicReport = () => {
         <nav className="flex-1 py-8 px-4 space-y-2 overflow-y-auto">
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Principal</p>
            
-           <button onClick={() => { setActiveTab('dashboard'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'dashboard' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-             <LayoutDashboard size={20} className={activeTab === 'dashboard' ? "text-blue-400" : "group-hover:text-blue-400 transition-colors"}/> <span className="font-medium">Visão Geral</span>
+           <button onClick={() => { setActiveTab('dashboard'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'dashboard' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+             <LayoutDashboard size={20} className={activeTab === 'dashboard' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">Visão Geral</span>
            </button>
            
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mt-8 mb-4">Operacional</p>
            
-           <button onClick={() => { setActiveTab('mother'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'mother' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-             <ScrollText size={20} className={activeTab === 'mother' ? "text-blue-400" : "group-hover:text-blue-400 transition-colors"}/> <span className="font-medium">Entrada de MP</span>
+           <button onClick={() => { setActiveTab('mother'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'mother' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+             <ScrollText size={20} className={activeTab === 'mother' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">Entrada de MP</span>
            </button>
            {/* ... outros botões ... */}
                      
-           <button onClick={() => { setActiveTab('cutting'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'cutting' ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-             <Scissors size={20} className={activeTab === 'cutting' ? "text-purple-400" : "group-hover:text-purple-400 transition-colors"}/> <span className="font-medium">Corte Slitter</span>
+           <button onClick={() => { setActiveTab('cutting'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'cutting' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+             <Scissors size={20} className={activeTab === 'cutting' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">Corte Slitter</span>
            </button>
            
-           <button onClick={() => { setActiveTab('production'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'production' ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-             <Factory size={20} className={activeTab === 'production' ? "text-emerald-400" : "group-hover:text-emerald-400 transition-colors"}/> <span className="font-medium">Apontamento</span>
+           <button onClick={() => { setActiveTab('production'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'production' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+             <Factory size={20} className={activeTab === 'production' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">Apontamento</span>
            </button>
            
-           <button onClick={() => { setActiveTab('shipping'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'shipping' ? 'bg-amber-600/20 text-amber-400 border border-amber-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-             <Truck size={20} className={activeTab === 'shipping' ? "text-amber-400" : "group-hover:text-amber-400 transition-colors"}/> <span className="font-medium">Expedição</span>
+           <button onClick={() => { setActiveTab('shipping'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'shipping' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+             <Truck size={20} className={activeTab === 'shipping' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">Expedição</span>
            </button>
 
            
-           <button onClick={() => { setActiveTab('reports'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'reports' ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-             <FileText size={20} className={activeTab === 'reports' ? "text-rose-400" : "group-hover:text-rose-400 transition-colors"}/> <span className="font-medium">Relatórios</span>
+           <button onClick={() => { setActiveTab('reports'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'reports' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+             <FileText size={20} className={activeTab === 'reports' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">Relatórios</span>
            </button>
 
-            <button onClick={() => { setActiveTab('b2report'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'b2report' ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-              <List size={20} className={activeTab === 'b2report' ? "text-indigo-400" : "group-hover:text-indigo-400 transition-colors"}/> <span className="font-medium">Rastreio B2</span>
+            <button onClick={() => { setActiveTab('b2report'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'b2report' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+              <List size={20} className={activeTab === 'b2report' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">Rastreio B2</span>
             </button>
 
-           <button onClick={() => { setActiveTab('bi'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'indicators' ? 'bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
-                <PieChart size={20} className={activeTab === 'indicators' ? "text-cyan-400" : "group-hover:text-cyan-400 transition-colors"}/> <span className="font-medium">BI & Gráficos</span>
+           <button onClick={() => { setActiveTab('bi'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'bi' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+                <PieChart size={20} className={activeTab === 'bi' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">BI & Gráficos</span>
             </button>
 
             <button 
@@ -5631,15 +5795,15 @@ const renderB2DynamicReport = () => {
             }} 
             className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group 
               ${activeTab === 'mpNeed' 
-                ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30 shadow-inner' 
+                ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' 
                 : 'text-gray-400 hover:bg-white/5 hover:text-white'
               }`}
           >
             <Factory 
               size={20} 
               className={activeTab === 'mpNeed' 
-                ? "text-purple-400" 
-                : "group-hover:text-purple-400 transition-colors"
+                ? "text-blue-300" 
+                : "group-hover:text-blue-300 transition-colors"
               } 
             />
             <span className="font-medium">Necessidade MP</span>
@@ -5689,7 +5853,7 @@ const renderB2DynamicReport = () => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden relative bg-[#111827]">
          
-         <header className="h-16 md:h-20 bg-[#1f293b] shadow-lg flex items-center justify-between px-4 md:px-8 z-10 border-b border-gray-800 shrink-0">
+         <header className="h-16 md:h-20 bg-slate-900/70 backdrop-blur shadow-lg flex items-center justify-between px-4 md:px-8 z-10 border-b border-white/5 shrink-0">
             <div className="flex items-center gap-4">
               <button className="md:hidden p-2 text-gray-400 hover:text-white" onClick={() => setSidebarOpen(true)}><Menu size={24}/></button>
               <div>
@@ -5706,7 +5870,7 @@ const renderB2DynamicReport = () => {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <div className="hidden md:block text-right px-3 py-1.5 md:px-4 md:py-2 bg-gray-800 rounded-lg border border-gray-700">
+              <div className="hidden md:block text-right px-3 py-1.5 md:px-4 md:py-2 bg-white/5 rounded-xl border border-white/10">
                 <p className="text-xs md:text-sm font-bold text-gray-300">{new Date().toLocaleDateString()}</p>
                 <p className="text-[11px] text-gray-500 truncate max-w-[180px]">{user?.email}</p>
               </div>

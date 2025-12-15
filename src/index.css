@@ -2,6 +2,64 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Tokens de UI (tema escuro + 1 cor de destaque) */
+:root {
+  --ui-accent: 59 130 246; /* blue-500 */
+  --ui-surface: 15 23 42; /* slate-900 */
+  --ui-surface-2: 17 24 39; /* gray-900 */
+  --ui-border: 255 255 255; /* white (usado com alpha) */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* Foco consistente (teclado) */
+:where(button, a, input, select, textarea):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(var(--ui-accent) / 0.35);
+}
+
+/* Dashboard KPI cards: padroniza cor de destaque */
+.kpi-cards .border-blue-500,
+.kpi-cards .border-indigo-500,
+.kpi-cards .border-emerald-500,
+.kpi-cards .border-purple-500,
+.kpi-cards .border-amber-500 {
+  border-color: rgb(55 65 81) !important;      /* gray-700 (borda padrão) */
+  border-left-color: rgb(59 130 246) !important; /* blue-500 (destaque único) */
+}
+
+.kpi-cards .text-blue-400,
+.kpi-cards .text-indigo-400,
+.kpi-cards .text-emerald-400,
+.kpi-cards .text-purple-400,
+.kpi-cards .text-amber-400 {
+  color: rgb(96 165 250) !important; /* blue-400 (destaque único) */
+}
+
+.kpi-cards > div {
+  transition: transform 120ms ease, border-color 120ms ease, background-color 120ms ease;
+  background-color: rgb(var(--ui-surface) / 0.45) !important;
+  border-color: rgb(var(--ui-border) / 0.06) !important;
+}
+
+.kpi-cards > div:hover {
+  transform: translateY(-1px);
+  border-color: rgb(75 85 99) !important; /* gray-600 */
+  border-left-color: rgb(96 165 250) !important; /* blue-400 */
+}
+
+/* Entrada de MP: remove botão legado (CSV antigo) */
+.mother-mp-actions > button:last-child,
+.mother-mp-actions > button:last-of-type {
+  display: none !important;
+}
+
 /* Scrollbar dark */
 .custom-scrollbar-dark {
   scrollbar-width: thin;
