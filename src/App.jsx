@@ -71,7 +71,7 @@ import CutDetailsModal from './components/modals/CutDetailsModal';
 import { default as EditMotherCoilModal, default as ProductHistoryModal } from './components/modals/ProductHistoryModal';
 import RawMaterialRequirement from "./components/modals/RawMaterialRequirement";
 import InoxBlanksPlanner from "./components/modals/InoxBlanksPlanner";
-import ModuloPCP from "./data/demandaaco.jsx";
+import DemandFocus from "./data/demandFocus.jsx";
 import { PESO_UNITARIO_PA } from './data/peso_unitario_pa';
 
 
@@ -6304,7 +6304,7 @@ const renderB2DynamicReport = () => {
 )}
 
 {activeTab === "steelDemand" && (
-  <ModuloPCP />
+  <DemandFocus />
 )}
 
 {activeTab === "inoxBlanks" && (

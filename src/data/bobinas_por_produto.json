@@ -1,6 +1,7 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "note": "porUnidade vem do 'Total geral' do relatório (consumo por 1 unidade do Produto). Para calcular demanda: paraQtd = porUnidade * qtdProduzir.",
+  "categorias_note": "categoria inferida pela descrição do produto (heurística). Ajuste as regras se algum produto cair em categoria errada.",
   "produtos": [
     {
       "produto": "00107",
@@ -46,7 +47,13 @@
           "desc": "BOBINA GALV 0,60 NBR 7008 ZE Z85",
           "porUnidade": 2.699976
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3 GALV"
     },
     {
       "produto": "00107E",
@@ -92,7 +99,13 @@
           "desc": "BOBINA GALV 0,60 NBR 7008 ZE Z85",
           "porUnidade": 2.699976
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3 GALV"
     },
     {
       "produto": "00107RF",
@@ -138,7 +151,13 @@
           "desc": "BOBINA GALV 0,60 NBR 7008 ZE Z85",
           "porUnidade": 2.699976
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS GALV"
     },
     {
       "produto": "00109",
@@ -184,7 +203,13 @@
           "desc": "BOBINA GALV 0,60 NBR 7008 ZE Z85",
           "porUnidade": 2.699976
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS GALV"
     },
     {
       "produto": "00109E",
@@ -230,7 +255,13 @@
           "desc": "BOBINA GALV 0,60 NBR 7008 ZE Z85",
           "porUnidade": 2.699976
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS GALV"
     },
     {
       "produto": "00111",
@@ -276,7 +307,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "CINZA",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3 CINZA"
     },
     {
       "produto": "00111E",
@@ -322,7 +359,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "CINZA",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3 CINZA"
     },
     {
       "produto": "00111EP",
@@ -368,7 +411,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3"
     },
     {
       "produto": "00111F",
@@ -414,7 +463,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3"
     },
     {
       "produto": "00112",
@@ -460,7 +515,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "CINZA",
+        "modelo": null
+      },
+      "categoriaKey": "CONSTR CINZA"
     },
     {
       "produto": "00112E",
@@ -506,7 +567,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "CINZA",
+        "modelo": null
+      },
+      "categoriaKey": "CONSTR CINZA"
     },
     {
       "produto": "00112EP",
@@ -552,7 +619,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "CONSTR"
     },
     {
       "produto": "00120",
@@ -598,7 +671,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3 GALV"
     },
     {
       "produto": "00120A",
@@ -649,7 +728,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00121",
@@ -690,7 +775,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS GALV"
     },
     {
       "produto": "00121E",
@@ -731,7 +822,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS GALV"
     },
     {
       "produto": "00123",
@@ -772,7 +869,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3 GALV"
     },
     {
       "produto": "00123E",
@@ -813,7 +916,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3 GALV"
     },
     {
       "produto": "00123RF",
@@ -854,7 +963,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS GALV"
     },
     {
       "produto": "00124",
@@ -895,7 +1010,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS GALV"
     },
     {
       "produto": "00124E",
@@ -936,7 +1057,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS GALV"
     },
     {
       "produto": "00126",
@@ -977,7 +1104,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3 GALV"
     },
     {
       "produto": "00126E",
@@ -1018,7 +1151,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3 GALV"
     },
     {
       "produto": "00126RF",
@@ -1059,7 +1198,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS GALV"
     },
     {
       "produto": "00136",
@@ -1090,7 +1235,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3 GALV"
     },
     {
       "produto": "00137",
@@ -1121,7 +1272,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": "3.50"
+      },
+      "categoriaKey": "OUTROS 3.50 GALV"
     },
     {
       "produto": "00138",
@@ -1162,7 +1319,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "PLAST",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS PLAST"
     },
     {
       "produto": "00138E",
@@ -1203,7 +1366,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "PLAST",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS PLAST"
     },
     {
       "produto": "00139",
@@ -1244,7 +1413,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "PLAST",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3 PLAST"
     },
     {
       "produto": "00139E",
@@ -1285,7 +1460,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "PLAST",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3 PLAST"
     },
     {
       "produto": "00139EV",
@@ -1326,7 +1507,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "PLAST",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3 PLAST"
     },
     {
       "produto": "00140",
@@ -1372,7 +1559,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "POP 3 GALV"
     },
     {
       "produto": "00140E",
@@ -1418,7 +1611,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "POP 3 GALV"
     },
     {
       "produto": "00140F",
@@ -1464,7 +1663,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "POP 3 GALV"
     },
     {
       "produto": "00140RF",
@@ -1510,7 +1715,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "POP GALV"
     },
     {
       "produto": "00141",
@@ -1556,7 +1767,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "POP GALV"
     },
     {
       "produto": "00141E",
@@ -1602,7 +1819,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "POP GALV"
     },
     {
       "produto": "00147",
@@ -1648,7 +1871,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3 GALV"
     },
     {
       "produto": "00147E",
@@ -1694,7 +1923,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3 GALV"
     },
     {
       "produto": "00147EH",
@@ -1740,7 +1975,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3 GALV"
     },
     {
       "produto": "00147F",
@@ -1786,7 +2027,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3 GALV"
     },
     {
       "produto": "00147L",
@@ -1832,7 +2079,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3 GALV"
     },
     {
       "produto": "00147TE",
@@ -1878,7 +2131,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "GALV",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3 GALV"
     },
     {
       "produto": "00148",
@@ -1924,7 +2183,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "CONSTR GALV"
     },
     {
       "produto": "00148E",
@@ -1970,7 +2235,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "CONSTR GALV"
     },
     {
       "produto": "00148L",
@@ -2016,7 +2287,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "CONSTR GALV"
     },
     {
       "produto": "00150",
@@ -2052,7 +2329,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "PLUS",
+        "acabamento": "AZUL",
+        "modelo": "3"
+      },
+      "categoriaKey": "PLUS 3 AZUL"
     },
     {
       "produto": "00150E",
@@ -2088,7 +2371,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "PLUS",
+        "acabamento": "AZUL",
+        "modelo": "3"
+      },
+      "categoriaKey": "PLUS 3 AZUL"
     },
     {
       "produto": "00150F",
@@ -2124,7 +2413,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "PLUS",
+        "acabamento": "AZUL",
+        "modelo": "3"
+      },
+      "categoriaKey": "PLUS 3 AZUL"
     },
     {
       "produto": "00150RF",
@@ -2160,7 +2455,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "PLUS",
+        "acabamento": "AZUL",
+        "modelo": null
+      },
+      "categoriaKey": "PLUS AZUL"
     },
     {
       "produto": "00152",
@@ -2196,7 +2497,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "PLUS",
+        "acabamento": "AZUL",
+        "modelo": null
+      },
+      "categoriaKey": "PLUS AZUL"
     },
     {
       "produto": "00152E",
@@ -2232,7 +2539,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "PLUS",
+        "acabamento": "AZUL",
+        "modelo": null
+      },
+      "categoriaKey": "PLUS AZUL"
     },
     {
       "produto": "00154",
@@ -2268,7 +2581,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "SUPER",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "SUPER 3"
     },
     {
       "produto": "00154E",
@@ -2304,7 +2623,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "SUPER",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "SUPER 3"
     },
     {
       "produto": "00154F",
@@ -2340,7 +2665,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "SUPER",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "SUPER 3"
     },
     {
       "produto": "00154RF",
@@ -2376,7 +2707,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "SUPER",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "SUPER"
     },
     {
       "produto": "00156",
@@ -2412,7 +2749,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "SUPER",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "SUPER"
     },
     {
       "produto": "00156E",
@@ -2448,7 +2791,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "SUPER",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "SUPER"
     },
     {
       "produto": "00162",
@@ -2484,7 +2833,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "MASTER",
+        "acabamento": "AZUL",
+        "modelo": "3"
+      },
+      "categoriaKey": "MASTER 3 AZUL"
     },
     {
       "produto": "00162E",
@@ -2520,7 +2875,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "MASTER",
+        "acabamento": "AZUL",
+        "modelo": "3"
+      },
+      "categoriaKey": "MASTER 3 AZUL"
     },
     {
       "produto": "00162F",
@@ -2556,7 +2917,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "MASTER",
+        "acabamento": "AZUL",
+        "modelo": "3"
+      },
+      "categoriaKey": "MASTER 3 AZUL"
     },
     {
       "produto": "00162RF",
@@ -2592,7 +2959,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "MASTER",
+        "acabamento": "AZUL",
+        "modelo": null
+      },
+      "categoriaKey": "MASTER AZUL"
     },
     {
       "produto": "00164",
@@ -2628,7 +3001,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "MASTER",
+        "acabamento": "AZUL",
+        "modelo": null
+      },
+      "categoriaKey": "MASTER AZUL"
     },
     {
       "produto": "00164E",
@@ -2664,7 +3043,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "MASTER",
+        "acabamento": "AZUL",
+        "modelo": null
+      },
+      "categoriaKey": "MASTER AZUL"
     },
     {
       "produto": "00166",
@@ -2710,7 +3095,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.848
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "POP 3"
     },
     {
       "produto": "00166E",
@@ -2756,7 +3147,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.848
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "POP 3"
     },
     {
       "produto": "00166F",
@@ -2802,7 +3199,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.848
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "POP 3"
     },
     {
       "produto": "00166RF",
@@ -2848,7 +3251,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.848
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "POP"
     },
     {
       "produto": "00168",
@@ -2894,7 +3303,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.848
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "POP"
     },
     {
       "produto": "00168E",
@@ -2940,7 +3355,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.848
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "POP"
     },
     {
       "produto": "00170",
@@ -2986,7 +3407,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.848
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "VERM",
+        "modelo": "3"
+      },
+      "categoriaKey": "POP 3 VERM"
     },
     {
       "produto": "00170E",
@@ -3032,7 +3459,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.848
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "VERM",
+        "modelo": "3"
+      },
+      "categoriaKey": "POP 3 VERM"
     },
     {
       "produto": "00170RF",
@@ -3078,7 +3511,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.848
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "VERM",
+        "modelo": null
+      },
+      "categoriaKey": "POP VERM"
     },
     {
       "produto": "00172",
@@ -3124,7 +3563,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.848
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "VERM",
+        "modelo": null
+      },
+      "categoriaKey": "POP VERM"
     },
     {
       "produto": "00172E",
@@ -3170,7 +3615,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.848
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "VERM",
+        "modelo": null
+      },
+      "categoriaKey": "POP VERM"
     },
     {
       "produto": "00174",
@@ -3191,7 +3642,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00174B",
@@ -3212,7 +3669,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00175",
@@ -3233,7 +3696,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "00175B",
@@ -3254,7 +3723,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "00176",
@@ -3290,7 +3765,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "MASTER",
+        "acabamento": "AZUL",
+        "modelo": "3"
+      },
+      "categoriaKey": "MASTER 3 AZUL"
     },
     {
       "produto": "00176F",
@@ -3326,7 +3807,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "MASTER",
+        "acabamento": "AZUL",
+        "modelo": null
+      },
+      "categoriaKey": "MASTER AZUL"
     },
     {
       "produto": "00185",
@@ -3337,7 +3824,13 @@
           "desc": "BOBINA BF 1,40 SAE 1006/OEM 60",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "03"
+      },
+      "categoriaKey": "OUTROS 03"
     },
     {
       "produto": "00186",
@@ -3348,7 +3841,13 @@
           "desc": "BOBINA BF 1,40 SAE 1006/OEM 60",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "04"
+      },
+      "categoriaKey": "OUTROS 04"
     },
     {
       "produto": "00187",
@@ -3359,7 +3858,13 @@
           "desc": "BOBINA BF 1,40 SAE 1006/OEM 60",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "05"
+      },
+      "categoriaKey": "OUTROS 05"
     },
     {
       "produto": "00188",
@@ -3370,7 +3875,13 @@
           "desc": "BOBINA BF 1,40 SAE 1006/OEM 60",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "06"
+      },
+      "categoriaKey": "OUTROS 06"
     },
     {
       "produto": "00189",
@@ -3381,7 +3892,13 @@
           "desc": "BOBINA BF 1,40 SAE 1006/OEM 60",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "07"
+      },
+      "categoriaKey": "OUTROS 07"
     },
     {
       "produto": "00220",
@@ -3397,7 +3914,13 @@
           "desc": "BOBINA BF 0,75 SAE 1006/OEM 60",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS AZUL"
     },
     {
       "produto": "00221",
@@ -3413,7 +3936,13 @@
           "desc": "BOBINA BF 1,10 SAE 1006/OEM 60",
           "porUnidade": 2.6
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS AZUL"
     },
     {
       "produto": "00222",
@@ -3429,7 +3958,13 @@
           "desc": "BOBINA BF 1,10 SAE 1006/OEM 60",
           "porUnidade": 2.6
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS AZUL"
     },
     {
       "produto": "00223",
@@ -3445,7 +3980,13 @@
           "desc": "BOBINA BF 1,10 SAE 1006/OEM 60",
           "porUnidade": 2.6
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS AZUL"
     },
     {
       "produto": "00224",
@@ -3461,7 +4002,13 @@
           "desc": "BOBINA BF 1,40 SAE 1006/OEM 60",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS AZUL"
     },
     {
       "produto": "00225",
@@ -3477,7 +4024,13 @@
           "desc": "BOBINA BF 1,40 SAE 1006/OEM 60",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS AZUL"
     },
     {
       "produto": "00236",
@@ -3488,7 +4041,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00236A",
@@ -3499,7 +4058,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00236B",
@@ -3510,7 +4075,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00236C",
@@ -3521,7 +4092,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00237",
@@ -3532,7 +4109,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00237A",
@@ -3543,7 +4126,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00237C",
@@ -3554,7 +4143,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00238",
@@ -3565,7 +4160,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00238A",
@@ -3576,7 +4177,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00238C",
@@ -3587,7 +4194,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00239",
@@ -3598,7 +4211,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00239A",
@@ -3609,7 +4228,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00239C",
@@ -3620,7 +4245,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00240",
@@ -3631,7 +4262,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00240A",
@@ -3642,7 +4279,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00240C",
@@ -3653,7 +4296,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00241",
@@ -3664,7 +4313,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00241A",
@@ -3675,7 +4330,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00241C",
@@ -3686,7 +4347,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00242",
@@ -3697,7 +4364,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00242A",
@@ -3708,7 +4381,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00242C",
@@ -3719,7 +4398,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00243",
@@ -3730,7 +4415,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00243A",
@@ -3741,7 +4432,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00243C",
@@ -3752,7 +4449,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00244",
@@ -3763,7 +4466,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00244A",
@@ -3774,7 +4483,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00244C",
@@ -3785,7 +4500,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00245",
@@ -3796,7 +4517,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00245A",
@@ -3807,7 +4534,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00245C",
@@ -3818,7 +4551,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00246",
@@ -3829,7 +4568,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00246A",
@@ -3840,7 +4585,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00246C",
@@ -3851,7 +4602,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00247",
@@ -3862,7 +4619,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00247A",
@@ -3873,7 +4636,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00247C",
@@ -3884,7 +4653,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00248",
@@ -3895,7 +4670,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00248A",
@@ -3906,7 +4687,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00248C",
@@ -3917,7 +4704,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00249",
@@ -3928,7 +4721,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00249A",
@@ -3939,7 +4738,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00249C",
@@ -3950,7 +4755,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00278",
@@ -3961,7 +4772,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.80"
+      },
+      "categoriaKey": "OUTROS 0.80"
     },
     {
       "produto": "00278A",
@@ -3972,7 +4789,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.80"
+      },
+      "categoriaKey": "OUTROS 0.80"
     },
     {
       "produto": "00278C",
@@ -3983,7 +4806,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.95"
+      },
+      "categoriaKey": "OUTROS 0.95"
     },
     {
       "produto": "00279",
@@ -3994,7 +4823,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.80"
+      },
+      "categoriaKey": "OUTROS 0.80"
     },
     {
       "produto": "00279A",
@@ -4005,7 +4840,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.80"
+      },
+      "categoriaKey": "OUTROS 0.80"
     },
     {
       "produto": "00279C",
@@ -4016,7 +4857,13 @@
           "desc": "BOBINA GALV 0,95 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.95"
+      },
+      "categoriaKey": "OUTROS 0.95"
     },
     {
       "produto": "00280",
@@ -4027,7 +4874,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00281",
@@ -4038,7 +4891,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00281A",
@@ -4049,7 +4908,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00281C",
@@ -4060,7 +4925,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR400 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00283",
@@ -4071,7 +4942,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00283A",
@@ -4082,7 +4959,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00283B",
@@ -4093,7 +4976,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00283E",
@@ -4104,7 +4993,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00284",
@@ -4115,7 +5010,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00284A",
@@ -4126,7 +5027,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00284B",
@@ -4137,7 +5044,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00284C",
@@ -4148,7 +5061,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00284D",
@@ -4159,7 +5078,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00284E",
@@ -4170,7 +5095,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00284F",
@@ -4181,7 +5112,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "00285C",
@@ -4192,7 +5129,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR400 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0"
+      },
+      "categoriaKey": "OUTROS 0"
     },
     {
       "produto": "00286C",
@@ -4203,7 +5146,13 @@
           "desc": "BOBINA GALV 1,25 NBR 7008 ZAR400 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "1"
+      },
+      "categoriaKey": "OUTROS 1"
     },
     {
       "produto": "00287",
@@ -4214,7 +5163,13 @@
           "desc": "BOBINA GALV 0,90 NBR 7008 ZC Z85",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0"
+      },
+      "categoriaKey": "OUTROS 0"
     },
     {
       "produto": "00288",
@@ -4225,7 +5180,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00289",
@@ -4236,7 +5197,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00289A",
@@ -4247,7 +5214,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00289E",
@@ -4258,7 +5231,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "00290",
@@ -4269,7 +5248,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZAR230 Z350",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "00360E",
@@ -4315,7 +5300,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.848
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "POP 90"
     },
     {
       "produto": "00360TE",
@@ -4361,7 +5352,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.848
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "POP 90"
     },
     {
       "produto": "00361E",
@@ -4407,7 +5404,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.848
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "POP 90"
     },
     {
       "produto": "00363E",
@@ -4453,7 +5456,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.848
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "VERM",
+        "modelo": "90"
+      },
+      "categoriaKey": "POP 90 VERM"
     },
     {
       "produto": "00365",
@@ -4499,7 +5508,13 @@
           "desc": "BOBINA BF 0,50 SAE 1006/OEM 60",
           "porUnidade": 2.275
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": "5"
+      },
+      "categoriaKey": "OUTROS 5 AZUL"
     },
     {
       "produto": "00365E",
@@ -4545,7 +5560,13 @@
           "desc": "BOBINA BF 0,50 SAE 1006/OEM 60",
           "porUnidade": 2.275
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": "5"
+      },
+      "categoriaKey": "OUTROS 5 AZUL"
     },
     {
       "produto": "00365F",
@@ -4591,7 +5612,13 @@
           "desc": "BOBINA BF 0,50 SAE 1006/OEM 60",
           "porUnidade": 2.275
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": "5"
+      },
+      "categoriaKey": "OUTROS 5 AZUL"
     },
     {
       "produto": "00365RF",
@@ -4637,7 +5664,13 @@
           "desc": "BOBINA BF 0,50 SAE 1006/OEM 60",
           "porUnidade": 2.275
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": "5"
+      },
+      "categoriaKey": "OUTROS 5 AZUL"
     },
     {
       "produto": "00366",
@@ -4683,7 +5716,13 @@
           "desc": "BOBINA BF 0,50 SAE 1006/OEM 60",
           "porUnidade": 2.275
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": "5"
+      },
+      "categoriaKey": "OUTROS 5 AZUL"
     },
     {
       "produto": "00366E",
@@ -4729,7 +5768,13 @@
           "desc": "BOBINA BF 0,50 SAE 1006/OEM 60",
           "porUnidade": 2.275
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": "5"
+      },
+      "categoriaKey": "OUTROS 5 AZUL"
     },
     {
       "produto": "00381",
@@ -4765,7 +5810,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "PLUS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "PLUS"
     },
     {
       "produto": "00381E",
@@ -4801,7 +5852,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "PLUS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "PLUS"
     },
     {
       "produto": "00385",
@@ -4847,7 +5904,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "VERM",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3 VERM"
     },
     {
       "produto": "00385E",
@@ -4893,7 +5956,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "VERM",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3 VERM"
     },
     {
       "produto": "00385EH",
@@ -4939,7 +6008,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3"
     },
     {
       "produto": "00385EV",
@@ -4985,7 +6060,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3"
     },
     {
       "produto": "00386",
@@ -5031,7 +6112,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "VERM",
+        "modelo": null
+      },
+      "categoriaKey": "CONSTR VERM"
     },
     {
       "produto": "00386E",
@@ -5077,7 +6164,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "VERM",
+        "modelo": null
+      },
+      "categoriaKey": "CONSTR VERM"
     },
     {
       "produto": "00387",
@@ -5123,7 +6216,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3"
     },
     {
       "produto": "00387E",
@@ -5169,7 +6268,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3"
     },
     {
       "produto": "00387TE",
@@ -5210,7 +6315,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "CONSTR 3"
     },
     {
       "produto": "00388",
@@ -5256,7 +6367,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 1.69875
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "CONSTR",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "CONSTR"
     },
     {
       "produto": "00400",
@@ -5297,7 +6414,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "00550",
@@ -5313,7 +6436,13 @@
           "desc": "BOBINA BF 2,65 NBR 5915 EEP GR2",
           "porUnidade": 29.849919
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "00550A",
@@ -5329,7 +6458,13 @@
           "desc": "BOBINA BF 2,65 NBR 5915 EEP GR2",
           "porUnidade": 29.849919
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "00701",
@@ -5350,7 +6485,13 @@
           "desc": "BOBINA GALV 1,90 NBR 7008 ZC Z85",
           "porUnidade": 1.25
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "1"
+      },
+      "categoriaKey": "OUTROS 1"
     },
     {
       "produto": "00702",
@@ -5376,7 +6517,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.59985
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "1"
+      },
+      "categoriaKey": "OUTROS 1"
     },
     {
       "produto": "00720E",
@@ -5412,7 +6559,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "CINZA",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3 CINZA"
     },
     {
       "produto": "00720EA",
@@ -5448,7 +6601,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.67885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": "3.50"
+      },
+      "categoriaKey": "OUTROS 3.50 AZUL"
     },
     {
       "produto": "00720ERF",
@@ -5484,7 +6643,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "CINZA",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS CINZA"
     },
     {
       "produto": "00721E",
@@ -5520,7 +6685,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "CINZA",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3 CINZA"
     },
     {
       "produto": "00721EA",
@@ -5556,7 +6727,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.67885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": "3.50"
+      },
+      "categoriaKey": "OUTROS 3.50 AZUL"
     },
     {
       "produto": "00721EAF",
@@ -5592,7 +6769,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.67885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3 AZUL"
     },
     {
       "produto": "00721EF",
@@ -5628,7 +6811,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00721ERF",
@@ -5664,7 +6853,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "CINZA",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS CINZA"
     },
     {
       "produto": "00722E",
@@ -5700,7 +6895,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "CINZA",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3 CINZA"
     },
     {
       "produto": "00722EA",
@@ -5736,7 +6937,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.67885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": "3.50"
+      },
+      "categoriaKey": "OUTROS 3.50 AZUL"
     },
     {
       "produto": "00722EH",
@@ -5772,7 +6979,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00722ERF",
@@ -5808,7 +7021,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.87885
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "CINZA",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS CINZA"
     },
     {
       "produto": "00770",
@@ -5829,7 +7048,13 @@
           "desc": "BOBINA BF 0,75 SAE 1006/OEM 60",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00770B",
@@ -5850,7 +7075,13 @@
           "desc": "BOBINA BF 0,75 SAE 1006/OEM 60",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00770C",
@@ -5871,7 +7102,13 @@
           "desc": "BOBINA BF 0,75 SAE 1006/OEM 60",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00771",
@@ -5892,7 +7129,13 @@
           "desc": "BOBINA BF 0,75 SAE 1006/OEM 60",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "00771A",
@@ -5913,7 +7156,13 @@
           "desc": "BOBINA BF 0,75 SAE 1006/OEM 60",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "00771B",
@@ -5934,7 +7183,13 @@
           "desc": "BOBINA BF 0,75 SAE 1006/OEM 60",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "00771C",
@@ -5955,7 +7210,13 @@
           "desc": "BOBINA BF 0,75 SAE 1006/OEM 60",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "00774",
@@ -5981,7 +7242,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00774B",
@@ -6007,7 +7274,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00775",
@@ -6033,7 +7306,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "00775B",
@@ -6059,7 +7338,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "00778",
@@ -6085,7 +7370,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00778B",
@@ -6111,7 +7402,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00778C",
@@ -6137,7 +7434,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00780",
@@ -6163,7 +7466,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00780B",
@@ -6189,7 +7498,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00782",
@@ -6215,7 +7530,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00782A",
@@ -6241,7 +7562,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00782B",
@@ -6267,7 +7594,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "00782C",
@@ -6293,7 +7626,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 0.335
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "01070",
@@ -6314,7 +7653,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 0.86
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "01070A",
@@ -6335,7 +7680,13 @@
           "desc": "BOBINA BF 0,40 SAE 1006/OEM 60",
           "porUnidade": 0.86
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS AZUL"
     },
     {
       "produto": "01071",
@@ -6356,7 +7707,13 @@
           "desc": "BOBINA BF 0,35 SAE 1006/OEM 60",
           "porUnidade": 0.470016
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "01390",
@@ -6367,7 +7724,13 @@
           "desc": "BOBINA GALV 0,50 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "48"
+      },
+      "categoriaKey": "OUTROS 48"
     },
     {
       "produto": "01390A",
@@ -6378,7 +7741,13 @@
           "desc": "BOBINA GALV 0,50 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "48"
+      },
+      "categoriaKey": "OUTROS 48"
     },
     {
       "produto": "01391",
@@ -6389,7 +7758,13 @@
           "desc": "BOBINA GALV 0,50 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "01391A",
@@ -6400,7 +7775,13 @@
           "desc": "BOBINA GALV 0,50 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "01392",
@@ -6411,7 +7792,13 @@
           "desc": "BOBINA GALV 0,50 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "01392A",
@@ -6422,7 +7809,13 @@
           "desc": "BOBINA GALV 0,50 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "01393",
@@ -6433,7 +7826,13 @@
           "desc": "BOBINA GALV 0,48 NBR 7008 ZAR230 Z120",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "48"
+      },
+      "categoriaKey": "OUTROS 48"
     },
     {
       "produto": "01393A",
@@ -6444,7 +7843,13 @@
           "desc": "BOBINA GALV 0,48 NBR 7008 ZAR230 Z120",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "48"
+      },
+      "categoriaKey": "OUTROS 48"
     },
     {
       "produto": "01394",
@@ -6455,7 +7860,13 @@
           "desc": "BOBINA GALV 0,48 NBR 7008 ZAR230 Z120",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "01394A",
@@ -6466,7 +7877,13 @@
           "desc": "BOBINA GALV 0,48 NBR 7008 ZAR230 Z120",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "70"
+      },
+      "categoriaKey": "OUTROS 70"
     },
     {
       "produto": "01395",
@@ -6477,7 +7894,13 @@
           "desc": "BOBINA GALV 0,48 NBR 7008 ZAR230 Z120",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "01395A",
@@ -6488,7 +7911,13 @@
           "desc": "BOBINA GALV 0,48 NBR 7008 ZAR230 Z120",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "OUTROS 90"
     },
     {
       "produto": "01396",
@@ -6499,7 +7928,13 @@
           "desc": "BOBINA GALV 0,48 NBR 7008 ZAR230 Z120",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "47"
+      },
+      "categoriaKey": "OUTROS 47"
     },
     {
       "produto": "01397",
@@ -6510,7 +7945,13 @@
           "desc": "BOBINA GALV 0,50 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "30"
+      },
+      "categoriaKey": "OUTROS 30"
     },
     {
       "produto": "01398",
@@ -6521,7 +7962,13 @@
           "desc": "BOBINA GALV 0,50 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "25"
+      },
+      "categoriaKey": "OUTROS 25"
     },
     {
       "produto": "01399",
@@ -6532,7 +7979,13 @@
           "desc": "BOBINA GALV 0,50 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "24"
+      },
+      "categoriaKey": "OUTROS 24"
     },
     {
       "produto": "01400",
@@ -6543,7 +7996,13 @@
           "desc": "BOBINA GALV 0,50 NBR 7008 ZAR230 Z275",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "01400B",
@@ -6554,7 +8013,13 @@
           "desc": "BOBINA GL 0,50 ASTM A792 AZM150 BRANCA",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "3"
+      },
+      "categoriaKey": "OUTROS 3"
     },
     {
       "produto": "02024G",
@@ -6570,7 +8035,13 @@
           "desc": "BOBINA PERFIL LAMBRI BF 0,75",
           "porUnidade": 13.2
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.75"
+      },
+      "categoriaKey": "OUTROS 0.75"
     },
     {
       "produto": "02024H",
@@ -6586,7 +8057,13 @@
           "desc": "BOBINA PERFIL LAMBRI BF 0,75",
           "porUnidade": 19.8
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.75"
+      },
+      "categoriaKey": "OUTROS 0.75"
     },
     {
       "produto": "02025A",
@@ -6602,7 +8079,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,75",
           "porUnidade": 13.2
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.75"
+      },
+      "categoriaKey": "OUTROS 0.75"
     },
     {
       "produto": "02025B",
@@ -6618,7 +8101,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,75",
           "porUnidade": 14.4
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.75"
+      },
+      "categoriaKey": "OUTROS 0.75"
     },
     {
       "produto": "02025C",
@@ -6634,7 +8123,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,75",
           "porUnidade": 15.85
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.75"
+      },
+      "categoriaKey": "OUTROS 0.75"
     },
     {
       "produto": "02025D",
@@ -6650,7 +8145,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,75",
           "porUnidade": 17.3
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.75"
+      },
+      "categoriaKey": "OUTROS 0.75"
     },
     {
       "produto": "02025E",
@@ -6666,7 +8167,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,75",
           "porUnidade": 19.8
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.75"
+      },
+      "categoriaKey": "OUTROS 0.75"
     },
     {
       "produto": "02025F",
@@ -6682,7 +8189,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,75",
           "porUnidade": 21.6
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.75"
+      },
+      "categoriaKey": "OUTROS 0.75"
     },
     {
       "produto": "02025G",
@@ -6698,7 +8211,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,75",
           "porUnidade": 13.2
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.75"
+      },
+      "categoriaKey": "OUTROS 0.75"
     },
     {
       "produto": "02025H",
@@ -6714,7 +8233,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,75",
           "porUnidade": 19.8
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.75"
+      },
+      "categoriaKey": "OUTROS 0.75"
     },
     {
       "produto": "02026A",
@@ -6730,7 +8255,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,80",
           "porUnidade": 14.1
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.80"
+      },
+      "categoriaKey": "OUTROS 0.80"
     },
     {
       "produto": "02026B",
@@ -6746,7 +8277,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,80",
           "porUnidade": 15.35
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.80"
+      },
+      "categoriaKey": "OUTROS 0.80"
     },
     {
       "produto": "02026C",
@@ -6762,7 +8299,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,80",
           "porUnidade": 16.9
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.80"
+      },
+      "categoriaKey": "OUTROS 0.80"
     },
     {
       "produto": "02026D",
@@ -6778,7 +8321,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,80",
           "porUnidade": 18.45
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.80"
+      },
+      "categoriaKey": "OUTROS 0.80"
     },
     {
       "produto": "02026E",
@@ -6794,7 +8343,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,80",
           "porUnidade": 21.1
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.80"
+      },
+      "categoriaKey": "OUTROS 0.80"
     },
     {
       "produto": "02026F",
@@ -6810,7 +8365,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,80",
           "porUnidade": 23.05
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.80"
+      },
+      "categoriaKey": "OUTROS 0.80"
     },
     {
       "produto": "02027A",
@@ -6826,7 +8387,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,90",
           "porUnidade": 15.85
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02027B",
@@ -6842,7 +8409,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,90",
           "porUnidade": 17.3
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02027C",
@@ -6858,7 +8431,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,90",
           "porUnidade": 19.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02027D",
@@ -6874,7 +8453,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,90",
           "porUnidade": 20.75
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02027E",
@@ -6890,7 +8475,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,90",
           "porUnidade": 23.75
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02027F",
@@ -6906,7 +8497,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,90",
           "porUnidade": 25.9
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02027G",
@@ -6922,7 +8519,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,90",
           "porUnidade": 15.85
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02027H",
@@ -6938,7 +8541,13 @@
           "desc": "BOBINA PERFIL LAMBRI BZ 0,90",
           "porUnidade": 23.75
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02028A",
@@ -6954,7 +8563,13 @@
           "desc": "BOBINA PERFIL LAMBRI BF 0,90",
           "porUnidade": 15.85
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02028B",
@@ -6970,7 +8585,13 @@
           "desc": "BOBINA PERFIL LAMBRI BF 0,90",
           "porUnidade": 17.3
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02028C",
@@ -6986,7 +8607,13 @@
           "desc": "BOBINA PERFIL LAMBRI BF 0,90",
           "porUnidade": 19.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02028D",
@@ -7002,7 +8629,13 @@
           "desc": "BOBINA PERFIL LAMBRI BF 0,90",
           "porUnidade": 20.75
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02028E",
@@ -7018,7 +8651,13 @@
           "desc": "BOBINA PERFIL LAMBRI BF 0,90",
           "porUnidade": 23.75
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02028F",
@@ -7034,7 +8673,13 @@
           "desc": "BOBINA PERFIL LAMBRI BF 0,90",
           "porUnidade": 25.9
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02028G",
@@ -7050,7 +8695,13 @@
           "desc": "BOBINA PERFIL LAMBRI BF 0,90",
           "porUnidade": 15.85
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02028H",
@@ -7066,7 +8717,13 @@
           "desc": "BOBINA PERFIL LAMBRI BF 0,90",
           "porUnidade": 23.75
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02029A",
@@ -7082,7 +8739,13 @@
           "desc": "BOBINA PERFIL VENEZIANA BZ 0,75",
           "porUnidade": 1.6
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.75"
+      },
+      "categoriaKey": "OUTROS 0.75"
     },
     {
       "produto": "02029B",
@@ -7098,7 +8761,13 @@
           "desc": "BOBINA PERFIL VENEZIANA BZ 0,75",
           "porUnidade": 3.2
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.75"
+      },
+      "categoriaKey": "OUTROS 0.75"
     },
     {
       "produto": "02029C",
@@ -7114,7 +8783,13 @@
           "desc": "BOBINA PERFIL VENEZIANA BZ 0,90",
           "porUnidade": 1.95
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02029D",
@@ -7130,7 +8805,13 @@
           "desc": "BOBINA PERFIL VENEZIANA BZ 0,90",
           "porUnidade": 3.9
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02495",
@@ -7161,7 +8842,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.279
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01"
     },
     {
       "produto": "02496",
@@ -7192,7 +8879,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.279
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "MASTER",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "MASTER 01"
     },
     {
       "produto": "02498",
@@ -7208,7 +8901,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.2
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS GALV"
     },
     {
       "produto": "02508",
@@ -7219,7 +8918,13 @@
           "desc": "BOBINA GALV 1,50 NBR 7008 ZC Z85",
           "porUnidade": 0.06
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "02509",
@@ -7230,7 +8935,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.2
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "02509A",
@@ -7241,7 +8952,13 @@
           "desc": "BOBINA GALV 0,90 NBR 7008 ZC Z85",
           "porUnidade": 0.165
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02509B",
@@ -7252,7 +8969,13 @@
           "desc": "BOBINA GALV 0,65 NBR 7008 ZE Z85",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "BASE",
+        "modelo": "90"
+      },
+      "categoriaKey": "POP 90"
     },
     {
       "produto": "02513",
@@ -7263,7 +8986,13 @@
           "desc": "BOBINA GALV 1,50 NBR 7008 ZC Z85",
           "porUnidade": 0.45
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "02513A",
@@ -7274,7 +9003,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": "1.10"
+      },
+      "categoriaKey": "OUTROS 1.10 GALV"
     },
     {
       "produto": "02517",
@@ -7285,7 +9020,13 @@
           "desc": "BOBINA GALV 0,50 NBR 7008 ZC Z85",
           "porUnidade": 0.05
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "02521",
@@ -7296,7 +9037,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZC Z85",
           "porUnidade": 1.850004
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": "0.75"
+      },
+      "categoriaKey": "OUTROS 0.75 GALV"
     },
     {
       "produto": "02526",
@@ -7327,7 +9074,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.279
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01"
     },
     {
       "produto": "02527",
@@ -7358,7 +9111,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.279
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01"
     },
     {
       "produto": "02548",
@@ -7369,7 +9128,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.079
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "02548A",
@@ -7380,7 +9145,13 @@
           "desc": "BOBINA GALV 0,90 NBR 7008 ZC Z85",
           "porUnidade": 0.07
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02556",
@@ -7396,7 +9167,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.2
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "1.50"
+      },
+      "categoriaKey": "OUTROS 1.50"
     },
     {
       "produto": "02556A",
@@ -7412,7 +9189,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "1.10"
+      },
+      "categoriaKey": "OUTROS 1.10"
     },
     {
       "produto": "02560",
@@ -7443,7 +9226,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": "05"
+      },
+      "categoriaKey": "OUTROS 05 GALV"
     },
     {
       "produto": "02580",
@@ -7469,7 +9258,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.279
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "05"
+      },
+      "categoriaKey": "OUTROS 05"
     },
     {
       "produto": "02580A",
@@ -7500,7 +9295,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "05"
+      },
+      "categoriaKey": "OUTROS 05"
     },
     {
       "produto": "02580F",
@@ -7531,7 +9332,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "BASE",
+        "modelo": "05"
+      },
+      "categoriaKey": "POP 05"
     },
     {
       "produto": "02580FP",
@@ -7557,7 +9364,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.279
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "05"
+      },
+      "categoriaKey": "OUTROS 05"
     },
     {
       "produto": "02580TE",
@@ -7583,7 +9396,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.279
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "05"
+      },
+      "categoriaKey": "OUTROS 05"
     },
     {
       "produto": "02583",
@@ -7614,7 +9433,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.279
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01"
     },
     {
       "produto": "02583A",
@@ -7650,7 +9475,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01"
     },
     {
       "produto": "02583AH",
@@ -7686,7 +9517,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01"
     },
     {
       "produto": "02583AV",
@@ -7722,7 +9559,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01"
     },
     {
       "produto": "02583F",
@@ -7758,7 +9601,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "POP 01"
     },
     {
       "produto": "02583H",
@@ -7789,7 +9638,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.279
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01"
     },
     {
       "produto": "02583I",
@@ -7820,7 +9675,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.279
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01"
     },
     {
       "produto": "02583PF",
@@ -7851,7 +9712,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.279
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01"
     },
     {
       "produto": "02583TE",
@@ -7882,7 +9749,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.279
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01"
     },
     {
       "produto": "02585",
@@ -7913,7 +9786,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.279
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01"
     },
     {
       "produto": "02585A",
@@ -7949,7 +9828,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01"
     },
     {
       "produto": "02586",
@@ -7985,7 +9870,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01 GALV"
     },
     {
       "produto": "02586V",
@@ -8021,7 +9912,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "PLAST",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01 PLAST"
     },
     {
       "produto": "02588",
@@ -8057,7 +9954,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01 GALV"
     },
     {
       "produto": "02592",
@@ -8088,7 +9991,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "POP 01"
     },
     {
       "produto": "02592A",
@@ -8114,7 +10023,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "BASE",
+        "modelo": "05"
+      },
+      "categoriaKey": "POP 05"
     },
     {
       "produto": "02592I",
@@ -8145,7 +10060,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.315
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "POP",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "POP 01"
     },
     {
       "produto": "02598",
@@ -8156,7 +10077,13 @@
           "desc": "BOBINA BF 0,75 SAE 1006/OEM 60",
           "porUnidade": 1.0
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02604",
@@ -8187,7 +10114,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.279
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01"
     },
     {
       "produto": "02604F",
@@ -8218,7 +10151,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.279
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "MASTER",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "MASTER"
     },
     {
       "produto": "02609",
@@ -8229,7 +10168,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.59985
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS GALV"
     },
     {
       "produto": "02613",
@@ -8240,7 +10185,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZC Z85",
           "porUnidade": 1.5
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "GALV",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS GALV"
     },
     {
       "produto": "02614",
@@ -8251,7 +10202,13 @@
           "desc": "BOBINA GALV 0,80 NBR 7008 ZC Z85",
           "porUnidade": 1.850004
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "0.90"
+      },
+      "categoriaKey": "OUTROS 0.90"
     },
     {
       "produto": "02616",
@@ -8262,7 +10219,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 2.59985
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "1.10"
+      },
+      "categoriaKey": "OUTROS 1.10"
     },
     {
       "produto": "02619RF",
@@ -8293,7 +10256,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.279
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01"
     },
     {
       "produto": "02632",
@@ -8304,7 +10273,13 @@
           "desc": "BOBINA GALV 1,50 NBR 7008 ZC Z85",
           "porUnidade": 2.578363
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "MASTER",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "MASTER"
     },
     {
       "produto": "02636",
@@ -8315,7 +10290,13 @@
           "desc": "BOBINA GALV 1,90 NBR 7008 ZC Z85",
           "porUnidade": 0.072
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": null
+      },
+      "categoriaKey": "OUTROS"
     },
     {
       "produto": "02648",
@@ -8336,7 +10317,13 @@
           "desc": "BOBINA GALV 1,50 NBR 7008 ZC Z85",
           "porUnidade": 0.06
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "BASE",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01"
     },
     {
       "produto": "02668",
@@ -8367,7 +10354,13 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.079
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01 AZUL"
     },
     {
       "produto": "02668F",
@@ -8398,7 +10391,283 @@
           "desc": "BOBINA GALV 1,10 NBR 7008 ZC Z85",
           "porUnidade": 0.079
         }
-      ]
+      ],
+      "categoria": {
+        "linha": "OUTROS",
+        "acabamento": "AZUL",
+        "modelo": "01"
+      },
+      "categoriaKey": "OUTROS 01 AZUL"
+    }
+  ],
+  "resumoCategorias": [
+    {
+      "categoriaKey": "OUTROS 90",
+      "produtos": 40
+    },
+    {
+      "categoriaKey": "OUTROS 70",
+      "produtos": 30
+    },
+    {
+      "categoriaKey": "OUTROS 0.90",
+      "produtos": 22
+    },
+    {
+      "categoriaKey": "OUTROS 3",
+      "produtos": 21
+    },
+    {
+      "categoriaKey": "OUTROS",
+      "produtos": 20
+    },
+    {
+      "categoriaKey": "OUTROS 01",
+      "produtos": 16
+    },
+    {
+      "categoriaKey": "OUTROS 0.75",
+      "produtos": 12
+    },
+    {
+      "categoriaKey": "OUTROS GALV",
+      "produtos": 12
+    },
+    {
+      "categoriaKey": "OUTROS 0.80",
+      "produtos": 10
+    },
+    {
+      "categoriaKey": "OUTROS 3 GALV",
+      "produtos": 8
+    },
+    {
+      "categoriaKey": "CONSTR 3",
+      "produtos": 7
+    },
+    {
+      "categoriaKey": "OUTROS AZUL",
+      "produtos": 7
+    },
+    {
+      "categoriaKey": "CONSTR 3 GALV",
+      "produtos": 6
+    },
+    {
+      "categoriaKey": "OUTROS 5 AZUL",
+      "produtos": 6
+    },
+    {
+      "categoriaKey": "OUTROS 05",
+      "produtos": 5
+    },
+    {
+      "categoriaKey": "MASTER 3 AZUL",
+      "produtos": 4
+    },
+    {
+      "categoriaKey": "MASTER AZUL",
+      "produtos": 4
+    },
+    {
+      "categoriaKey": "OUTROS 48",
+      "produtos": 4
+    },
+    {
+      "categoriaKey": "POP 90",
+      "produtos": 4
+    },
+    {
+      "categoriaKey": "CONSTR GALV",
+      "produtos": 3
+    },
+    {
+      "categoriaKey": "OUTROS 1",
+      "produtos": 3
+    },
+    {
+      "categoriaKey": "OUTROS 3 CINZA",
+      "produtos": 3
+    },
+    {
+      "categoriaKey": "OUTROS 3 PLAST",
+      "produtos": 3
+    },
+    {
+      "categoriaKey": "OUTROS 3.50 AZUL",
+      "produtos": 3
+    },
+    {
+      "categoriaKey": "OUTROS CINZA",
+      "produtos": 3
+    },
+    {
+      "categoriaKey": "PLUS 3 AZUL",
+      "produtos": 3
+    },
+    {
+      "categoriaKey": "PLUS AZUL",
+      "produtos": 3
+    },
+    {
+      "categoriaKey": "POP",
+      "produtos": 3
+    },
+    {
+      "categoriaKey": "POP 01",
+      "produtos": 3
+    },
+    {
+      "categoriaKey": "POP 3",
+      "produtos": 3
+    },
+    {
+      "categoriaKey": "POP 3 GALV",
+      "produtos": 3
+    },
+    {
+      "categoriaKey": "POP GALV",
+      "produtos": 3
+    },
+    {
+      "categoriaKey": "POP VERM",
+      "produtos": 3
+    },
+    {
+      "categoriaKey": "SUPER",
+      "produtos": 3
+    },
+    {
+      "categoriaKey": "SUPER 3",
+      "produtos": 3
+    },
+    {
+      "categoriaKey": "CONSTR",
+      "produtos": 2
+    },
+    {
+      "categoriaKey": "CONSTR 3 CINZA",
+      "produtos": 2
+    },
+    {
+      "categoriaKey": "CONSTR 3 VERM",
+      "produtos": 2
+    },
+    {
+      "categoriaKey": "CONSTR CINZA",
+      "produtos": 2
+    },
+    {
+      "categoriaKey": "CONSTR VERM",
+      "produtos": 2
+    },
+    {
+      "categoriaKey": "MASTER",
+      "produtos": 2
+    },
+    {
+      "categoriaKey": "OUTROS 0",
+      "produtos": 2
+    },
+    {
+      "categoriaKey": "OUTROS 0.95",
+      "produtos": 2
+    },
+    {
+      "categoriaKey": "OUTROS 01 AZUL",
+      "produtos": 2
+    },
+    {
+      "categoriaKey": "OUTROS 01 GALV",
+      "produtos": 2
+    },
+    {
+      "categoriaKey": "OUTROS 1.10",
+      "produtos": 2
+    },
+    {
+      "categoriaKey": "OUTROS PLAST",
+      "produtos": 2
+    },
+    {
+      "categoriaKey": "PLUS",
+      "produtos": 2
+    },
+    {
+      "categoriaKey": "POP 05",
+      "produtos": 2
+    },
+    {
+      "categoriaKey": "POP 3 VERM",
+      "produtos": 2
+    },
+    {
+      "categoriaKey": "MASTER 01",
+      "produtos": 1
+    },
+    {
+      "categoriaKey": "OUTROS 0.75 GALV",
+      "produtos": 1
+    },
+    {
+      "categoriaKey": "OUTROS 01 PLAST",
+      "produtos": 1
+    },
+    {
+      "categoriaKey": "OUTROS 03",
+      "produtos": 1
+    },
+    {
+      "categoriaKey": "OUTROS 04",
+      "produtos": 1
+    },
+    {
+      "categoriaKey": "OUTROS 05 GALV",
+      "produtos": 1
+    },
+    {
+      "categoriaKey": "OUTROS 06",
+      "produtos": 1
+    },
+    {
+      "categoriaKey": "OUTROS 07",
+      "produtos": 1
+    },
+    {
+      "categoriaKey": "OUTROS 1.10 GALV",
+      "produtos": 1
+    },
+    {
+      "categoriaKey": "OUTROS 1.50",
+      "produtos": 1
+    },
+    {
+      "categoriaKey": "OUTROS 24",
+      "produtos": 1
+    },
+    {
+      "categoriaKey": "OUTROS 25",
+      "produtos": 1
+    },
+    {
+      "categoriaKey": "OUTROS 3 AZUL",
+      "produtos": 1
+    },
+    {
+      "categoriaKey": "OUTROS 3.50 GALV",
+      "produtos": 1
+    },
+    {
+      "categoriaKey": "OUTROS 30",
+      "produtos": 1
+    },
+    {
+      "categoriaKey": "OUTROS 47",
+      "produtos": 1
+    },
+    {
+      "categoriaKey": "POP 90 VERM",
+      "produtos": 1
     }
   ]
 }

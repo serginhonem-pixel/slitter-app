@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { 
   Truck, AlertTriangle, CheckCircle2, TrendingUp, Package, 
@@ -23,6 +23,11 @@ const INITIAL_STOCK = [
   { material: "BF 0.75", qty: 0 }
 ];
 
+const LS_KEYS = {
+  categoryOverrides: 'demandaaco.categoryOverrides.v1',
+  stockSnapshot_2025_12_01: 'demandaaco.stockSnapshot.2025-12-01.v1',
+};
+
 export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
   // --- ESTADOS ---
   const [products, setProducts] = useState(initialProducts);
@@ -39,14 +44,44 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
   const [produtoSearch, setProdutoSearch] = useState('');
   const [qtdPorProduto, setQtdPorProduto] = useState({});
   const [mostrarSomenteSelecionados, setMostrarSomenteSelecionados] = useState(true);
+  const [agruparPorCategoria, setAgruparPorCategoria] = useState(true);
   const [importSomarAoExistente, setImportSomarAoExistente] = useState(false);
   const [importResumo, setImportResumo] = useState(null);
   const carteiraInputRef = useRef(null);
+  const estoque0112InputRef = useRef(null);
+
+  const [categoryOverrides, setCategoryOverrides] = useState({});
+  const [categorySaveOk, setCategorySaveOk] = useState(false);
+
+  const [useEstoque0112, setUseEstoque0112] = useState(false);
+  const [estoque0112, setEstoque0112] = useState({});
+  const [estoque0112Resumo, setEstoque0112Resumo] = useState(null);
 
   // Controle de drill-down (Expandir detalhes)
   const [expandedItems, setExpandedItems] = useState({});
 
   // --- HANDLERS ---
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_KEYS.categoryOverrides);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') setCategoryOverrides(parsed);
+      }
+    } catch {}
+
+    try {
+      const raw = localStorage.getItem(LS_KEYS.stockSnapshot_2025_12_01);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          setEstoque0112(parsed);
+          setUseEstoque0112(true);
+        }
+      }
+    } catch {}
+  }, []);
+
   const handleMixChange = (id, newMix) => {
     const updated = products.map(p => 
       p.id === id ? { ...p, mix: parseFloat(newMix) || 0 } : p
@@ -78,7 +113,38 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
     setQtdPorProduto(prev => ({ ...prev, [produto]: Number.isFinite(qty) ? qty : 0 }));
   };
 
-  const parseQty = (value) => {
+  const handleCategoriaProdutoChange = (produto, categoriaKey) => {
+    const next = String(categoriaKey || '').trim();
+    setCategoryOverrides(prev => ({ ...prev, [produto]: next }));
+  };
+
+  const handleSalvarCategoriasLocal = () => {
+    try {
+      localStorage.setItem(LS_KEYS.categoryOverrides, JSON.stringify(categoryOverrides || {}));
+      setCategorySaveOk(true);
+      setTimeout(() => setCategorySaveOk(false), 2500);
+    } catch {}
+  };
+
+  const handleResetCategoriasLocal = () => {
+    setCategoryOverrides({});
+    try {
+      localStorage.removeItem(LS_KEYS.categoryOverrides);
+    } catch {}
+  };
+
+  const handleEstoque0112Change = (cod, newQty) => {
+    const qty = parseQty(newQty);
+    setEstoque0112(prev => {
+      const next = { ...prev, [String(cod)]: qty };
+      try {
+        localStorage.setItem(LS_KEYS.stockSnapshot_2025_12_01, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  function parseQty(value) {
     if (value == null) return 0;
     if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
     const raw = String(value).trim();
@@ -95,7 +161,7 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
     normalized = normalized.replace(/\s/g, '');
     const n = Number(normalized);
     return Number.isFinite(n) ? n : 0;
-  };
+  }
 
   const mergeImported = (rows) => {
     const produtoSet = new Set((Array.isArray(bobinasPorProdutoData?.produtos) ? bobinasPorProdutoData.produtos : []).map(p => String(p.produto ?? '')));
@@ -130,6 +196,99 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
       totalLines: rows.length,
       mode: importSomarAoExistente ? 'somar' : 'substituir'
     });
+  };
+
+  const parseStockRows = (rows) => {
+    const snapshot = {};
+    let lines = 0;
+    rows.forEach(r => {
+      const cod = String(r.cod ?? r.material ?? r.bobina ?? '').trim();
+      if (!cod) return;
+      const qty = parseQty(r.qty ?? r.saldo ?? r.estoque ?? r.quantidade);
+      if (!(qty >= 0)) return;
+      snapshot[cod] = qty;
+      lines += 1;
+    });
+    return { snapshot, lines };
+  };
+
+  const parseStockCsvText = (text) => {
+    const lines = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim().length > 0);
+    if (lines.length === 0) return [];
+
+    const sepCandidates = [',', ';', '\t'];
+    const headerLine = lines[0];
+    const sep = sepCandidates
+      .map(s => ({ s, c: headerLine.split(s).length }))
+      .sort((a, b) => b.c - a.c)[0].s;
+
+    const headers = headerLine.split(sep).map(h => h.trim().toLowerCase());
+    const findIndex = (names) => headers.findIndex(h => names.includes(h));
+
+    const codIdx = findIndex(['cod', 'código', 'codigo', 'material', 'bobina']);
+    const qtyIdx = findIndex(['saldo', 'estoque', 'qty', 'quantidade']);
+    if (codIdx < 0 || qtyIdx < 0) return [];
+
+    return lines.slice(1).map(line => {
+      const cols = line.split(sep);
+      return {
+        cod: cols[codIdx],
+        qty: cols[qtyIdx],
+      };
+    });
+  };
+
+  const parseStockXlsxFile = async (file) => {
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+    if (!Array.isArray(data) || data.length === 0) return [];
+
+    const header = data[0].map(v => String(v || '').trim().toLowerCase());
+    const findIndex = (names) => header.findIndex(h => names.includes(h));
+    const codIdx = findIndex(['cod', 'código', 'codigo', 'material', 'bobina']);
+    const qtyIdx = findIndex(['saldo', 'estoque', 'qty', 'quantidade']);
+    if (codIdx < 0 || qtyIdx < 0) return [];
+
+    return data.slice(1).map(row => ({
+      cod: row[codIdx],
+      qty: row[qtyIdx],
+    }));
+  };
+
+  const handleEstoque0112Picked = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const name = String(file.name || '').toLowerCase();
+      let rows = [];
+      if (name.endsWith('.csv') || name.endsWith('.txt')) {
+        const text = await file.text();
+        rows = parseStockCsvText(text);
+      } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+        rows = await parseStockXlsxFile(file);
+      }
+
+      if (rows.length === 0) {
+        setEstoque0112Resumo({ error: 'Arquivo inválido: precisa ter colunas cod/material e saldo/estoque.' });
+        return;
+      }
+
+      const { snapshot, lines } = parseStockRows(rows);
+      setEstoque0112(snapshot);
+      setUseEstoque0112(true);
+      setEstoque0112Resumo({ lines, items: Object.keys(snapshot).length });
+      try {
+        localStorage.setItem(LS_KEYS.stockSnapshot_2025_12_01, JSON.stringify(snapshot));
+      } catch {}
+    } catch (err) {
+      setEstoque0112Resumo({ error: `Falha ao importar: ${err?.message || String(err)}` });
+    } finally {
+      e.target.value = '';
+    }
   };
 
   const parseCsvText = (text) => {
@@ -321,20 +480,25 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
       .map(p => ({
         produto: String(p.produto ?? ''),
         desc: String(p.desc ?? ''),
-        bobinas: Array.isArray(p.bobinas) ? p.bobinas : []
+        bobinas: Array.isArray(p.bobinas) ? p.bobinas : [],
+        categoriaKey: String(categoryOverrides[String(p.produto ?? '')] ?? p.categoriaKey ?? p.categoria?.categoriaKey ?? '').trim()
       }))
       .filter(p => p.produto);
 
+    const withQtyAndDemand = produtoRows.map(p => {
+      const qty = Number(qtdPorProduto[p.produto] || 0);
+      const totalKg = p.bobinas.reduce((acc, b) => acc + (Number(b.porUnidade || 0) * qty), 0);
+      return { ...p, qty, totalKg };
+    });
+
     const search = String(produtoSearch || '').trim().toLowerCase();
     const filteredProdutos = search
-      ? produtoRows.filter(p =>
+      ? withQtyAndDemand.filter(p =>
           p.produto.toLowerCase().includes(search) || p.desc.toLowerCase().includes(search)
         )
-      : produtoRows;
+      : withQtyAndDemand;
 
-    const selected = produtoRows
-      .map(p => ({ ...p, qty: Number(qtdPorProduto[p.produto] || 0) }))
-      .filter(p => p.qty > 0);
+    const selected = withQtyAndDemand.filter(p => p.qty > 0);
 
     const selectedFiltered = search
       ? selected.filter(p =>
@@ -348,13 +512,13 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
 
     selected.forEach(p => {
       totalUnits += p.qty;
+      totalKg += p.totalKg;
       p.bobinas.forEach(b => {
         const cod = String(b.cod ?? '').trim();
         if (!cod) return;
 
         const porUnidade = Number(b.porUnidade || 0);
         const demandKg = porUnidade * p.qty;
-        totalKg += demandKg;
 
         if (!byBobina[cod]) {
           byBobina[cod] = {
@@ -377,7 +541,7 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
 
     const bobinasAgg = Object.values(byBobina).sort((a, b) => b.totalKg - a.totalKg);
     return {
-      produtoRows,
+      produtoRows: withQtyAndDemand,
       filteredProdutos,
       selected,
       selectedFiltered,
@@ -386,13 +550,103 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
       totalKg,
       uniqueBobinas: bobinasAgg.length
     };
-  }, [produtoSearch, qtdPorProduto]);
+  }, [produtoSearch, qtdPorProduto, categoryOverrides]);
+
+  const carteiraMrpResult = useMemo(() => {
+    if (bomSummary.bobinasAgg.length === 0) return [];
+
+    const stockByMaterial = useEstoque0112
+      ? new Map(Object.entries(estoque0112 || {}).map(([k, v]) => [String(k), Number(v || 0)]))
+      : new Map((Array.isArray(stockItems) ? stockItems : []).map(s => [String(s.material ?? ''), Number(s.qty || 0)]));
+
+    const result = bomSummary.bobinasAgg.map(b => {
+      const cod = String(b.cod ?? '');
+      const demandM1 = Number(b.totalKg || 0);
+      const demandM2 = demandM1;
+      const demandM3 = demandM1;
+
+      const currentStock = stockByMaterial.get(cod) || 0;
+
+      const balanceM1 = currentStock - demandM1;
+      const surplusM1 = balanceM1 > 0 ? balanceM1 : 0;
+      const statusM1 = balanceM1 < 0 ? "CRITICAL" : "OK";
+
+      const balanceM2 = surplusM1 - demandM2;
+      const surplusM2 = balanceM2 > 0 ? balanceM2 : 0;
+      const statusM2 = balanceM2 < 0 ? "WARNING" : "OK";
+
+      const balanceM3 = surplusM2 - demandM3;
+      const statusM3 = balanceM3 < 0 ? "WARNING" : "OK";
+
+      const consumers = (Array.isArray(b.consumers) ? b.consumers : []).map(c => ({
+        name: `${String(c.produto ?? '').trim()} - ${String(c.desc ?? '').trim()}`.trim(),
+        qtyProd: Number(c.qty || 0),
+        steelUsed: Number(c.demandKg || 0),
+      }));
+
+      let globalStatus = "OK";
+      if (statusM1 === "CRITICAL") globalStatus = "URGENT";
+      else if (statusM2 === "WARNING" || statusM3 === "WARNING") globalStatus = "ATTENTION";
+
+      return {
+        plate: cod,
+        desc: String(b.desc ?? ''),
+        consumers,
+        currentStock,
+        m1: { demand: demandM1, balance: balanceM1 },
+        m2: { demand: demandM2, balance: balanceM2 },
+        m3: { demand: demandM3, balance: balanceM3 },
+        globalStatus,
+      };
+    });
+
+    result.sort((a, b) => {
+      const score = { "URGENT": 3, "ATTENTION": 2, "OK": 1 };
+      return score[b.globalStatus] - score[a.globalStatus];
+    });
+
+    return result;
+  }, [bomSummary.bobinasAgg, estoque0112, stockItems, useEstoque0112]);
 
   // --- HELPERS ---
   const fmtNum = (n) => n.toLocaleString('pt-BR');
   const fmtKg = (n) => n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const isBomTab = activeTab === 'bom';
   const produtosVisiveis = mostrarSomenteSelecionados ? bomSummary.selectedFiltered : bomSummary.filteredProdutos;
+  const useCarteira = bomSummary.totalUnits > 0;
+  const mrpItems = useCarteira ? carteiraMrpResult : simulation.mrpResult;
+
+  const categoriasAgg = useMemo(() => {
+    const groups = new Map();
+    produtosVisiveis.forEach(p => {
+      const categoriaKey = (p.categoriaKey || 'Sem categoria').trim() || 'Sem categoria';
+      if (!groups.has(categoriaKey)) {
+        groups.set(categoriaKey, { categoriaKey, totalKg: 0, totalUnits: 0, products: [] });
+      }
+      const g = groups.get(categoriaKey);
+      g.totalKg += Number(p.totalKg || 0);
+      g.totalUnits += Number(p.qty || 0);
+      g.products.push(p);
+    });
+
+    return Array.from(groups.values())
+      .filter(g => !mostrarSomenteSelecionados || g.totalUnits > 0)
+      .sort((a, b) => b.totalKg - a.totalKg);
+  }, [produtosVisiveis, mostrarSomenteSelecionados]);
+
+  const categoriaOptions = useMemo(() => {
+    const set = new Set();
+    (Array.isArray(bomSummary.produtoRows) ? bomSummary.produtoRows : []).forEach(p => {
+      const key = String(p.categoriaKey || '').trim();
+      if (key) set.add(key);
+    });
+    categoriasAgg.forEach(c => {
+      const key = String(c.categoriaKey || '').trim();
+      if (key) set.add(key);
+    });
+    set.add('Sem categoria');
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [bomSummary.produtoRows, categoriasAgg]);
 
   return (
     <div className="font-sans text-slate-600 bg-slate-50 rounded-3xl border border-slate-200 shadow-xl overflow-hidden max-w-6xl mx-auto my-8">
@@ -408,7 +662,6 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
               <Truck size={28} className="text-indigo-300" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-white">Simulador de Carrinhos</h2>
               <p className="text-indigo-200 text-sm font-medium">PCP & Gestão de Materiais</p>
             </div>
           </div>
@@ -456,7 +709,7 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
       <div className="p-6 lg:p-8 space-y-8 bg-white">
         
         {/* KPI CARDS */}
-        {isBomTab && (
+        {useCarteira && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <KpiCardPremium 
               title="Produção Planejada" 
@@ -485,7 +738,7 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
           </div>
         )}
 
-        {!isBomTab && (
+        {!useCarteira && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <KpiCardPremium 
             title="Produção Projetada" 
@@ -534,9 +787,38 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
                         <AlertCircle size={18} />
                         Dica: Digite o "Estoque Atual" para ver o saldo líquido projetado.
                     </div>
+                    <div className="flex flex-col md:flex-row md:items-center gap-3">
+                      <input
+                        ref={estoque0112InputRef}
+                        type="file"
+                        accept=".csv,.txt,.xlsx,.xls"
+                        onChange={handleEstoque0112Picked}
+                        className="hidden"
+                      />
+                      <button
+                        onClick={() => estoque0112InputRef.current?.click()}
+                        className="px-3 py-2 text-xs font-bold rounded-xl border border-blue-200 bg-white hover:bg-blue-50 text-blue-700 transition-colors"
+                      >
+                        Subir estoque 01/12
+                      </button>
+                      <label className="flex items-center gap-2 text-xs font-bold text-blue-700 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={useEstoque0112}
+                          onChange={(e) => setUseEstoque0112(e.target.checked)}
+                          className="accent-blue-600"
+                        />
+                        Usar estoque 01/12
+                      </label>
+                      {estoque0112Resumo?.error ? (
+                        <span className="text-xs font-bold text-red-600">{estoque0112Resumo.error}</span>
+                      ) : estoque0112Resumo ? (
+                        <span className="text-xs text-blue-700/80">{fmtNum(estoque0112Resumo.items)} itens</span>
+                      ) : null}
+                    </div>
                  </div>
 
-                 {simulation.mrpResult.map((item, idx) => (
+                 {mrpItems.map((item, idx) => (
                    <div 
                      key={idx} 
                      className={`flex flex-col p-5 rounded-2xl border transition-all hover:shadow-md 
@@ -562,6 +844,13 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
                                 <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">
                                     {item.consumers.length} Produtos consomem
                                 </p>
+                                <div className="text-[11px] flex items-center gap-2 text-slate-500 mt-1">
+                                  <span>Saldo atual:</span>
+                                  <span className="font-mono text-slate-700">{fmtKg(Math.max(item.currentStock || 0, 0))} kg</span>
+                                </div>
+                                {useCarteira && item.desc && (
+                                  <p className="text-[11px] text-slate-400 mt-1">{item.desc}</p>
+                                )}
                             </div>
                         </div>
 
@@ -571,8 +860,8 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
                                 <label className="text-xs font-bold text-slate-400 uppercase px-2">Estoque (kg):</label>
                                 <input 
                                     type="number" 
-                                    value={item.currentStock}
-                                    onChange={(e) => handleStockChange(item.plate, e.target.value)}
+                                    value={useEstoque0112 ? (estoque0112[item.plate] ?? 0) : item.currentStock}
+                                    onChange={(e) => useEstoque0112 ? handleEstoque0112Change(item.plate, e.target.value) : handleStockChange(item.plate, e.target.value)}
                                     className="w-28 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-right font-mono font-bold text-indigo-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all"
                                     placeholder="0"
                                 />
@@ -631,6 +920,197 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
 
              {/* MANTER OUTRAS ABAS IGUAIS... */}
              {activeTab === 'pcp' && (
+               useCarteira ? (
+               <div className="space-y-4">
+                 <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col md:flex-row md:items-center gap-3 justify-between">
+                   <div className="flex flex-col md:flex-row md:items-center gap-3">
+                     <input
+                       value={produtoSearch}
+                       onChange={(e) => setProdutoSearch(e.target.value)}
+                       placeholder="Buscar por código ou descrição..."
+                       className="w-full md:w-96 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all"
+                     />
+                     <label className="flex items-center gap-2 text-xs font-bold text-slate-500 whitespace-nowrap">
+                       <input
+                         type="checkbox"
+                         checked={mostrarSomenteSelecionados}
+                         onChange={(e) => setMostrarSomenteSelecionados(e.target.checked)}
+                         className="accent-indigo-600"
+                       />
+                       Mostrar só selecionados
+                     </label>
+                     <label className="flex items-center gap-2 text-xs font-bold text-slate-500 whitespace-nowrap">
+                       <input
+                         type="checkbox"
+                         checked={agruparPorCategoria}
+                         onChange={(e) => setAgruparPorCategoria(e.target.checked)}
+                         className="accent-indigo-600"
+                       />
+                       Agrupar por categoria
+                     </label>
+                     <div className="flex items-center gap-2">
+                       <button
+                         onClick={handleSalvarCategoriasLocal}
+                         className={`px-3 py-2 text-xs font-bold rounded-xl border transition-colors ${categorySaveOk ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'}`}
+                       >
+                         {categorySaveOk ? 'Salvo' : 'Salvar categorias'}
+                       </button>
+                       <button
+                         onClick={handleResetCategoriasLocal}
+                         className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
+                       >
+                         Reset
+                       </button>
+                     </div>
+                   </div>
+                   <div className="text-xs text-slate-500 font-bold">
+                     Total: {fmtNum(bomSummary.totalUnits)} un • {fmtKg(bomSummary.totalKg)} kg
+                   </div>
+                 </div>
+
+                 <datalist id="categoria-options">
+                   {categoriaOptions.map((c) => (
+                     <option key={c} value={c} />
+                   ))}
+                 </datalist>
+
+                 {agruparPorCategoria ? (
+                   <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                     <div className="divide-y divide-slate-100">
+                       {categoriasAgg.map((cat) => {
+                         const catKey = `cat:${cat.categoriaKey}`;
+                         const open = !!expandedItems[catKey];
+                         return (
+                           <div key={cat.categoriaKey} className="p-5">
+                             <button
+                               onClick={() => setExpandedItems(prev => ({ ...prev, [catKey]: !prev[catKey] }))}
+                               className="w-full flex items-start justify-between gap-4 text-left"
+                             >
+                               <div className="min-w-0">
+                                 <div className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                                   <span className="truncate" title={cat.categoriaKey}>{cat.categoriaKey}</span>
+                                   {open ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+                                 </div>
+                                 <div className="text-xs text-slate-400 mt-1">{cat.products.length} produtos</div>
+                               </div>
+                               <div className="text-right shrink-0">
+                                 <div className="font-mono font-bold text-indigo-700">{fmtKg(cat.totalKg)} kg</div>
+                                 <div className="text-xs text-slate-400">{fmtNum(cat.totalUnits)} un</div>
+                               </div>
+                             </button>
+
+                             {open && (
+                               <div className="mt-4 bg-slate-50/70 border border-slate-100 rounded-xl overflow-hidden">
+                                 <table className="w-full text-left border-collapse">
+                                   <thead>
+                                     <tr className="bg-white/60 border-b border-slate-100 text-xs uppercase tracking-wider text-slate-400 font-bold">
+                                       <th className="p-4">Produto</th>
+                                       <th className="p-4">Descrição</th>
+                                       <th className="p-4 w-56">Categoria</th>
+                                       <th className="p-4 text-right w-40">Qtd</th>
+                                       <th className="p-4 text-right w-40">Consumo</th>
+                                     </tr>
+                                   </thead>
+                                   <tbody className="divide-y divide-slate-100">
+                                     {cat.products
+                                       .slice()
+                                       .sort((a, b) => (Number(b.totalKg || 0) - Number(a.totalKg || 0)))
+                                       .map((p) => (
+                                         <tr key={p.produto} className="hover:bg-white transition-colors">
+                                           <td className="p-4">
+                                             <div className="font-mono font-bold text-slate-700">{p.produto}</div>
+                                           </td>
+                                           <td className="p-4">
+                                             <div className="text-sm font-medium text-slate-700">{p.desc}</div>
+                                             <div className="text-[11px] text-slate-400 mt-1">{p.bobinas.length} bobinas</div>
+                                           </td>
+                                           <td className="p-4">
+                                             <input
+                                               list="categoria-options"
+                                               value={categoryOverrides[p.produto] ?? p.categoriaKey ?? ''}
+                                               onChange={(e) => handleCategoriaProdutoChange(p.produto, e.target.value)}
+                                               className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all"
+                                               placeholder="Sem categoria"
+                                             />
+                                           </td>
+                                           <td className="p-4 text-right">
+                                             <input
+                                               type="number"
+                                               min="0"
+                                               step="1"
+                                               value={qtdPorProduto[p.produto] ?? ''}
+                                               onChange={(e) => handleQtdProdutoChange(p.produto, e.target.value)}
+                                               className="w-28 text-right font-mono font-bold text-indigo-700 bg-white border border-indigo-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all"
+                                               placeholder="0"
+                                             />
+                                           </td>
+                                           <td className="p-4 text-right">
+                                             <div className="font-mono font-bold text-slate-700">{fmtKg(p.totalKg || 0)} kg</div>
+                                           </td>
+                                         </tr>
+                                       ))}
+                                   </tbody>
+                                 </table>
+                               </div>
+                             )}
+                           </div>
+                         );
+                       })}
+                     </div>
+                   </div>
+                 ) : (
+                   <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                     <table className="w-full text-left border-collapse">
+                       <thead>
+                         <tr className="bg-slate-50/80 border-b border-slate-100 text-xs uppercase tracking-wider text-slate-400 font-bold">
+                           <th className="p-5">Produto</th>
+                           <th className="p-5">Descrição</th>
+                           <th className="p-5 w-56">Categoria</th>
+                           <th className="p-5 text-right w-40">Qtd. Carteira</th>
+                           <th className="p-5 text-right w-48">Consumo (kg)</th>
+                         </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-50">
+                         {produtosVisiveis.slice(0, 200).map((p) => (
+                           <tr key={p.produto} className="hover:bg-slate-50/80 transition-colors">
+                             <td className="p-5">
+                               <div className="font-mono font-bold text-slate-700">{p.produto}</div>
+                             </td>
+                             <td className="p-5">
+                               <div className="font-bold text-slate-700 text-sm">{p.desc}</div>
+                               <div className="text-xs text-slate-400 mt-1">{p.bobinas.length} bobinas no BOM</div>
+                             </td>
+                             <td className="p-5">
+                               <input
+                                 list="categoria-options"
+                                 value={categoryOverrides[p.produto] ?? p.categoriaKey ?? ''}
+                                 onChange={(e) => handleCategoriaProdutoChange(p.produto, e.target.value)}
+                                 className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all"
+                                 placeholder="Sem categoria"
+                               />
+                             </td>
+                             <td className="p-5 text-right">
+                               <input
+                                 type="number"
+                                 min="0"
+                                 step="1"
+                                 value={qtdPorProduto[p.produto] ?? ''}
+                                 onChange={(e) => handleQtdProdutoChange(p.produto, e.target.value)}
+                                 className="w-32 text-right font-mono font-bold text-indigo-700 bg-indigo-50/50 border border-indigo-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all"
+                                 placeholder="0"
+                               />
+                             </td>
+                             <td className="p-5 text-right">
+                               <div className="font-mono font-bold text-slate-700">{fmtKg(p.totalKg || 0)}</div>
+                             </td>
+                           </tr>
+                         ))}
+                       </tbody>
+                     </table>
+                   </div>
+                 )}
+               </div>
+               ) : (
                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                  <table className="w-full text-left border-collapse">
                    <thead>
@@ -674,6 +1154,7 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
                    </tbody>
                  </table>
                </div>
+               )
              )}
 
              {activeTab === 'bom' && (
@@ -906,7 +1387,7 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
                     </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {simulation.mrpResult.map((item, idx) => {
+                        {mrpItems.map((item, idx) => {
                             const balanceM1 = item.m1.balance;
                             const coilsNeeded = balanceM1 < 0 ? Math.ceil(Math.abs(balanceM1) / avgCoilWeight) : 0;
                             const weightNeeded = Math.abs(balanceM1);
@@ -914,7 +1395,12 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
                             return (
                             <div key={idx} className={`relative overflow-hidden rounded-2xl border p-5 flex flex-col gap-4 transition-all hover:shadow-lg ${balanceM1 < 0 ? 'border-indigo-100 bg-indigo-50/20' : 'border-slate-100 bg-white opacity-60'}`}>
                                 <div className="flex justify-between items-start">
-                                    <div className="font-bold text-slate-800 text-xl">{item.plate}</div>
+                                    <div className="min-w-0">
+                                      <div className="font-bold text-slate-800 text-xl">{item.plate}</div>
+                                      {useCarteira && item.desc && (
+                                        <div className="text-xs text-slate-500 mt-1 truncate" title={item.desc}>{item.desc}</div>
+                                      )}
+                                    </div>
                                     {balanceM1 < 0 ? (
                                         <span className="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">Comprar</span>
                                     ) : (
@@ -948,25 +1434,98 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
                   <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
                     <h4 className="font-bold text-slate-700 mb-6 flex items-center gap-2">
                       <BarChart3 size={20} className="text-indigo-500"/>
-                      Volume por Modelo (Top 5)
+                      {useCarteira ? 'Consumo por Produto (Top 10)' : 'Volume por Modelo (Top 5)'}
                     </h4>
                     <div className="space-y-5">
-                      {simulation.productionPlan.sort((a,b) => b.quantity - a.quantity).slice(0, 5).map((item, idx) => (
+                      {(useCarteira
+                        ? bomSummary.selected
+                            .slice()
+                            .sort((a, b) => (b.totalKg || 0) - (a.totalKg || 0))
+                            .slice(0, 10)
+                            .map(p => ({
+                              key: p.produto,
+                              label: `${p.produto} - ${p.desc}`,
+                              value: Number(p.totalKg || 0),
+                              suffix: 'kg',
+                              pctBase: Number(bomSummary.totalKg || 0) || 1
+                            }))
+                        : simulation.productionPlan
+                            .slice()
+                            .sort((a, b) => b.quantity - a.quantity)
+                            .slice(0, 5)
+                            .map(item => ({
+                              key: item.id,
+                              label: item.name,
+                              value: Number(item.quantity || 0),
+                              suffix: 'un',
+                              pctBase: Number(simulation.effectiveTotalProduction || 0) || 1
+                            }))
+                      ).map((row, idx) => (
                         <div key={idx} className="group">
                           <div className="flex justify-between text-sm mb-2">
-                            <span className="font-bold text-slate-600 group-hover:text-indigo-600 transition-colors">{item.name}</span>
-                            <span className="font-mono font-bold text-slate-400">{fmtNum(item.quantity)} un</span>
+                            <span className="font-bold text-slate-600 group-hover:text-indigo-600 transition-colors truncate pr-4" title={row.label}>{row.label}</span>
+                            <span className="font-mono font-bold text-slate-400">{useCarteira ? fmtKg(row.value) : fmtNum(row.value)} {row.suffix}</span>
                           </div>
                           <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
                             <div 
                               className="h-full bg-gradient-to-r from-indigo-500 to-blue-500 rounded-full group-hover:from-indigo-400 group-hover:to-blue-400 transition-all duration-500 shadow-sm"
-                              style={{ width: `${(item.quantity / simulation.effectiveTotalProduction) * 100 * 1.2}%` }}
+                              style={{ width: `${Math.min(100, (row.value / row.pctBase) * 100 * 1.2)}%` }}
                             ></div>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
+
+                  {useCarteira && (
+                    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                      <h4 className="font-bold text-slate-700 mb-6 flex items-center gap-2">
+                        <Scroll size={20} className="text-indigo-500"/>
+                        Consumo por Bobina (Top 10)
+                      </h4>
+                      <div className="space-y-5">
+                        {bomSummary.bobinasAgg.slice(0, 10).map((b) => (
+                          <div key={b.cod} className="group">
+                            <div className="flex justify-between text-sm mb-2">
+                              <span className="font-bold text-slate-600 group-hover:text-indigo-600 transition-colors truncate pr-4" title={`${b.cod} - ${b.desc}`}>{b.cod} - {b.desc}</span>
+                              <span className="font-mono font-bold text-slate-400">{fmtKg(b.totalKg)} kg</span>
+                            </div>
+                            <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-violet-500 to-purple-500 rounded-full group-hover:from-violet-400 group-hover:to-purple-400 transition-all duration-500 shadow-sm"
+                                style={{ width: `${Math.min(100, (Number(b.totalKg || 0) / (Number(bomSummary.totalKg || 0) || 1)) * 100 * 1.2)}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {useCarteira && (
+                    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                      <h4 className="font-bold text-slate-700 mb-6 flex items-center gap-2">
+                        <Package size={20} className="text-indigo-500"/>
+                        Consumo por Categoria (Top 10)
+                      </h4>
+                      <div className="space-y-5">
+                        {categoriasAgg.slice(0, 10).map((cat) => (
+                          <div key={cat.categoriaKey} className="group">
+                            <div className="flex justify-between text-sm mb-2">
+                              <span className="font-bold text-slate-600 group-hover:text-indigo-600 transition-colors truncate pr-4" title={cat.categoriaKey}>{cat.categoriaKey}</span>
+                              <span className="font-mono font-bold text-slate-400">{fmtKg(cat.totalKg)} kg</span>
+                            </div>
+                            <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full group-hover:from-emerald-400 group-hover:to-teal-400 transition-all duration-500 shadow-sm"
+                                style={{ width: `${Math.min(100, (Number(cat.totalKg || 0) / (Number(bomSummary.totalKg || 0) || 1)) * 100 * 1.2)}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
           </div>
