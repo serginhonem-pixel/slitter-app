@@ -5102,21 +5102,59 @@ const handleFullRestore = (e) => {
 
         const globalQ = String(globalSearchQuery || "").trim().toLowerCase();
 
+        const motherNfMap = safeMother.reduce((acc, m) => {
+            const key = (normalizeCode(m?.code) || m?.code || "").toLowerCase();
+            if (!key || !m?.nf) return acc;
+            if (!acc[key]) acc[key] = m.nf;
+            return acc;
+        }, {});
+
+        const childNfMap = safeChild.reduce((acc, c) => {
+            const key = String(c?.b2Code || c?.code || "").toLowerCase();
+            if (!key || !c?.nf) return acc;
+            if (!acc[key]) acc[key] = c.nf;
+            return acc;
+        }, {});
+
+        const motherNFMatches = new Set(
+            safeMother
+                .filter((m) => m?.status === "stock")
+                .filter((m) => String(m?.nf || "").toLowerCase().includes(globalQ))
+                .map((m) => (normalizeCode(m?.code) || m?.code || "").toLowerCase())
+        );
+
+        const childNFMatches = new Set(
+            safeChild
+                .filter((c) => c?.status === "stock")
+                .filter((c) => String(c?.nf || "").toLowerCase().includes(globalQ))
+                .map((c) => String(c?.b2Code || c?.code || "").toLowerCase())
+        );
+
         const globalMatchesMother = globalQ
             ? Object.values(motherStockByCode)
                   .filter((i) => {
                       const code = String(i.code || "").toLowerCase();
+                      const codeKey = (normalizeCode(i.code) || i.code || "").toLowerCase();
                       const material = String(i.material || "").toLowerCase();
                       const width = String(i.width || "").toLowerCase();
-                      return code.includes(globalQ) || material.includes(globalQ) || width.includes(globalQ);
+                      return (
+                        code.includes(globalQ) ||
+                        material.includes(globalQ) ||
+                        width.includes(globalQ) ||
+                        motherNFMatches.has(codeKey)
+                      );
                   })
                   .slice(0, 6)
-                  .map((i) => ({
-                      kind: "mother",
-                      code: i.code,
-                      title: `${i.code} • ${safeNum(i.width) || ""}mm`,
-                      subtitle: `${i.material} • ${i.count} bob • ${(safeNum(i.weight) || 0).toFixed(0)} kg`,
-                  }))
+                  .map((i) => {
+                      const codeKey = (normalizeCode(i.code) || i.code || "").toLowerCase();
+                      const nfLabel = motherNfMap[codeKey] ? ` - NF ${motherNfMap[codeKey]}` : "";
+                      return {
+                        kind: "mother",
+                        code: i.code,
+                        title: `${i.code} - ${safeNum(i.width) || ""}mm`,
+                        subtitle: `${i.material} - ${i.count} bob - ${(safeNum(i.weight) || 0).toFixed(0)} kg${nfLabel}`,
+                      };
+                  })
             : [];
 
         const globalMatchesB2 = globalQ
@@ -5124,15 +5162,23 @@ const handleFullRestore = (e) => {
                   .filter((i) => {
                       const code = String(i.code || "").toLowerCase();
                       const name = String(i.name || "").toLowerCase();
-                      return code.includes(globalQ) || name.includes(globalQ);
+                      return (
+                        code.includes(globalQ) ||
+                        name.includes(globalQ) ||
+                        childNFMatches.has(code)
+                      );
                   })
                   .slice(0, 6)
-                  .map((i) => ({
-                      kind: "b2",
-                      code: i.code,
-                      title: `${i.code}`,
-                      subtitle: `${i.name} • ${i.count} bob • ${(safeNum(i.weight) || 0).toFixed(0)} kg`,
-                  }))
+                  .map((i) => {
+                      const codeKey = String(i.code || "").toLowerCase();
+                      const nfLabel = childNfMap[codeKey] ? ` - NF ${childNfMap[codeKey]}` : "";
+                      return {
+                        kind: "b2",
+                        code: i.code,
+                        title: `${i.code}`,
+                        subtitle: `${i.name} - ${i.count} bob - ${(safeNum(i.weight) || 0).toFixed(0)} kg${nfLabel}`,
+                      };
+                  })
             : [];
 
         const globalMatchesProducts = globalQ

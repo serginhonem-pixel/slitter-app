@@ -87,24 +87,23 @@ const IndicatorsDashboard = ({
   const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
 
   const totalRecords = safeMother.length + safeChild.length + safeProd.length;
-// --- B2 em processo ---
-const b2InProcess = safeChild.filter(
-  (c) => String(c.status || '').toLowerCase() === 'in_process'
-);
+  // --- B2 em estoque ---
+  const b2Stock = safeChild.filter(
+    (c) => String(c.status || '').toLowerCase() === 'stock'
+  );
 
+  const totalB2KgReal = b2Stock.reduce((acc, item) => {
+    const rawWeight =
+      item.weight ?? item.remainingWeight ?? item.netWeight ?? 0;
+    const w = Number(rawWeight) || 0;
+    return acc + w;
+  }, 0);
 
-const totalB2KgReal = safeChild.reduce((acc, item) => {
-  const rawWeight =
-    item.weight ?? item.remainingWeight ?? item.netWeight ?? 0;
-  const w = Number(rawWeight) || 0;
-  return acc + w;
-}, 0);
-
-const totalB2Count = safeChild.filter((item) => {
-  const rawWeight =
-    item.weight ?? item.remainingWeight ?? item.netWeight ?? 0;
-  return Number(rawWeight) > 0;
-}).length;
+  const totalB2Count = b2Stock.filter((item) => {
+    const rawWeight =
+      item.weight ?? item.remainingWeight ?? item.netWeight ?? 0;
+    return Number(rawWeight) > 0;
+  }).length;
   // data atual e constantes
 
   const now = new Date();
@@ -301,7 +300,7 @@ const totalB2Count = safeChild.filter((item) => {
   );
 
   const { data: agingB2 } = calculateSimpleAging(
-    b2InProcess,
+    b2Stock,
     'createdAt',
     'weight'
   );
@@ -519,12 +518,12 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
         subText={`Qtd: ${formatPcs(totalShippingPiecesWindow)}`}
       />
       <KpiCard
-  title="B2 em Processo"
-  value={totalB2T}                    // já está calculado com totalB2KgReal
-  unit="t"
-  color="text-purple-400"
-  subText={`Total de  ${totalB2Count} bobinas`}
-/>
+        title="B2 em estoque"
+        value={totalB2T}
+        unit="t"
+        color="text-purple-400"
+        subText={`Total de ${totalB2Count} bobinas`}
+      />
     </div>
 
       {/* Fluxo de Aço */}
