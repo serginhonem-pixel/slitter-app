@@ -944,6 +944,7 @@ export default function App() {
   const [editingMotherCoil, setEditingMotherCoil] = useState(null); 
   const [editingChildCoil, setEditingChildCoil] = useState(null);
   const [isSavingB2Purchase, setIsSavingB2Purchase] = useState(false);
+  const isSavingB2PurchaseRef = useRef(false); // evita duplo disparo enquanto o estado ainda nÃ£o renderizou
   const [currentView, setCurrentView] = useState('dashboard'); 
 // 'dashboard', 'rastreioB2', 'mpNeed', etc...
 
@@ -1007,6 +1008,15 @@ export default function App() {
       }
     }
   }, [newMotherCoil.code, motherCatalog]);
+
+  const dedupeById = (list = []) => {
+    const map = new Map();
+    list.forEach((item) => {
+      if (!item || item.id === undefined || item.id === null) return;
+      map.set(String(item.id), item);
+    });
+    return Array.from(map.values());
+  };
 
   const logUserAction = async (action, payload = {}) => {
     if (!user) return;
@@ -1345,7 +1355,7 @@ export default function App() {
 
 
   const addPurchasedChildCoil = async () => {
-    if (isSavingB2Purchase) return;
+    if (isSavingB2PurchaseRef.current || isSavingB2Purchase) return;
     const { nf, entryDate, b2Code, b2Name, weight, quantity, width, thickness, type } = newB2Purchase;
 
     if (!nf || !b2Code || !b2Name || !weight) {
@@ -1390,8 +1400,9 @@ export default function App() {
     }));
 
     const prevChildren = [...childCoils];
-    setChildCoils((prev) => [...prev, ...tempChildren]);
+    setChildCoils((prev) => dedupeById([...prev, ...tempChildren]));
 
+    isSavingB2PurchaseRef.current = true;
     setIsSavingB2Purchase(true);
 
     try {
@@ -1408,7 +1419,7 @@ export default function App() {
 
         setChildCoils((prev) => {
           const others = prev.filter((c) => !tempChildren.some((t) => t.id === c.id));
-          return [...others, ...savedChildren];
+          return dedupeById([...others, ...savedChildren]);
         });
 
         await logUserAction("ENTRADA_B2_NF", {
@@ -1442,6 +1453,7 @@ export default function App() {
       setChildCoils(prevChildren);
     } finally {
       setIsSavingB2Purchase(false);
+      isSavingB2PurchaseRef.current = false;
     }
   };
 
@@ -6056,7 +6068,7 @@ const renderB2DynamicReport = () => {
            />
            <span className="text-white">METALOSA</span>
         </div>
-        <nav className="flex-1 py-8 px-4 space-y-2 overflow-y-auto">
+        <nav className="flex-1 py-8 px-4 space-y-2 overflow-y-auto custom-scrollbar-dark">
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Principal</p>
            
            <button onClick={() => { setActiveTab('dashboard'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'dashboard' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
