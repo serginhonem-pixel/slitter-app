@@ -2998,8 +2998,8 @@ const RawMaterialRequirement = ({
     })()}
 
     {orderModalOpen && (
-      <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-        <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-5xl shadow-2xl">
+      <div className="fixed inset-0 bg-black/70 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto">
+        <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[calc(100vh-2rem)] min-h-0">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
             <div>
               <h3 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -3018,7 +3018,7 @@ const RawMaterialRequirement = ({
             </button>
           </div>
 
-          <div className="p-5 space-y-4">
+          <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs text-gray-400 font-semibold mb-1">Código MP (catálogo)</label>
