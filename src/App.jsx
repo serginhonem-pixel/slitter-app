@@ -1911,11 +1911,11 @@ export default function App() {
         // Manda imprimir os reais
         setItemsToPrint(savedLogsReal); setPrintType('product'); setShowPrintModal(true);
         await logUserAction('PRODUCAO', {
-          productCode: prodInfo ? prodInfo.code : selectedProductCode,
-          pieces: totalProducedPieces,
-          scrapKg: prodScrap,
-          sourceChildIds: sourceIds
-        });
+          productCode: productInfo ? productInfo.code : selectedProductCode,
+  pieces: totalProducedPieces,
+  scrapKg: prodScrap,
+  sourceChildIds: sourceIds
+});
         alert("Produção salva na nuvem!");
 
     } catch (error) {
