@@ -110,7 +110,7 @@ export const INITIAL_PRODUCT_CATALOG = [
     type: 'BQ', 
     motherCode: '10022' 
   },
-  { 
+  {
     code: '00660A', 
     name: 'PERFIL US 127X50X1,80	BQ', 
     b2Code: '85510A', 
@@ -120,6 +120,5 @@ export const INITIAL_PRODUCT_CATALOG = [
     type: 'BQ', 
     motherCode: '10262' 
   },
-
 ];
 
