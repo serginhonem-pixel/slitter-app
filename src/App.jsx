@@ -83,8 +83,8 @@ import { INITIAL_MOTHER_CATALOG } from './data/motherCatalog';
 import { INITIAL_PRODUCT_CATALOG } from './data/productCatalog';
 import { INITIAL_INOX_BLANK_PRODUCTS } from "./data/inoxCatalog";
 
-const ENABLE_BACKUP_BUTTON = true; // muda pra true quando quiser usar o backup
-
+const ENABLE_BACKUP_BUTTON = import.meta.env.DEV; // só aparece em dev (localhost)
+  
 const ITEMS_PER_PAGE = 50;
 
 
@@ -6221,15 +6221,18 @@ const handleUploadJSONToFirebase = async (e) => {
 
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mt-8 mb-4">Gestão</p>
 
-           <div className="mt-2 px-4">
-            <Button 
-                onClick={() => importFullBackupRef.current.click()} 
-                variant="secondary" 
-                className="w-full justify-start text-xs border-dashed border-gray-600 text-gray-400 hover:text-white"
-            >
-                <Upload size={16} className="mr-2"/> Restaurar Backup
-            </Button>
-          </div>
+           {ENABLE_BACKUP_BUTTON && (
+  <div className="mt-2 px-4">
+    <Button
+      onClick={() => importFullBackupRef.current.click()}
+      variant="secondary"
+      className="w-full justify-start text-xs border-dashed border-gray-600 text-gray-400 hover:text-white"
+    >
+      <Upload size={16} className="mr-2" /> Restaurar Backup
+    </Button>
+  </div>
+)}
+
           
            {ENABLE_BACKUP_BUTTON && (
   <div className="mt-8 px-4">
@@ -6313,9 +6316,7 @@ const handleUploadJSONToFirebase = async (e) => {
                   shippingLogs={shippingLogs}
                   productionLogs={productionLogs}
                 />
-              )}
-
-              
+              )}              
 {activeTab === "mpNeed" && (
   <RawMaterialRequirement
     motherCoils={motherCoils}
