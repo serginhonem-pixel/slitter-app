@@ -68,7 +68,8 @@ import {
 
 
 import CutDetailsModal from './components/modals/CutDetailsModal';
-import { default as EditMotherCoilModal, default as ProductHistoryModal } from './components/modals/ProductHistoryModal';
+import EditMotherCoilModal from './components/modals/EditMotherCoilModal';
+import ProductHistoryModal from './components/modals/ProductHistoryModal';
 import RawMaterialRequirement from "./components/modals/RawMaterialRequirement";
 import InoxBlanksPlanner from "./components/modals/InoxBlanksPlanner";
 import DemandFocus from "./data/demandFocus.jsx";
@@ -103,6 +104,205 @@ const Input = ({ label, value, onChange, type = "text", placeholder = "", min, d
     {label && <label className="block text-xs font-bold text-gray-400 uppercase tracking-wide mb-1.5 ml-1">{label}</label>}
     <input type={type} value={value} onChange={onChange} placeholder={placeholder} min={min} disabled={disabled} readOnly={readOnly} className={`w-full border border-gray-700 rounded-lg p-3 text-sm bg-gray-900 text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all placeholder-gray-600 ${disabled ? 'bg-gray-800 text-gray-500 cursor-not-allowed' : ''} ${readOnly ? 'bg-gray-800/50 text-gray-400' : ''}`} />
   </div>
+);
+
+const ReportTabs = ({ viewMode, setViewMode }) => (
+  <div className="flex gap-2 border-b border-gray-700 pb-2 overflow-x-auto">
+    <button
+      onClick={() => setViewMode('GLOBAL')}
+      className={`px-4 py-3 font-bold text-xs md:text-sm rounded-t-lg transition-colors ${
+        viewMode === 'GLOBAL'
+          ? 'bg-blue-600 text-white'
+          : 'bg-gray-800 text-gray-400 hover:text-white'
+      }`}
+    >
+      Visão Geral
+    </button>
+    <button
+      onClick={() => setViewMode('MP_KARDEX')}
+      className={`px-4 py-3 font-bold text-xs md:text-sm rounded-t-lg transition-colors ${
+        viewMode === 'MP_KARDEX'
+          ? 'bg-emerald-600 text-white'
+          : 'bg-gray-800 text-gray-400 hover:text-white'
+      }`}
+    >
+      Extrato MP
+    </button>
+    <button
+      onClick={() => setViewMode('PROD_SUMMARY')}
+      className={`px-4 py-3 font-bold text-xs md:text-sm rounded-t-lg transition-colors ${
+        viewMode === 'PROD_SUMMARY'
+          ? 'bg-purple-600 text-white'
+          : 'bg-gray-800 text-gray-400 hover:text-white'
+      }`}
+    >
+      Resumo Produção
+    </button>
+  </div>
+);
+
+const ReportFilters = ({
+  startDate,
+  endDate,
+  search,
+  onStartDateChange,
+  onEndDateChange,
+  onSearchChange,
+}) => (
+  <Card>
+    <div className="flex flex-col md:flex-row gap-4 items-end">
+      <div className="flex gap-2 flex-1">
+        <div className="flex-1">
+          <label className="block text-xs text-gray-500 mb-1">Início</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => onStartDateChange(e.target.value)}
+            className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-blue-500"
+          />
+        </div>
+        <div className="flex-1">
+          <label className="block text-xs text-gray-500 mb-1">Fim</label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => onEndDateChange(e.target.value)}
+            className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-blue-500"
+          />
+        </div>
+      </div>
+      <div className="w-full md:w-1/3">
+        <input
+          type="text"
+          placeholder="Buscar..."
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-blue-500"
+        />
+      </div>
+    </div>
+  </Card>
+);
+
+const GlobalStatsSummary = ({ stats }) => {
+  const entries = [
+    {
+      key: 'entradaKg',
+      label: 'Entrada MP',
+      unit: 'kg',
+      value: stats?.entradaKg ?? 0,
+      border: 'border-blue-500',
+      unitClass: 'text-blue-400',
+    },
+    {
+      key: 'corteKg',
+      label: 'Consumo Slitter',
+      unit: 'kg',
+      value: stats?.corteKg ?? 0,
+      border: 'border-purple-500',
+      unitClass: 'text-purple-400',
+    },
+    {
+      key: 'prodPcs',
+      label: 'Produção PA',
+      unit: 'pcs',
+      value: stats?.prodPcs ?? 0,
+      border: 'border-emerald-500',
+      unitClass: 'text-emerald-400',
+    },
+    {
+      key: 'expPcs',
+      label: 'Expedição PA',
+      unit: 'pcs',
+      value: stats?.expPcs ?? 0,
+      border: 'border-amber-500',
+      unitClass: 'text-amber-400',
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0">
+      {entries.map((entry) => (
+        <Card key={entry.key} className={`border-l-4 ${entry.border} bg-gray-800 p-4`}>
+          <p className="text-gray-400 text-[10px] font-bold uppercase">
+            {entry.label}
+          </p>
+          <div className="flex items-end gap-1 mt-1">
+            <span className="text-xl font-bold text-white">
+              {entry.value.toLocaleString('pt-BR')}
+            </span>
+            <span className={`text-xs ${entry.unitClass} mb-1`}>{entry.unit}</span>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+};
+
+const GlobalTimelineOverview = ({ timeline, onExport, onViewDetail, getTypeColor }) => (
+  <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
+    <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700">
+      <h3 className="font-bold text-gray-200">Linha do Tempo Global</h3>
+      <Button variant="secondary" onClick={onExport} className="h-8 text-xs">
+        <Download size={14} /> Excel
+      </Button>
+    </div>
+    <div className="flex-1 overflow-auto custom-scrollbar-dark">
+      <table className="w-full text-sm text-left text-gray-300">
+        <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10">
+          <tr>
+            <th className="p-3">Data</th>
+            <th className="p-3 text-center">Tipo</th>
+            <th className="p-3">Descrição</th>
+            <th className="p-3 text-right">Qtd</th>
+            <th className="p-3 text-right">Peso</th>
+            <th className="p-3 text-center">Ver</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-700">
+          {timeline.length === 0 ? (
+            <tr>
+              <td colSpan="6" className="p-8 text-center text-gray-500">
+                Nenhum registro no período.
+              </td>
+            </tr>
+          ) : (
+            timeline.map((g, idx) => (
+              <tr key={idx} className="hover:bg-gray-700/50 transition-colors">
+                <td className="p-3 text-xs text-gray-400 font-mono">{g.date}</td>
+                <td className={`p-3 font-bold text-xs ${getTypeColor(g.type)}`}>{g.type}</td>
+                <td className="p-3 text-white">
+                  {g.type === 'ENTRADA MP' &&
+                    `Entradas de MP (${g.events.length} registro${g.events.length !== 1 ? 's' : ''})`}
+                  {g.type === 'CORTE' &&
+                    `Cortes Slitter (${g.events.length} registro${g.events.length !== 1 ? 's' : ''})`}
+                  {g.type === 'PRODUÇÎÇŸO' &&
+                    `Produções de PA (${g.events.length} registro${g.events.length !== 1 ? 's' : ''})`}
+                  {g.type === 'EXPEDIÇÎÇŸO' &&
+                    `Expedições de PA (${g.events.length} registro${g.events.length !== 1 ? 's' : ''})`}
+                </td>
+                <td className="p-3 text-right text-gray-300">{g.totalQty}</td>
+                <td className="p-3 text-right font-mono text-gray-300">
+                  {g.totalWeight.toLocaleString('pt-BR', {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1,
+                  })}
+                </td>
+                <td className="p-3 text-center">
+                  <button
+                    onClick={() => onViewDetail(g)}
+                    className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs transition-colors flex items-center gap-2 mx-auto"
+                  >
+                    <Eye size={14} />
+                  </button>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  </Card>
 );
 
 const PaginationControls = ({ currentPage, totalItems, itemsPerPage, onPageChange }) => {
@@ -3881,6 +4081,18 @@ safeCutting.forEach((c) => {
     (a, b) => b.isoDate.localeCompare(a.isoDate)
   );
 
+  const handleExportGlobalTimeline = () => {
+    const data = globalTimeline.map((e) => ({
+      Data: e.rawDate,
+      Tipo: e.type,
+      Código: e.id,
+      Descrição: e.desc,
+      Qtd: e.qty,
+      Peso: e.weight,
+    }));
+    exportToCSV(data, `relatorio_global`);
+  };
+
 
   // =================================================================================
   // 4. RESUMO PRODUÇÃO
@@ -3950,226 +4162,27 @@ const prodSummaryList = Object.values(prodByProductMap).sort((a, b) =>
   // =================================================================================
   return (
     <div className="space-y-6 h-full flex flex-col">
-      {/* ABAS */}
-      <div className="flex gap-2 border-b border-gray-700 pb-2 overflow-x-auto">
-        <button
-          onClick={() => setReportViewMode('GLOBAL')}
-          className={`px-4 py-3 font-bold text-xs md:text-sm rounded-t-lg transition-colors ${
-            reportViewMode === 'GLOBAL'
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-800 text-gray-400 hover:text-white'
-          }`}
-        >
-          Visão Geral
-        </button>
-        <button
-          onClick={() => setReportViewMode('MP_KARDEX')}
-          className={`px-4 py-3 font-bold text-xs md:text-sm rounded-t-lg transition-colors ${
-            reportViewMode === 'MP_KARDEX'
-              ? 'bg-emerald-600 text-white'
-              : 'bg-gray-800 text-gray-400 hover:text-white'
-          }`}
-        >
-          Extrato MP
-        </button>
-        <button
-          onClick={() => setReportViewMode('PROD_SUMMARY')}
-          className={`px-4 py-3 font-bold text-xs md:text-sm rounded-t-lg transition-colors ${
-            reportViewMode === 'PROD_SUMMARY'
-              ? 'bg-purple-600 text-white'
-              : 'bg-gray-800 text-gray-400 hover:text-white'
-          }`}
-        >
-          Resumo Produção
-        </button>
-      </div>
+      <ReportTabs viewMode={reportViewMode} setViewMode={setReportViewMode} />
 
-      {/* FILTROS */}
-      <Card>
-        <div className="flex flex-col md:flex-row gap-4 items-end">
-          <div className="flex gap-2 flex-1">
-            <div className="flex-1">
-              <label className="block text-xs text-gray-500 mb-1">Início</label>
-              <input
-                type="date"
-                value={reportStartDate}
-                onChange={(e) => setReportStartDate(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-blue-500"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="block text-xs text-gray-500 mb-1">Fim</label>
-              <input
-                type="date"
-                value={reportEndDate}
-                onChange={(e) => setReportEndDate(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
-          <div className="w-full md:w-1/3">
-            <input
-              type="text"
-              placeholder="Buscar..."
-              value={reportSearch}
-              onChange={(e) => setReportSearch(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-blue-500"
-            />
-          </div>
-        </div>
-      </Card>
+      <ReportFilters
+        startDate={reportStartDate}
+        endDate={reportEndDate}
+        search={reportSearch}
+        onStartDateChange={setReportStartDate}
+        onEndDateChange={setReportEndDate}
+        onSearchChange={setReportSearch}
+      />
 
       {/* ABA 1: GLOBAL */}
       {reportViewMode === 'GLOBAL' && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0">
-            <Card className="border-l-4 border-blue-500 bg-gray-800 p-4">
-              <p className="text-gray-400 text-[10px] font-bold uppercase">
-                Entrada MP
-              </p>
-              <div className="flex items-end gap-1 mt-1">
-                <span className="text-xl font-bold text-white">
-                  {stats.entradaKg.toLocaleString('pt-BR')}
-                </span>
-                <span className="text-xs text-blue-400 mb-1">kg</span>
-              </div>
-            </Card>
-            <Card className="border-l-4 border-purple-500 bg-gray-800 p-4">
-              <p className="text-gray-400 text-[10px] font-bold uppercase">
-                Consumo Slitter
-              </p>
-              <div className="flex items-end gap-1 mt-1">
-                <span className="text-xl font-bold text-white">
-                  {stats.corteKg.toLocaleString('pt-BR')}
-                </span>
-                <span className="text-xs text-purple-400 mb-1">kg</span>
-              </div>
-            </Card>
-            <Card className="border-l-4 border-emerald-500 bg-gray-800 p-4">
-              <p className="text-gray-400 text-[10px] font-bold uppercase">
-                Produção PA
-              </p>
-              <div className="flex items-end gap-1 mt-1">
-                <span className="text-xl font-bold text-white">
-                  {stats.prodPcs.toLocaleString('pt-BR')}
-                </span>
-                <span className="text-xs text-emerald-400 mb-1">pçs</span>
-              </div>
-            </Card>
-            <Card className="border-l-4 border-amber-500 bg-gray-800 p-4">
-              <p className="text-gray-400 text-[10px] font-bold uppercase">
-                Expedição PA
-              </p>
-              <div className="flex items-end gap-1 mt-1">
-                <span className="text-xl font-bold text-white">
-                  {stats.expPcs.toLocaleString('pt-BR')}
-                </span>
-                <span className="text-xs text-amber-400 mb-1">pçs</span>
-              </div>
-            </Card>
-          </div>
-
-          <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700">
-              <h3 className="font-bold text-gray-200">
-                Linha do Tempo Global
-              </h3>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  const data = globalTimeline.map((e) => ({
-                    Data: e.rawDate,
-                    Tipo: e.type,
-                    Código: e.id,
-                    Descrição: e.desc,
-                    Qtd: e.qty,
-                    Peso: e.weight,
-                  }));
-                  exportToCSV(data, `relatorio_global`);
-                }}
-                className="h-8 text-xs"
-              >
-                <Download size={14} /> Excel
-              </Button>
-            </div>
-            <div className="flex-1 overflow-auto custom-scrollbar-dark">
-              <table className="w-full text-sm text-left text-gray-300">
-                <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10">
-                  <tr>
-                    <th className="p-3">Data</th>
-                    <th className="p-3 text-center">Tipo</th>
-                    <th className="p-3">Descrição</th>
-                    <th className="p-3 text-right">Qtd</th>
-                    <th className="p-3 text-right">Peso</th>
-                    <th className="p-3 text-center">Ver</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-700">
-                  {globalTimeline.length === 0 ? (
-                    <tr>
-                      <td colSpan="6" className="p-8 text-center text-gray-500">
-                        Nenhum registro no período.
-                      </td>
-                    </tr>
-                  ) : (
-                    globalTimeline.map((g, idx) => (
-                      <tr
-                        key={idx}
-                        className="hover:bg-gray-700/50 transition-colors"
-                      >
-                        <td className="p-3 text-xs text-gray-400 font-mono">
-                          {g.date}
-                        </td>
-                        <td
-                          className={`p-3 font-bold text-xs ${getTypeColor(
-                            g.type
-                          )}`}
-                        >
-                          {g.type}
-                        </td>
-                        <td className="p-3 text-white">
-                          {g.type === 'ENTRADA MP' &&
-                            `Entradas de MP (${g.events.length} registro${
-                              g.events.length !== 1 ? 's' : ''
-                            })`}
-                          {g.type === 'CORTE' &&
-                            `Cortes Slitter (${g.events.length} registro${
-                              g.events.length !== 1 ? 's' : ''
-                            })`}
-                          {g.type === 'PRODUÇÃO' &&
-                            `Produções de PA (${g.events.length} registro${
-                              g.events.length !== 1 ? 's' : ''
-                            })`}
-                          {g.type === 'EXPEDIÇÃO' &&
-                            `Expedições de PA (${g.events.length} registro${
-                              g.events.length !== 1 ? 's' : ''
-                            })`}
-                        </td>
-                        <td className="p-3 text-right text-gray-300">
-                          {g.totalQty}
-                        </td>
-                        <td className="p-3 text-right font-mono text-gray-300">
-                          {g.totalWeight.toLocaleString('pt-BR', {
-                            minimumFractionDigits: 1,
-                            maximumFractionDigits: 1,
-                          })}
-                        </td>
-                        <td className="p-3 text-center">
-                          <button
-                            onClick={() => handleGlobalDetail(g)}
-                            className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs transition-colors flex items-center gap-2 mx-auto"
-                          >
-                            <Eye size={14} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          <GlobalStatsSummary stats={stats} />
+          <GlobalTimelineOverview
+            timeline={globalTimeline}
+            onExport={handleExportGlobalTimeline}
+            onViewDetail={handleGlobalDetail}
+            getTypeColor={getTypeColor}
+          />
         </>
       )}
 
