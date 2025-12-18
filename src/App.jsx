@@ -6234,7 +6234,7 @@ const handleUploadJSONToFirebase = async (e) => {
 )}
 
           
-           {ENABLE_BACKUP_BUTTON && (
+           {(
   <div className="mt-8 px-4">
     <Button
       onClick={handleFullBackup}
