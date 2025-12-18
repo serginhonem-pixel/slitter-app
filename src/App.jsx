@@ -5990,80 +5990,102 @@ const renderB2DynamicReport = () => {
   );
 };
 
-  const handleUploadJSONToFirebase = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const normalizeCatalogCode = (v) => {
+  if (v === undefined || v === null) return "";
+  // mantém só letras/números e padroniza
+  return String(v).trim().toUpperCase().replace(/\s+/g, "").replace(/[^\w]/g, "");
+};
 
-    if (!window.confirm("ATENÇÃO: Isso vai enviar todos os dados do JSON para o banco de dados oficial na nuvem.\n\nTem certeza que quer continuar?")) {
-       return;
-    }
+const handleUploadJSONToFirebase = async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const rawData = JSON.parse(event.target.result);
-        console.log("Iniciando migração...", rawData);
+  if (
+    !window.confirm(
+      "ATENÇÃO: Isso vai enviar dados do JSON para o banco oficial (nuvem).\n\nTem certeza que quer continuar?"
+    )
+  ) return;
 
-        // Lista das coleções que existem no seu JSON e no Banco
-        const collectionsMap = [
-          { jsonKey: 'motherCoils', dbName: 'motherCoils' },
-          { jsonKey: 'childCoils', dbName: 'childCoils' },
-          { jsonKey: 'productionLogs', dbName: 'productionLogs' },
-          { jsonKey: 'shippingLogs', dbName: 'shippingLogs' },
-          { jsonKey: 'cuttingLogs', dbName: 'cuttingLogs' },
-          { jsonKey: 'productCatalog', dbName: 'productCatalog' }, // Se quiser salvar o catálogo também
-          { jsonKey: 'motherCatalog', dbName: 'motherCatalog' },
-        ];
+  const reader = new FileReader();
 
-        let totalSaved = 0;
-        let batch = writeBatch(db);
-        let operationCounter = 0;
+  reader.onload = async (event) => {
+    try {
+      const rawData = JSON.parse(event.target.result);
 
-        for (const map of collectionsMap) {
-          const items = rawData[map.jsonKey];
-          
-          if (Array.isArray(items) && items.length > 0) {
-            console.log(`Processando ${map.dbName}: ${items.length} itens...`);
-            
-            for (const item of items) {
-              if (!item.id && !item.code) continue; // Pula se não tiver identificador
+      const collectionsMap = [
+        { jsonKey: "motherCoils", dbName: "motherCoils" },
+        { jsonKey: "childCoils", dbName: "childCoils" },
+        { jsonKey: "productionLogs", dbName: "productionLogs" },
+        { jsonKey: "shippingLogs", dbName: "shippingLogs" },
+        { jsonKey: "cuttingLogs", dbName: "cuttingLogs" },
 
-              // Garante que temos um ID (usa o do JSON ou gera um se não tiver)
-              const docId = String(item.id || item.code); 
-              
-              // Prepara a referência: db, nome_coleção, ID_específico
-              const docRef = doc(db, map.dbName, docId);
-              
-              // Adiciona ao lote de gravação
-              batch.set(docRef, item);
-              operationCounter++;
-              totalSaved++;
+        // catálogos:
+        { jsonKey: "productCatalog", dbName: "productCatalog", isCatalog: true },
+        { jsonKey: "motherCatalog", dbName: "motherCatalog", isCatalog: true },
+      ];
 
-              // O Firebase aceita lotes de no máximo 500 operações
-              if (operationCounter >= 450) {
-                await batch.commit(); // Salva o pacote atual
-                batch = writeBatch(db); // Cria um novo pacote
-                operationCounter = 0;
-                console.log("Lote intermediário salvo...");
-              }
-            }
-          }
-        }
+      let totalSaved = 0;
+      let batch = writeBatch(db);
+      let operationCounter = 0;
 
-        // Salva o que sobrou no último lote
-        if (operationCounter > 0) {
+      const commitIfNeeded = async (force = false) => {
+        if (operationCounter >= 450 || (force && operationCounter > 0)) {
           await batch.commit();
+          batch = writeBatch(db);
+          operationCounter = 0;
         }
+      };
 
-        alert(`Sucesso! ${totalSaved} registros foram enviados para a nuvem.`);
-        
-      } catch (err) {
-        console.error("Erro na migração:", err);
-        alert("Erro ao migrar: " + err.message);
+      for (const map of collectionsMap) {
+        const items = rawData?.[map.jsonKey];
+        if (!Array.isArray(items) || items.length === 0) continue;
+
+        for (const item of items) {
+          if (!item) continue;
+
+          // ✅ CATALOGO: docId SEMPRE pelo code, normalizado, e grava com MERGE
+          if (map.isCatalog) {
+            const code = normalizeCatalogCode(item.code);
+            if (!code) continue;
+
+            const docRef = doc(db, map.dbName, code);
+
+            // remove id pra não poluir catálogo com id aleatório
+            const { id, ...data } = item;
+
+            batch.set(docRef, data, { merge: true }); // ✅ atualiza sem apagar o resto
+            operationCounter++;
+            totalSaved++;
+            await commitIfNeeded(false);
+            continue;
+          }
+
+          // ✅ COLEÇÕES "normais": usa id (ou code fallback)
+          const docId = String(item.id || item.code || "").trim();
+          if (!docId) continue;
+
+          const docRef = doc(db, map.dbName, docId);
+          batch.set(docRef, item); // aqui pode ser overwrite mesmo (ou troca por merge se quiser)
+          operationCounter++;
+          totalSaved++;
+          await commitIfNeeded(false);
+        }
       }
-    };
-    reader.readAsText(file);
+
+      await commitIfNeeded(true);
+
+      alert(`Sucesso! ${totalSaved} registros foram enviados para a nuvem.`);
+    } catch (err) {
+      console.error("Erro na migração:", err);
+      alert("Erro ao migrar: " + err.message);
+    } finally {
+      // permite subir o mesmo arquivo de novo
+      e.target.value = "";
+    }
   };
+
+  reader.readAsText(file);
+};
 
   const handleLogout = async () => {
     try {
