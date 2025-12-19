@@ -150,3 +150,49 @@ export const INITIAL_INOX_BLANK_PRODUCTS = [
     measuresLabel: '0,4 x 660 x 820',
   },
 ];
+
+const normalizeMeasureNumber = (value) => {
+  if (value === null || value === undefined) return null;
+  const cleaned = String(value).trim().replace(/\./g, "").replace(",", ".");
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+export const parseInoxMeasuresFromText = (text) => {
+  if (!text) return null;
+  const normalized = String(text).toLowerCase().replace(/[,]/g, ".").replace(/\s+/g, " ");
+  const match = normalized.match(/(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)/);
+  if (!match) return null;
+  const thickness = normalizeMeasureNumber(match[1]);
+  const width = normalizeMeasureNumber(match[2]);
+  const length = normalizeMeasureNumber(match[3]);
+  if (thickness === null || width === null || length === null) return null;
+  return { thickness, width, length };
+};
+
+const buildMeasureKey = ({ thickness, width, length }) => {
+  const t = thickness != null ? Number(thickness).toFixed(2) : "0.00";
+  const w = width != null ? String(Math.round(Number(width))) : "0";
+  const l = length != null ? String(Math.round(Number(length))) : "0";
+  return `${t}|${w}|${l}`;
+};
+
+export const matchInoxProductByMeasures = (text, products = INITIAL_INOX_BLANK_PRODUCTS) => {
+  const measures = parseInoxMeasuresFromText(text);
+  if (!measures) return null;
+  const key = buildMeasureKey(measures);
+  const catalog = Array.isArray(products) ? products : [];
+  return (
+    catalog.find((item) => {
+      const fromLabel = parseInoxMeasuresFromText(item.measuresLabel);
+      const fromFields = {
+        thickness: normalizeMeasureNumber(item.thickness),
+        width: normalizeMeasureNumber(item.width),
+        length: normalizeMeasureNumber(item.length),
+      };
+      const candidate = fromLabel || fromFields;
+      if (!candidate) return false;
+      return buildMeasureKey(candidate) === key;
+    }) || null
+  );
+};

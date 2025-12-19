@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { TrendingUp, FileText, Plus, CheckCircle, X, Tag, Trash2 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { INITIAL_INOX_BLANK_PRODUCTS } from "../../data/inoxCatalog";
+import { INITIAL_INOX_BLANK_PRODUCTS, matchInoxProductByMeasures } from "../../data/inoxCatalog";
 import { deleteFromDb, isLocalHost, loadFromDb, saveToDb, updateInDb } from "../../services/api";
 
 // ajusta o caminho se sua pasta for diferente
@@ -53,6 +53,8 @@ const RawMaterialRequirement = ({
 }) => {
   // ---------- ESTADOS GERAIS ----------
   const [activeTab, setActiveTab] = useState("coil"); // "coil" | "inox"
+  const [purchaseTab, setPurchaseTab] = useState("coil"); // "coil" | "inox"
+  const [selectedInoxPurchaseId, setSelectedInoxPurchaseId] = useState(null);
 
   // ---------- ESTADOS ABA BOBINAS ----------
   const [mpNeedSearch, setMpNeedSearch] = useState("");
@@ -86,6 +88,22 @@ const RawMaterialRequirement = ({
   const [orderModalOpen, setOrderModalOpen] = useState(false);
   const [orderSaving, setOrderSaving] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState(null);
+  const [inoxOrderModalOpen, setInoxOrderModalOpen] = useState(false);
+  const [inoxOrderSaving, setInoxOrderSaving] = useState(false);
+  const [editingInoxOrderId, setEditingInoxOrderId] = useState(null);
+  const [inoxOrderForm, setInoxOrderForm] = useState({
+    productId: "",
+    date: "",
+    qty: "",
+    status: "previsto",
+    description: "",
+    receipts: [],
+    notes: "",
+  });
+  const [inoxReceiptType, setInoxReceiptType] = useState("recebido");
+  const [inoxReceiptDate, setInoxReceiptDate] = useState("");
+  const [inoxReceiptQty, setInoxReceiptQty] = useState("");
+  const [inoxReceiptNf, setInoxReceiptNf] = useState("");
   const [purchaseMonthlyDemand, setPurchaseMonthlyDemand] = useState(0); // kg/mês para projeção rápida
   const [defaultLeadTimeDays, setDefaultLeadTimeDays] = useState(0); // lead time para alerta gráfico
   const [purchaseFilter, setPurchaseFilter] = useState("all"); // all | critical | transit
@@ -175,6 +193,26 @@ const RawMaterialRequirement = ({
 
     fetchOrders();
   }, []);
+
+  useEffect(() => {
+    const fetchInoxOrders = async () => {
+      try {
+        if (isLocal) {
+          const cached = localStorage.getItem("inoxOrdersLocal");
+          if (cached) {
+            setInoxIncomingOrders(JSON.parse(cached));
+          }
+          return;
+        }
+        const data = await loadFromDb("inoxOrders");
+        setInoxIncomingOrders(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error("Erro ao carregar pedidos inox:", error);
+      }
+    };
+
+    fetchInoxOrders();
+  }, [isLocal]);
   // ---------- ESTADOS ABA INOX ----------
   const [inoxSearch, setInoxSearch] = useState("");
   const [selectedInoxProductId, setSelectedInoxProductId] = useState(null);
@@ -185,6 +223,10 @@ const RawMaterialRequirement = ({
       description: p.name,
       inoxGrade: p.inoxGrade,
       unitWeightKg: Number(p.weight) || 0,
+      thickness: p.thickness,
+      width: p.width,
+      length: p.length,
+      measuresLabel: p.measuresLabel,
       demandUnits: "",
       finishedStockUnits: "",
       blanksStockUnits: "",
@@ -1174,25 +1216,162 @@ const RawMaterialRequirement = ({
     openOrderForm(found.groupId || found.groupKey, { ...found, status: "firme" });
   };
 
-  const handleAddInoxOrder = () => {
-    if (!selectedInoxRow || !inoxOrderQty || !inoxOrderDate) return;
-
-    setInoxIncomingOrders((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        productId: selectedInoxRow.productId,
-        date: inoxOrderDate,
-        qty: Number(inoxOrderQty),
-      },
-    ]);
-
-    setInoxOrderQty("");
-    setInoxOrderDate("");
+  const openInoxOrderForm = (productId, existingOrder = null) => {
+    const product = inoxComputedRows.find((row) => row.productId === productId);
+    if (existingOrder) {
+      setEditingInoxOrderId(existingOrder.id || null);
+      setInoxOrderForm({
+        productId: existingOrder.productId || productId || "",
+        date: existingOrder.date || "",
+        qty: existingOrder.qty ?? "",
+        status: existingOrder.status || "previsto",
+        description: existingOrder.description || product?.description || "",
+        receipts: Array.isArray(existingOrder.receipts) ? existingOrder.receipts : [],
+        notes: existingOrder.notes || "",
+      });
+    } else {
+      setEditingInoxOrderId(null);
+      setInoxOrderForm({
+        productId: productId || "",
+        date: "",
+        qty: "",
+        status: "previsto",
+        description: product?.description || "",
+        receipts: [],
+        notes: "",
+      });
+    }
+    setInoxReceiptType("recebido");
+    setInoxReceiptDate("");
+    setInoxReceiptQty("");
+    setInoxReceiptNf("");
+    setInoxOrderModalOpen(true);
   };
 
-  const removeInoxOrder = (id) =>
-    setInoxIncomingOrders((prev) => prev.filter((o) => o.id !== id));
+  const persistInoxOrdersLocal = (orders) => {
+    if (!isLocal) return;
+    localStorage.setItem("inoxOrdersLocal", JSON.stringify(orders));
+  };
+
+  const addReceiptToInoxOrderForm = () => {
+    if (!inoxReceiptDate || !inoxReceiptQty) return;
+    setInoxOrderForm((prev) => ({
+      ...prev,
+      receipts: [
+        ...(Array.isArray(prev.receipts) ? prev.receipts : []),
+        {
+          id: `rcpt-${Date.now()}`,
+          type: inoxReceiptType || "recebido",
+          date: inoxReceiptDate,
+          qty: Number(inoxReceiptQty) || 0,
+          nfNumber: inoxReceiptNf || "",
+        },
+      ],
+    }));
+    setInoxReceiptDate("");
+    setInoxReceiptQty("");
+    setInoxReceiptNf("");
+  };
+
+  const removeReceiptFromInoxOrderForm = (id) => {
+    setInoxOrderForm((prev) => ({
+      ...prev,
+      receipts: (Array.isArray(prev.receipts) ? prev.receipts : []).filter(
+        (item) => item.id !== id
+      ),
+    }));
+  };
+
+  const handleSaveInoxOrder = async () => {
+    if (!inoxOrderForm.date || !inoxOrderForm.qty) {
+      alert("Preencha data e quantidade.");
+      return;
+    }
+
+    let resolvedProductId = inoxOrderForm.productId;
+    let resolvedDescription = inoxOrderForm.description;
+
+    if (!resolvedProductId && inoxOrderForm.description) {
+      const match = matchInoxProductByMeasures(inoxOrderForm.description);
+      if (match?.id) {
+        resolvedProductId = match.id;
+        resolvedDescription = match.name || match.inoxGrade || inoxOrderForm.description;
+      }
+    }
+
+    if (!resolvedProductId) {
+      alert("Selecione um produto ou informe a descricao com medidas.");
+      return;
+    }
+
+    const receipts = Array.isArray(inoxOrderForm.receipts) ? inoxOrderForm.receipts : [];
+    const receivedQty = receipts
+      .filter((r) => (r.type || "").toLowerCase() === "recebido")
+      .reduce((sum, r) => sum + (Number(r.qty) || 0), 0);
+
+    const payload = {
+      productId: resolvedProductId,
+      date: inoxOrderForm.date,
+      qty: Number(inoxOrderForm.qty) || 0,
+      status: inoxOrderForm.status || "previsto",
+      description: resolvedDescription || "",
+      receipts,
+      receivedQty,
+      notes: inoxOrderForm.notes || "",
+      updatedAt: new Date().toISOString(),
+    };
+
+    setInoxOrderSaving(true);
+    try {
+      let savedId = editingInoxOrderId;
+      if (!isLocal) {
+        if (editingInoxOrderId) {
+          await updateInDb("inoxOrders", editingInoxOrderId, payload);
+        } else {
+          const saved = await saveToDb("inoxOrders", payload);
+          savedId = saved?.id || editingInoxOrderId;
+        }
+      }
+
+      setInoxIncomingOrders((prev) => {
+        const next = [...prev.filter((o) => o.id !== editingInoxOrderId)];
+        next.push({ ...payload, id: savedId || `inox-local-${Date.now()}` });
+        persistInoxOrdersLocal(next);
+        return next;
+      });
+
+      setInoxOrderModalOpen(false);
+      setEditingInoxOrderId(null);
+    } catch (error) {
+      console.error("Erro ao salvar pedido inox:", error);
+      alert("Nao foi possivel salvar o pedido.");
+    } finally {
+      setInoxOrderSaving(false);
+    }
+  };
+
+  const handleAddInoxOrder = () => {
+    const productId = selectedInoxRow?.productId || selectedInoxPurchaseId;
+    openInoxOrderForm(productId);
+  };
+
+  const removeInoxOrder = async (id) => {
+    if (!id) return;
+    const order = inoxIncomingOrders.find((o) => o.id === id);
+    try {
+      if (!isLocal && order?.id && !String(order.id).startsWith("inox-local-")) {
+        await deleteFromDb("inoxOrders", id);
+      }
+      setInoxIncomingOrders((prev) => {
+        const next = prev.filter((o) => o.id !== id);
+        if (isLocal) localStorage.setItem("inoxOrdersLocal", JSON.stringify(next));
+        return next;
+      });
+    } catch (error) {
+      console.error("Erro ao remover pedido inox:", error);
+      alert("Nao foi possivel remover o pedido.");
+    }
+  };
 
   const exportSimulationPDF = async () => {
     if (!selectedGroup) {
@@ -1292,6 +1471,38 @@ const RawMaterialRequirement = ({
       console.error("Erro ao gerar PDF:", err);
       alert("Erro ao gerar o PDF. Veja o console para mais detalhes.");
     }
+  };
+
+  const formatInoxMeasures = (row) => {
+    if (!row) return "-";
+    if (row.measuresLabel) return row.measuresLabel;
+    const t = row.thickness ?? "";
+    const w = row.width ?? "";
+    const l = row.length ?? "";
+    if (t === "" && w === "" && l === "") return "-";
+    return `${String(t).replace(".", ",")} x ${w} x ${l}`;
+  };
+
+  const renderPurchaseStatusPill = (status) => {
+    if (status === "Em transito") {
+      return (
+        <span className="px-2 py-1 text-xs rounded-full bg-blue-900/50 border border-blue-600 text-blue-100">
+          Em transito
+        </span>
+      );
+    }
+    if (status === "Pedido feito") {
+      return (
+        <span className="px-2 py-1 text-xs rounded-full bg-amber-900/50 border border-amber-600 text-amber-100">
+          Pedido feito
+        </span>
+      );
+    }
+    return (
+      <span className="px-2 py-1 text-xs rounded-full bg-gray-800 border border-gray-600 text-gray-200">
+        Sem pedido
+      </span>
+    );
   };
 
   // ---------- RENDER ----------
@@ -2592,7 +2803,35 @@ const RawMaterialRequirement = ({
       {/* ===================== GESTÃO DE COMPRAS ===================== */}
       {activeTab === "purchases" && (
         <div className="space-y-6">
-          {(() => {
+          <div className="bg-gray-800 p-3 rounded-xl border border-gray-700">
+            <div className="inline-flex rounded-lg bg-gray-900 border border-gray-700 p-1">
+              <button
+                type="button"
+                onClick={() => setPurchaseTab("coil")}
+                className={`px-3 py-1 text-xs font-semibold rounded-md ${
+                  purchaseTab === "coil"
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-300 hover:bg-gray-800"
+                }`}
+              >
+                Bobinas
+              </button>
+              <button
+                type="button"
+                onClick={() => setPurchaseTab("inox")}
+                className={`ml-1 px-3 py-1 text-xs font-semibold rounded-md ${
+                  purchaseTab === "inox"
+                    ? "bg-emerald-600 text-white"
+                    : "text-gray-300 hover:bg-gray-800"
+                }`}
+              >
+                Inox
+              </button>
+            </div>
+          </div>
+          {purchaseTab === "coil" && (
+            <>
+              {(() => {
             const purchaseOrders = mpOrders
               .filter((o) => (o.status || "previsto").toLowerCase() !== "simulacao")
               .filter((o) => !selectedMpCode || (o.groupKey || o.groupId) === selectedMpCode)
@@ -2815,11 +3054,8 @@ const RawMaterialRequirement = ({
               </div>
             );
           })()}
-        </div>
-      )}
-    </div>
 
-    {selectedPurchaseGroup && (() => {
+    {selectedPurchaseGroup && purchaseTab === "coil" && (() => {
       const g = selectedPurchaseGroup;
       const monthlyDemand = Number(purchaseMonthlyDemand) || 0;
       const dailyDemand = monthlyDemand > 0 ? monthlyDemand / 30 : 0;
@@ -2876,7 +3112,9 @@ const RawMaterialRequirement = ({
                   if (hasFirm) return <span className="text-blue-300">Em trânsito</span>;
                   if (hasPred) return <span className="text-amber-300">Pedido feito</span>;
                   return <span className="text-gray-300">Sem pedido</span>;
-                })()}
+    })()}
+
+
               </div>
 
               <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
@@ -2989,6 +3227,359 @@ const RawMaterialRequirement = ({
                   className="px-4 py-2 bg-green-600 hover:bg-green-500 rounded text-white text-sm font-semibold flex items-center gap-2"
                 >
                   <Plus size={16} /> Novo pedido
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+              })()}
+            </>
+          )}
+
+          {false && (
+            <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">GestÇœo de Compras ƒ?" Inox</h3>
+                  <p className="text-sm text-gray-400">
+                    Lista de pedidos planejados para inox. Vamos detalhar os campos em seguida.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-sm text-gray-200">
+                  <thead className="text-xs uppercase bg-gray-900 text-gray-400">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Produto</th>
+                      <th className="px-3 py-2 text-left">Data prevista</th>
+                      <th className="px-3 py-2 text-right">Quantidade (kg)</th>
+                      <th className="px-3 py-2 text-right">AÇõÇœo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inoxIncomingOrders
+                      .slice()
+                      .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0))
+                      .map((order) => {
+                        const product = inoxComputedRows.find(
+                          (row) => row.productId === order.productId
+                        );
+                        return (
+                          <tr key={order.id} className="border-b border-gray-700/70">
+                            <td className="px-3 py-3">
+                              <div className="font-semibold text-white">
+                                {product?.productCode || order.productId}
+                              </div>
+                              <div className="text-xs text-gray-400">
+                                {product?.description || order.description || "-"}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3">
+                              {formatDate(order.date)}
+                            </td>
+                            <td className="px-3 py-3 text-right">
+                              {formatKg(order.qty)} kg
+                            </td>
+                            <td className="px-3 py-3 text-right">
+                              <button
+                                onClick={() => removeInoxOrder(order.id)}
+                                className="px-2 py-1 bg-red-700 hover:bg-red-600 rounded text-white text-xs"
+                              >
+                                Excluir
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    {inoxIncomingOrders.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-4 text-center text-gray-500">
+                          Nenhum pedido inox cadastrado.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {purchaseTab === "inox" && (
+            <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Gestao de Compras - Inox</h3>
+                  <p className="text-sm text-gray-400">
+                    Visao em tabela com resumo de estoque, cobertura e pedidos.
+                  </p>
+                </div>
+              </div>
+              {(() => {
+                const minStock = Number(inoxMinStockKg) || 0;
+                const targetDays = Number(inoxTargetDays) || 0;
+
+                const rows = inoxComputedRows.map((row) => {
+                  const unitWeight = Number(row.unitWeightKg) || 0;
+                  const stockKg = Number(row.totalCoverageQty || 0) * unitWeight;
+                  const demandKg = Number(row.demandQty || 0) * unitWeight;
+                  const dailyDemand = targetDays > 0 ? demandKg / targetDays : 0;
+                  const coverageDays = dailyDemand > 0 ? Math.floor(stockKg / dailyDemand) : 999;
+                  const ordersForRow = inoxIncomingOrders.filter(
+                    (order) => order.productId === row.productId
+                  );
+                  const hasFirm = ordersForRow.some(
+                    (order) => (order.status || "").toLowerCase() === "firme"
+                  );
+                  const hasPred = ordersForRow.some(
+                    (order) => (order.status || "").toLowerCase() !== "firme"
+                  );
+                  let purchaseStatus = "Sem pedido";
+                  if (hasFirm) purchaseStatus = "Em transito";
+                  else if (hasPred) purchaseStatus = "Pedido feito";
+                  const coverageTag =
+                    coverageDays < 10 ? "critico" : coverageDays < 30 ? "alerta" : "ok";
+                  return {
+                    ...row,
+                    stockKg,
+                    coverageDays,
+                    purchaseStatus,
+                    coverageTag,
+                  };
+                });
+
+                const filteredRows =
+                  purchaseFilter === "criticos"
+                    ? rows.filter((row) => row.coverageTag === "critico")
+                    : purchaseFilter === "aguardando"
+                    ? rows.filter((row) => row.purchaseStatus !== "Sem pedido")
+                    : rows;
+
+                const progress = (current, target) => {
+                  if (target <= 0) return 1;
+                  return Math.min(1, Math.max(0, current / target));
+                };
+
+                return (
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full text-sm text-gray-200">
+                      <thead className="text-xs uppercase bg-gray-900 text-gray-400">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Item</th>
+                          <th className="px-3 py-2 text-left">Estoque fisico</th>
+                          <th className="px-3 py-2 text-left">Cobertura (dias)</th>
+                          <th className="px-3 py-2 text-left">Status compra</th>
+                          <th className="px-3 py-2 text-right">Acao</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredRows.map((row) => {
+                          const bar = progress(row.stockKg, Math.max(minStock, 1) * 2);
+                          const coverageClass =
+                            row.coverageTag === "critico"
+                              ? "text-red-300 bg-red-900/40"
+                              : row.coverageTag === "alerta"
+                              ? "text-amber-300 bg-amber-900/40"
+                              : "text-emerald-300 bg-emerald-900/40";
+                          return (
+                            <tr
+                              key={row.productId}
+                              className="border-b border-gray-700/70 hover:bg-gray-700/40 cursor-pointer"
+                              onClick={() => {
+                                setSelectedInoxProductId(row.productId);
+                                setSelectedInoxPurchaseId(row.productId);
+                                setPurchaseTab("inox");
+                              }}
+                            >
+                              <td className="px-3 py-3">
+                                <div className="font-semibold text-white">
+                                  {row.productCode || row.productId}
+                                </div>
+                              <div className="text-xs text-gray-400">
+                                  {row.description || "-"}
+                                  {row.inoxGrade ? ` - ${row.inoxGrade}` : ""}
+                                  {row.measuresLabel ? ` - ${row.measuresLabel}` : ""}
+                              </div>
+                              </td>
+                              <td className="px-3 py-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-36 h-2 bg-gray-900 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-2 bg-emerald-500 rounded-full"
+                                      style={{ width: `${bar * 100}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-sm text-gray-100">
+                                    {formatKg(row.stockKg)} kg
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3">
+                                <span
+                                  className={`px-2 py-1 rounded-full text-xs font-semibold ${coverageClass}`}
+                                >
+                                  {row.coverageDays === 999 ? "INF" : `${row.coverageDays}d`}
+                                </span>
+                              </td>
+                              <td className="px-3 py-3">
+                                {renderPurchaseStatusPill(row.purchaseStatus)}
+                              </td>
+                              <td className="px-3 py-3 text-right">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedInoxProductId(row.productId);
+                                    setSelectedInoxPurchaseId(row.productId);
+                                    setPurchaseTab("inox");
+                                  }}
+                                  className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white text-xs font-semibold"
+                                >
+                                  Ver
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {filteredRows.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="px-3 py-6 text-center text-gray-400">
+                              Nenhum item encontrado para este filtro.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+
+    {selectedInoxPurchaseId && purchaseTab === "inox" && (() => {
+      const row = inoxComputedRows.find(
+        (item) => item.productId === selectedInoxPurchaseId
+      );
+      if (!row) return null;
+
+      const measuresLabel = formatInoxMeasures(row);
+
+      const unitWeight = Number(row.unitWeightKg) || 0;
+      const stockKg = Number(row.totalCoverageQty || 0) * unitWeight;
+      const demandKg = Number(row.demandQty || 0) * unitWeight;
+      const targetDays = Number(inoxTargetDays) || 0;
+      const dailyDemand = targetDays > 0 ? demandKg / targetDays : 0;
+      const coverageDays = dailyDemand > 0 ? Math.floor(stockKg / dailyDemand) : 999;
+      const orders = inoxIncomingOrders
+        .filter((order) => order.productId === row.productId)
+        .slice()
+        .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+      const purchaseStatus = orders.length > 0 ? "Em transito" : "Sem pedido";
+
+      return (
+        <div className="fixed inset-0 bg-black/70 z-40 flex justify-end">
+          <div className="w-full md:w-[40%] lg:w-[38%] bg-gray-900 border-l border-gray-700 h-full overflow-y-auto">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+              <div>
+                <div className="text-xs uppercase text-gray-400">Inox</div>
+                <div className="text-lg font-semibold text-white">
+                  {row.productCode || row.productId}
+                </div>
+                <div className="text-sm text-gray-400">
+                  Estoque: {formatKg(stockKg)} kg
+                  {measuresLabel ? ` - ${measuresLabel}` : ""}
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedInoxPurchaseId(null)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="flex items-center gap-2 text-sm text-gray-300">
+                <span className="text-gray-400">Status:</span>
+                {renderPurchaseStatusPill(purchaseStatus)}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-sm text-gray-300">
+                <div className="bg-gray-800 border border-gray-700 rounded-lg p-3">
+                  <div className="text-xs text-gray-400 uppercase">Cobertura</div>
+                  <div className="text-white font-semibold">
+                    {coverageDays === 999 ? "INF" : `${coverageDays} dias`}
+                  </div>
+                </div>
+                <div className="bg-gray-800 border border-gray-700 rounded-lg p-3">
+                  <div className="text-xs text-gray-400 uppercase">Consumo diario</div>
+                  <div className="text-white font-semibold">
+                    {formatKg(dailyDemand)} kg/dia
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm text-gray-400">Pedidos cadastrados</div>
+                <div className="flex flex-col gap-2">
+                  {orders.length === 0 && (
+                    <div className="text-gray-500 text-sm">Nenhum pedido para este item.</div>
+                  )}
+                  {orders.map((order) => {
+                    const receipts = Array.isArray(order.receipts) ? order.receipts : [];
+                    const receivedQty = receipts
+                      .filter((r) => (r.type || "").toLowerCase() === "recebido")
+                      .reduce((sum, r) => sum + (Number(r.qty) || 0), 0);
+                    const forecastQty = receipts
+                      .filter((r) => (r.type || "").toLowerCase() === "previsto")
+                      .reduce((sum, r) => sum + (Number(r.qty) || 0), 0);
+                    const remainingQty = Math.max(
+                      0,
+                      (Number(order.qty) || 0) - receivedQty
+                    );
+                    return (
+                    <div
+                      key={order.id}
+                      className="flex items-center justify-between bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-white font-semibold">
+                          {formatDate(order.date)} - {formatKg(order.qty)} kg
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          Recebido: {formatKg(receivedQty)} kg | Previsto: {formatKg(forecastQty)} kg | Falta: {formatKg(remainingQty)} kg
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openInoxOrderForm(row.productId, order)}
+                          className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white text-xs"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => removeInoxOrder(order.id)}
+                          className="px-2 py-1 bg-red-700 hover:bg-red-600 rounded text-white text-xs"
+                        >
+                          Excluir
+                        </button>
+                      </div>
+                    </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-gray-900 border-t border-gray-800 p-4 flex items-center justify-between gap-3">
+              <div className="text-sm text-gray-400">Adicionar pedido para este item.</div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => openInoxOrderForm(row.productId)}
+                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-white text-sm font-semibold"
+                >
+                  + Novo pedido
                 </button>
               </div>
             </div>
@@ -3270,6 +3861,210 @@ const RawMaterialRequirement = ({
               className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-50"
             >
               {orderSaving ? "Salvando..." : "Salvar pedido"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {inoxOrderModalOpen && (
+      <div className="fixed inset-0 bg-black/70 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto">
+        <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[calc(100vh-2rem)] min-h-0">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+            <div>
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Tag size={18} className="text-emerald-400" />
+                Novo pedido de inox
+              </h3>
+              <p className="text-sm text-gray-400">
+                Registre o pedido e marque como firme para salvar no Firebase.
+              </p>
+            </div>
+            <button
+              onClick={() => setInoxOrderModalOpen(false)}
+              className="text-gray-400 hover:text-white"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">Produto inox</label>
+                <select
+                  value={inoxOrderForm.productId}
+                  onChange={(e) => {
+                    const nextId = e.target.value;
+                    const nextRow = inoxComputedRows.find((row) => row.productId === nextId);
+                    setInoxOrderForm((prev) => ({
+                      ...prev,
+                      productId: nextId,
+                      description: nextRow?.description || prev.description,
+                    }));
+                  }}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                >
+                  <option value="">Selecione...</option>
+                  {inoxComputedRows.map((row) => (
+                    <option key={row.productId} value={row.productId}>
+                      {row.productCode || row.productId} - {row.description} - {formatInoxMeasures(row)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">Descricao do item</label>
+                <input
+                  type="text"
+                  value={inoxOrderForm.description}
+                  onChange={(e) =>
+                    setInoxOrderForm((prev) => ({ ...prev, description: e.target.value }))
+                  }
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                  placeholder="Ex: BLF PQ 430 0,40x510,00x660 F3 PA"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">Data prevista</label>
+                <input
+                  type="date"
+                  value={inoxOrderForm.date}
+                  onChange={(e) =>
+                    setInoxOrderForm((prev) => ({ ...prev, date: e.target.value }))
+                  }
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">Quantidade (kg)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={inoxOrderForm.qty}
+                  onChange={(e) =>
+                    setInoxOrderForm((prev) => ({ ...prev, qty: e.target.value }))
+                  }
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 font-semibold mb-1">Status do pedido</label>
+                <select
+                  value={inoxOrderForm.status}
+                  onChange={(e) =>
+                    setInoxOrderForm((prev) => ({ ...prev, status: e.target.value }))
+                  }
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                >
+                  <option value="previsto">Previsto</option>
+                  <option value="firme">Firme</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs text-gray-400 font-semibold mb-1">Observacoes</label>
+                <textarea
+                  rows={2}
+                  value={inoxOrderForm.notes}
+                  onChange={(e) =>
+                    setInoxOrderForm((prev) => ({ ...prev, notes: e.target.value }))
+                  }
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                />
+              </div>
+            </div>
+
+            <div className="border-t border-gray-800 pt-4 space-y-3">
+              <div className="text-xs uppercase text-gray-400 font-semibold">
+                Recebimentos e previsoes
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-400 font-semibold mb-1">Tipo</label>
+                  <select
+                    value={inoxReceiptType}
+                    onChange={(e) => setInoxReceiptType(e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                  >
+                    <option value="recebido">Recebido</option>
+                    <option value="previsto">Previsto</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 font-semibold mb-1">Data</label>
+                  <input
+                    type="date"
+                    value={inoxReceiptDate}
+                    onChange={(e) => setInoxReceiptDate(e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 font-semibold mb-1">Quantidade (kg)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={inoxReceiptQty}
+                    onChange={(e) => setInoxReceiptQty(e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 font-semibold mb-1">NF</label>
+                  <input
+                    type="text"
+                    value={inoxReceiptNf}
+                    onChange={(e) => setInoxReceiptNf(e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+                  />
+                </div>
+              </div>
+              <div>
+                <button
+                  onClick={addReceiptToInoxOrderForm}
+                  className="px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded text-white text-sm font-semibold"
+                >
+                  + Adicionar registro
+                </button>
+              </div>
+              <div className="space-y-2">
+                {(inoxOrderForm.receipts || []).length === 0 && (
+                  <div className="text-xs text-gray-500">Nenhum registro adicionado.</div>
+                )}
+                {(inoxOrderForm.receipts || []).map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="flex items-center justify-between bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-300"
+                  >
+                    <div>
+                      {entry.type} - {formatDate(entry.date)} - {formatKg(entry.qty)} kg
+                      {entry.nfNumber ? ` - NF ${entry.nfNumber}` : ""}
+                    </div>
+                    <button
+                      onClick={() => removeReceiptFromInoxOrderForm(entry.id)}
+                      className="px-2 py-1 bg-red-700 hover:bg-red-600 rounded text-white text-xs"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="px-5 py-4 border-t border-gray-800 flex justify-end gap-3">
+            <button
+              onClick={() => setInoxOrderModalOpen(false)}
+              className="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:bg-gray-800"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSaveInoxOrder}
+              disabled={inoxOrderSaving}
+              className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-50"
+            >
+              {inoxOrderSaving ? "Salvando..." : "Salvar pedido"}
             </button>
           </div>
         </div>
