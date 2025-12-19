@@ -1,43 +1,24 @@
 import { QRCodeSVG } from 'qrcode.react';
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import backupData from "./backups/slitter-backup.json";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend, // <--- O GRÁFICO AGORA SE CHAMA 'RechartsPie'
-  Pie,
-  PieChart as RechartsPie,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis, YAxis,
-  ComposedChart
-} from 'recharts';
-import Button from './components/ui/Button';
+import PaginationControls from './components/common/PaginationControls';
+import Dashboard from './components/Dashboard/Dashboard';
 import Login from './components/Login';
 import IndicatorsDashboard from './components/modals/IndicatorsDashboard.jsx';
+import Button from './components/ui/Button';
 
-import { auth, db, deleteFromDb, loadFromDb, saveToDb, updateInDb, logoutUser } from './services/api'; // Certifique-se de exportar 'db' no seu arquivo de configuração
+import { auth, db, deleteFromDb, loadFromDb, logoutUser, saveToDb, updateInDb } from './services/api'; // Certifique-se de exportar 'db' no seu arquivo de configuração
 
+import { onAuthStateChanged } from 'firebase/auth';
 import {
   collection,
   doc,
   onSnapshot,
   writeBatch
 } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
-
-
-
-
-
 
 import {
   Archive,
-  ChevronLeft,
   ChevronRight,
   Download,
   Edit,
@@ -46,9 +27,8 @@ import {
   FileText,
   History, LayoutDashboard,
   List,
-  LogOut, 
+  LogOut,
   Menu,
-  Package,
   PieChart,
   Plus,
   Printer,
@@ -56,37 +36,35 @@ import {
   ScrollText,
   Search,
   Trash2,
+  TrendingUp,
   Truck,
   Upload,
   User,
-  X,
-  Calendar, 
-  TrendingUp,
-  AlertTriangle,
+  X
 } from 'lucide-react';
 
 
 
 import CutDetailsModal from './components/modals/CutDetailsModal';
 import EditMotherCoilModal from './components/modals/EditMotherCoilModal';
+import InoxBlanksPlanner from "./components/modals/InoxBlanksPlanner";
 import ProductHistoryModal from './components/modals/ProductHistoryModal';
 import RawMaterialRequirement from "./components/modals/RawMaterialRequirement";
-import InoxBlanksPlanner from "./components/modals/InoxBlanksPlanner";
 import DemandFocus from "./data/demandFocus.jsx";
 import { PESO_UNITARIO_PA } from './data/peso_unitario_pa';
+import { useEventLogs } from './hooks/useEventLogs';
 
 
 
 
 // --- IMPORTAÇÃO DOS Catalogos ---
 
+import { INITIAL_INOX_BLANK_PRODUCTS } from "./data/inoxCatalog";
 import { INITIAL_MOTHER_CATALOG } from './data/motherCatalog';
 import { INITIAL_PRODUCT_CATALOG } from './data/productCatalog';
-import { INITIAL_INOX_BLANK_PRODUCTS } from "./data/inoxCatalog";
+import { ITEMS_PER_PAGE, EVENT_TYPES } from './utils/constants';
 
 const ENABLE_BACKUP_BUTTON = import.meta.env.DEV; // só aparece em dev (localhost)
-  
-const ITEMS_PER_PAGE = 50;
 
 
 // --- Componentes UI ---
@@ -305,19 +283,6 @@ const GlobalTimelineOverview = ({ timeline, onExport, onViewDetail, getTypeColor
   </Card>
 );
 
-const PaginationControls = ({ currentPage, totalItems, itemsPerPage, onPageChange }) => {
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  if (totalPages <= 1) return null;
-  return (
-    <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-700">
-      <span className="text-xs text-gray-500">Página {currentPage} de {totalPages} ({totalItems} itens)</span>
-      <div className="flex gap-2">
-        <Button variant="secondary" onClick={() => onPageChange(Math.max(1, currentPage - 1))} disabled={currentPage === 1} className="px-3 py-1 h-8 text-xs"><ChevronLeft size={14} /> Anterior</Button>
-        <Button variant="secondary" onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages} className="px-3 py-1 h-8 text-xs">Próxima <ChevronRight size={14} /></Button>
-      </div>
-    </div>
-  );
-};
 const DailyGlobalModal = ({ group, onClose }) => {
   const { type, date, events, totalQty, totalWeight } = group;
 
@@ -412,11 +377,24 @@ const DailyGlobalModal = ({ group, onClose }) => {
   );
 };
 
-const PrintLabelsModal = ({ items, onClose, type = 'coil' }) => {
+const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [] }) => {
+  const getMotherDescription = (item) => {
+    const catalogEntry = motherCatalog.find(
+      (entry) => String(entry.code) === String(item.motherCode || item.code)
+    );
+    return (
+      catalogEntry?.description ||
+      catalogEntry?.material ||
+      item.material ||
+      item.description ||
+      ''
+    );
+  };
+
   return (
     <div className="fixed inset-0 bg-black/90 z-[60] flex flex-col items-center justify-center overflow-hidden">
         <div className="bg-gray-900 w-full p-4 border-b border-gray-700 flex justify-between items-center print:hidden">
-         <h3 className="text-white font-bold text-lg">Imprimir Etiquetas ({items.length})</h3>
+        <h3 className="text-white font-bold text-lg">Imprimir Etiquetas ({items.length})</h3>
         <div className="flex gap-2">
           <Button onClick={() => window.print()} variant="primary"><Printer size={18} /> Imprimir</Button>
           <Button onClick={onClose} variant="secondary"><X size={18} /> Fechar</Button>
@@ -426,8 +404,7 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil' }) => {
         <div className="print:block w-full flex flex-col items-center">
           {items.map((item, index) => {
             const isProduct = type === 'product' || type === 'product_stock';
-            
-            // --- CORREÇÃO AQUI: Lógica Inteligente para Nomes e Códigos ---
+
             let name = '';
             let code = '';
             let labelTitle = '';
@@ -436,19 +413,15 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil' }) => {
                 name = item.productName || item.name;
                 code = item.productCode || item.code;
                 labelTitle = 'Produto Final';
+            } else if (item.b2Name) {
+                name = getMotherDescription(item) || item.b2Name;
+                code = item.b2Code;
+                labelTitle = 'Bobina Slitter';
             } else {
-                // Tenta pegar dados de B2 (Slitter), se não tiver, pega da Mãe (Matéria Prima)
-                if (item.b2Name) {
-                    name = item.b2Name;
-                    code = item.b2Code;
-                    labelTitle = 'Bobina Slitter';
-                } else {
-                    name = item.material || item.description; // Pega Material da mãe
-                    code = item.code;      // Pega Código da mãe
-                    labelTitle = 'Matéria Prima';
-                }
+                name = getMotherDescription(item) || `Bobina ${item.code}`;
+                code = item.code;
+                labelTitle = 'Matéria Prima';
             }
-            // -------------------------------------------------------------
 
             const quantity = type === 'product_stock' ? `${item.count} PÇS` : (isProduct ? `${item.pieces} PÇS` : `${item.weight} KG`);
             const date = item.date || new Date().toLocaleDateString();
@@ -873,35 +846,138 @@ const EditChildCoilModal = ({ coil, onClose, onSave }) => {
   );
 };
 
-const StockDetailsModal = ({ code, coils, onClose, onReprint, type }) => { 
-
+const StockDetailsModal = ({ code, coils = [], onClose, onReprint, type, motherCatalog = [] }) => {
   const isMother = type === 'mother';
-  
-  // Pega a descrição do primeiro item da lista (já que todos são do mesmo código)
-  const description = coils.length > 0 ? (isMother ? coils[0].material : coils[0].b2Name) : '';
+  const safeCoils = Array.isArray(coils) ? coils : [];
+  const catalogMatch = isMother
+    ? (motherCatalog || []).find((item) => String(item.code) === String(code))
+    : null;
+  const description =
+    (isMother ? catalogMatch?.description : safeCoils[0]?.b2Name) ||
+    safeCoils[0]?.material ||
+    safeCoils[0]?.b2Name ||
+    (isMother ? `Bobina ${code}` : `Item ${code}`);
+  const totalWeight = safeCoils.reduce(
+    (sum, coil) => sum + (Number(coil.remainingWeight ?? coil.weight) || 0),
+    0,
+  );
+  const uniqueWidths = [
+    ...new Set(
+      safeCoils.map((coil) => coil.width || catalogMatch?.width).filter(Boolean),
+    ),
+  ];
+  const normalizeThicknessValue = (value) => {
+    if (value === undefined || value === null || value === '') return null;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      let parsed = value;
+      while (parsed > 5 && parsed > 0.05) parsed = parsed / 10;
+      return parsed;
+    }
+    const cleaned = String(value).trim();
+    if (!cleaned) return null;
+    const numeric = Number(cleaned.replace(',', '.').replace(/[^0-9.]/g, ''));
+    if (!Number.isFinite(numeric) || numeric <= 0) return null;
+    let parsed = numeric;
+    while (parsed > 5 && parsed > 0.05) parsed = parsed / 10;
+    return parsed;
+  };
 
-  // Função para baixar o CSV
+  const formatThicknessNumber = (value) => {
+    if (value === null || value === undefined) return null;
+    return value.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+
+  const getThicknessNumber = (coil) => {
+    const candidates = [];
+    if (isMother && catalogMatch?.thickness) candidates.push(catalogMatch.thickness);
+    if (coil.thickness) candidates.push(coil.thickness);
+    if (!isMother && catalogMatch?.thickness) candidates.push(catalogMatch.thickness);
+    for (const candidate of candidates) {
+      const parsed = normalizeThicknessValue(candidate);
+      if (parsed !== null) return parsed;
+    }
+    return null;
+  };
+
+  const getThicknessDisplay = (coil) => {
+    const parsed = getThicknessNumber(coil);
+    return parsed !== null ? `${formatThicknessNumber(parsed)}mm` : '-';
+  };
+
+  const uniqueThickness = [
+    ...new Set(
+      safeCoils
+        .map((coil) => {
+          const parsed = getThicknessNumber(coil);
+          return parsed !== null ? `${formatThicknessNumber(parsed)}mm` : null;
+        })
+        .filter(Boolean),
+    ),
+  ];
+  const nfSet = [
+    ...new Set(
+      safeCoils
+        .map((coil) => (isMother ? coil.nf : coil.motherCode))
+        .filter(Boolean),
+    ),
+  ];
+  const lastEntry =
+    safeCoils
+      .map((coil) => coil.entryDate || coil.date || coil.createdAt)
+      .filter(Boolean)
+      .sort((a, b) => new Date(b) - new Date(a))[0] || '-';
+
+  const metrics = [
+    {
+      label: 'Peso Total',
+      value: `${totalWeight.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kg`,
+    },
+    { label: 'Bobinas em Estoque', value: safeCoils.length },
+    { label: 'Larguras', value: uniqueWidths.length ? uniqueWidths.join(', ') : '-' },
+    {
+      label: 'Espessuras',
+      value: uniqueThickness.length ? uniqueThickness.join(', ') : '-',
+    },
+    { label: isMother ? 'Notas Fiscais' : 'Bobinas Mae', value: nfSet.length || '-' },
+    { label: 'Ultima Entrada', value: lastEntry },
+  ];
+
   const handleExport = () => {
-    if (!coils || coils.length === 0) return alert("Nada para exportar.");
-    
-    const dataToExport = coils.map(c => ({
-        "ID Rastreio": c.id,
-        "Data Entrada/Corte": c.date || c.createdAt || '-',
-        "Código Item": code,
-        "Descrição": isMother ? c.material : c.b2Name, // <--- ADICIONADO NO CSV
-        [isMother ? "Nota Fiscal" : "Origem (Mãe)"]: isMother ? (c.nf || '-') : (c.motherCode || '-'),
-        "Peso (kg)": (Number(c.weight) || 0).toFixed(1).replace('.', ','),
-        "Status": c.status === 'stock' ? 'EM ESTOQUE' : 'CONSUMIDA'
+    if (!safeCoils.length) return alert('Nada para exportar.');
+
+    const dataToExport = safeCoils.map((coil) => ({
+      'ID Rastreio': coil.id,
+      'Data Entrada/Corte': coil.entryDate || coil.date || coil.createdAt || '-',
+      'Codigo Item': code,
+      Descricao: isMother ? catalogMatch?.description || coil.material : coil.b2Name,
+      Largura: coil.width || catalogMatch?.width || '-',
+      Espessura: (() => {
+        const parsed = getThicknessNumber(coil);
+        return parsed !== null ? formatThicknessNumber(parsed) : '-';
+      })(),
+      Tipo: coil.type || '-',
+      [isMother ? 'Nota Fiscal' : 'Origem (Mae)']: isMother ? coil.nf || '-' : coil.motherCode || '-',
+      'Peso Atual (kg)': (Number(coil.remainingWeight ?? coil.weight) || 0)
+        .toFixed(1)
+        .replace('.', ','),
+      Status: coil.status === 'stock' ? 'EM ESTOQUE' : 'INDISPONIVEL',
     }));
 
     const headers = Object.keys(dataToExport[0]).join(';');
     const csvContent = [
-        headers, 
-        ...dataToExport.map(row => Object.values(row).map(val => `"${val}"`).join(';'))
+      headers,
+      ...dataToExport.map((row) =>
+        Object.values(row)
+          .map((val) => `"${String(val).replace(/"/g, '""')}"`)
+          .join(';'),
+      ),
     ].join('\n');
-    
+
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
+    const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `detalhe_estoque_${code}.csv`;
     document.body.appendChild(link);
@@ -911,73 +987,106 @@ const StockDetailsModal = ({ code, coils, onClose, onReprint, type }) => {
 
   return (
     <div className="fixed inset-0 bg-black/80 z-[90] flex items-center justify-center p-4">
-      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl">
-        <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-900 rounded-t-xl">
+      <div className="bg-gray-800 rounded-2xl border border-gray-700 w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
+        <div className="p-5 border-b border-gray-700 bg-gray-900 rounded-t-2xl flex justify-between items-start">
           <div>
-             <h3 className="text-white font-bold text-lg">Detalhes do Estoque: {code}</h3>
-             
-             {/* --- NOVA LINHA COM A DESCRIÇÃO --- */}
-             <p className="text-emerald-400 font-bold text-sm mb-1">{description}</p>
-             
-             <p className="text-xs text-gray-500">{coils.length} bobinas disponíveis</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Codigo</p>
+            <h3 className="text-white font-bold text-2xl leading-tight">{code}</h3>
+            <p className="text-emerald-400 font-semibold text-sm mb-1">{description}</p>
+            <p className="text-xs text-gray-500">{safeCoils.length} bobinas disponiveis</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20}/></button>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">
+            <X size={20} />
+          </button>
         </div>
-        
-        <div className="p-0 overflow-y-auto custom-scrollbar-dark flex-1">
-          <table className="w-full text-sm text-left text-gray-300">
-            <thead className="bg-gray-800 text-gray-400 sticky top-0 shadow-md">
+
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4 border-b border-gray-800 bg-gray-900/40">
+          {metrics.map((metric, index) => (
+            <div
+              key={`${metric.label}-${index}`}
+              className="bg-gray-800 rounded-xl p-3 border border-gray-700/50"
+            >
+              <p className="text-[11px] uppercase tracking-wide text-gray-500">{metric.label}</p>
+              <p className="text-sm font-semibold text-white truncate">{metric.value}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar-dark">
+          <table className="w-full text-xs md:text-sm text-left text-gray-300">
+            <thead className="bg-gray-800 text-gray-400 sticky top-0 shadow-md text-[11px] uppercase tracking-wide">
               <tr>
                 <th className="p-3">ID Rastreio</th>
+                <th className="p-3">Largura</th>
+                <th className="p-3">Espessura</th>
+                <th className="p-3">Tipo</th>
                 <th className="p-3">Data {isMother ? 'Entrada' : 'Corte'}</th>
-                <th className="p-3">{isMother ? 'Nota Fiscal' : 'Origem (Mãe)'}</th>
-                <th className="p-3 text-right">Peso (kg)</th>
-                <th className="p-3 text-center">Ação</th>
+                <th className="p-3">{isMother ? 'Nota Fiscal' : 'Origem (Mae)'}</th>
+                <th className="p-3 text-right">Peso Atual (kg)</th>
+                <th className="p-3 text-center">Status</th>
+                <th className="p-3 text-center">Acao</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
-              {coils.map(coil => (
-                <tr key={coil.id} className="hover:bg-gray-700/50">
-                  <td className="p-3 font-mono text-xs text-blue-300">{coil.id}</td>
-                  <td className="p-3 text-xs text-gray-400">
-                      {coil.date || coil.createdAt || '-'}
-                  </td>
-                  <td className="p-3 text-xs text-gray-500">
-                      {isMother ? (coil.nf || '-') : (coil.motherCode || '-')}
-                  </td>
-                  <td className="p-3 text-right font-bold text-white">
-                      {(Number(coil.weight) || 0).toLocaleString('pt-BR')}
-                  </td>
-                  <td className="p-3 text-center">
-                    <button 
-                        onClick={() => onReprint(coil)} 
-                        className="p-1.5 bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600 hover:text-white transition-colors" 
+              {safeCoils.map((coil) => {
+                const currentWeight = Number(coil.remainingWeight ?? coil.weight) || 0;
+                const statusLabel = coil.status === 'stock' ? 'Estoque' : 'Indisponivel';
+                const statusColor = coil.status === 'stock' ? 'text-emerald-400' : 'text-amber-300';
+                return (
+                  <tr key={coil.id} className="hover:bg-gray-700/40 transition-colors">
+                    <td className="p-3 font-mono text-[11px] text-blue-300">{coil.id}</td>
+                    <td className="p-3 text-gray-200">
+                      {coil.width || catalogMatch?.width
+                        ? `${coil.width || catalogMatch?.width}mm`
+                        : '-'}
+                    </td>
+                    <td className="p-3 text-gray-200">{getThicknessDisplay(coil)}</td>
+                    <td className="p-3 text-gray-400">{coil.type || '-'}</td>
+                    <td className="p-3 text-gray-400">{coil.entryDate || coil.date || coil.createdAt || '-'}</td>
+                    <td className="p-3 text-gray-400">{isMother ? coil.nf || '-' : coil.motherCode || '-'}</td>
+                    <td className="p-3 text-right font-semibold text-white">
+                      {currentWeight.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}
+                    </td>
+                    <td className="p-3 text-center">
+                      <span className={`text-[11px] font-semibold ${statusColor}`}>{statusLabel}</span>
+                    </td>
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => onReprint(coil)}
+                        className="p-1.5 bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600 hover:text-white transition-colors"
                         title="Imprimir Etiqueta"
-                    >
-                        <Printer size={16}/>
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                      >
+                        <Printer size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-        <div className="p-3 border-t border-gray-700 bg-gray-900 flex justify-between items-center rounded-b-xl">
-            <span className="text-xs text-gray-500">
-                Total: <strong className="text-white">{coils.reduce((acc, c) => acc + (parseFloat(c.weight)||0), 0).toLocaleString('pt-BR')} kg</strong>
+
+        <div className="p-4 border-t border-gray-700 bg-gray-900 rounded-b-2xl flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="text-xs text-gray-400">
+            Total:
+            <span className="text-white font-semibold ml-1">
+              {totalWeight.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kg
             </span>
-            <div className="flex gap-2">
-                <Button onClick={handleExport} className="h-8 text-xs bg-emerald-600 hover:bg-emerald-500 text-white border-none">
-                    <Download size={14}/> Baixar CSV
-                </Button>
-                <Button variant="secondary" onClick={onClose} className="h-8 text-xs">Fechar</Button>
-            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={handleExport} className="flex items-center gap-2">
+              <Download size={16} /> Baixar CSV
+            </Button>
+            <Button variant="ghost" onClick={onClose}>
+              Fechar
+            </Button>
+          </div>
         </div>
       </div>
     </div>
   );
 };
-// --- FUNÇÃO DE GERAR PDF (COLE FORA DA FUNÇÃO APP) ---
+
 const handleGeneratePDF = (title, data) => {
   const printWindow = window.open('', '_blank', 'height=800,width=1000');
   if (!printWindow) return alert("Erro: O navegador bloqueou a janela. Permita pop-ups.");
@@ -1149,9 +1258,6 @@ export default function App() {
   const [currentView, setCurrentView] = useState('dashboard'); 
 // 'dashboard', 'rastreioB2', 'mpNeed', etc...
 
-  const [motherPage, setMotherPage] = useState(1);
-  const [childPage, setChildPage] = useState(1);
-  const [finishedPage, setFinishedPage] = useState(1);
   const [logsPage, setLogsPage] = useState(1);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const inventoryMotherRef = useRef(null); // <--- ADICIONE ISSO
@@ -1172,14 +1278,8 @@ export default function App() {
   const [selectedProductForHistory, setSelectedProductForHistory] = useState(null);
   const [isOtherMode, setIsOtherMode] = useState(false); // false = Bobina 2, true = Outros
   const [otherDescription, setOtherDescription] = useState(''); // Ex: "Telha", "Chapa"
-  // --- ESTADOS DE PESQUISA DO DASHBOARD ---
-  const [dashSearchMother, setDashSearchMother] = useState('');
-  const [dashSearchB2, setDashSearchB2] = useState('');
   // Junto com os outros useState
   const [cuttingDate, setCuttingDate] = useState(new Date().toISOString().split('T')[0]);
-  const [dashSearchFinished, setDashSearchFinished] = useState('');
-  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
-  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   // Junto com os outros useState
 
   // --- ESTADOS DE RELATÓRIOS ---
@@ -1196,10 +1296,84 @@ export default function App() {
   });
 
   const USE_LOCAL_JSON = window.location.hostname === 'localhost';
-// true no npm run dev, false no build/Vercel
+  // true no npm run dev, false no build/Vercel
 
+  const {
+    eventLogs,
+    isLoading: eventLogsLoading,
+    logMotherCoilEntry,
+    logChildCoilEntry,
+    logCut,
+    logProduction,
+    logShipping,
+    loadInitialEvents,
+    hydrateLocalEvents,
+  } = useEventLogs({ persist: !USE_LOCAL_JSON });
+  const eventLogsInitializedRef = useRef(false);
 
   const [productionDate, setProductionDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const buildProductionGroupKey = (log = {}) => {
+    if (!log) return 'PROD';
+    if (log.productionLogId) return String(log.productionLogId);
+    if (log.trackingId) {
+      const parts = String(log.trackingId).split('-');
+      if (parts.length > 1) return parts.slice(0, -1).join('-');
+      return String(log.trackingId);
+    }
+    const id = String(log.id || '');
+    if (id.startsWith('TEMP-PROD-')) return id.split('-').slice(0, -1).join('-');
+    return id || String(log.productCode || 'PROD');
+  };
+
+  const dedupeProductionLogs = (logs = []) => {
+    const unique = new Map();
+    logs.forEach((log) => {
+      const key =
+        log.id ||
+        `${log.productCode || ''}-${log.date || ''}-${log.packIndex || ''}-${
+          log.timestamp || ''
+        }`;
+      if (!unique.has(key)) unique.set(key, log);
+    });
+    return Array.from(unique.values());
+  };
+
+  const aggregateProductionLogsForFallback = (logs = []) => {
+    const groups = new Map();
+    logs.forEach((log) => {
+      const key = buildProductionGroupKey(log);
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          reference: log,
+          entries: [],
+          totalPieces: 0,
+          packs: [],
+        });
+      }
+      const group = groups.get(key);
+      group.entries.push(log);
+      group.totalPieces += log.pieces || 0;
+      if (log.packIndex) group.packs.push(log.packIndex);
+    });
+
+    return Array.from(groups.values()).map((group) => ({
+      id: `prod-local-${group.key}`,
+      eventType: EVENT_TYPES.PA_PRODUCTION,
+      timestamp: group.reference.timestamp || new Date().toISOString(),
+      sourceId: group.reference.productCode || group.reference.id || group.key,
+      targetIds: group.entries.map((entry) => entry.id).filter(Boolean),
+      details: {
+        productCode: group.reference.productCode,
+        productName: group.reference.productName,
+        pieces: group.totalPieces,
+        packIndex: group.packs.join(', '),
+        batchCount: group.entries.length,
+      },
+      raw: group.reference,
+    }));
+  };
 
   useEffect(() => {
     if (newMotherCoil.code && motherCatalog.length > 0) {
@@ -1209,6 +1383,59 @@ export default function App() {
       }
     }
   }, [newMotherCoil.code, motherCatalog]);
+
+  useEffect(() => {
+    if (USE_LOCAL_JSON) {
+    const makeTimestamp = () => new Date().toISOString();
+    const dedupedProductionLogs = dedupeProductionLogs(productionLogs);
+    const aggregatedProductionEvents = aggregateProductionLogsForFallback(dedupedProductionLogs);
+
+    const fallbackEvents = [
+      ...cuttingLogs.map((log) => ({
+        id: `cut-local-${log.id}`,
+        eventType: EVENT_TYPES.B2_CUT,
+        timestamp: log.timestamp || makeTimestamp(),
+        sourceId: log.motherId || log.motherCode || log.id,
+        targetIds: Array.isArray(log.generatedItems) ? log.generatedItems : [],
+        details: {
+          motherCode: log.motherCode,
+          newChildCount: log.outputCount,
+          scrap: log.scrap,
+          totalWeight: log.inputWeight,
+          generatedItems: log.generatedItems,
+        },
+        raw: log,
+      })),
+      ...aggregatedProductionEvents,
+      ...shippingLogs.map((log) => ({
+        id: `ship-local-${log.id}`,
+        eventType: EVENT_TYPES.PA_SHIPPING,
+        timestamp: log.timestamp || makeTimestamp(),
+        sourceId: log.productCode || log.id,
+        targetIds: [log.id],
+        details: {
+          productCode: log.productCode,
+          productName: log.productName,
+          quantity: log.quantity,
+          destination: log.destination,
+        },
+        raw: log,
+      })),
+    ]
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      .slice(0, 25);
+    hydrateLocalEvents(fallbackEvents);
+      return;
+    }
+
+    if (!eventLogsInitializedRef.current) {
+      loadInitialEvents()
+        .catch(() => {})
+        .finally(() => {
+          eventLogsInitializedRef.current = true;
+        });
+    }
+  }, [USE_LOCAL_JSON, cuttingLogs, productionLogs, shippingLogs, hydrateLocalEvents, loadInitialEvents]);
 
   const dedupeById = (list = []) => {
     const map = new Map();
@@ -1417,6 +1644,11 @@ export default function App() {
     );
     setEditingMotherCoil(null); // Fecha o modal
 
+    if (USE_LOCAL_JSON) {
+      console.log('[DATA] Atualização de bobina mãe aplicada apenas localmente (JSON).');
+      return;
+    }
+
     try {
       await updateInDb('motherCoils', safeCoil.id, safeCoil);
     } catch (error) {
@@ -1535,6 +1767,9 @@ export default function App() {
       weight: coilDataToSend.weight,
       nf: coilDataToSend.nf
     });
+    await logMotherCoilEntry(savedItem, user?.uid || 'local-dev', {
+      userEmail: user?.email || 'offline@local',
+    });
 
     // 7) Troca o ID provisório pelo ID real
     setMotherCoils((prev) =>
@@ -1608,7 +1843,13 @@ export default function App() {
 
     try {
       if (USE_LOCAL_JSON) {
-        // Modo local: apenas mantém no estado para visualizar/testar
+        await Promise.all(
+          tempChildren.map((child) =>
+            logChildCoilEntry(child, user?.uid || 'local-dev', {
+              userEmail: user?.email || 'offline@local',
+            }),
+          ),
+        );
         alert("Bobina 2 pronta registrada localmente (modo JSON).");
       } else {
         const savedChildren = [];
@@ -1629,6 +1870,13 @@ export default function App() {
           qty,
           totalWeight,
         });
+        await Promise.all(
+          savedChildren.map((child) =>
+            logChildCoilEntry(child, user?.uid || 'local-dev', {
+              userEmail: user?.email || 'offline@local',
+            }),
+          ),
+        );
 
         setItemsToPrint(savedChildren);
         setPrintType("coil");
@@ -1665,6 +1913,11 @@ export default function App() {
 
     // Remove otimista no front
     setMotherCoils(prev => prev.filter(m => m.id !== id));
+
+    if (USE_LOCAL_JSON) {
+      console.log('[DATA] Exclusão de bobina mãe realizada apenas localmente (JSON).');
+      return;
+    }
 
     try {
       await deleteFromDb('motherCoils', id);
@@ -1893,6 +2146,19 @@ export default function App() {
         childCodes: savedChildrenReal.map(c => c.b2Code),
         scrapKg: manualScrap
       });
+      await logCut(
+        mother.id,
+        savedChildrenReal.map((c) => c.id),
+        user?.uid || 'local-dev',
+        {
+          totalWeight: totalCutsWeight,
+          scrap: manualScrap,
+          date: cuttingDate,
+          motherCode: mother.code,
+          childCount: savedChildrenReal.length,
+          userEmail: user?.email || 'offline@local',
+        },
+      );
       
       alert("Corte salvo na nuvem!");
 
@@ -2112,10 +2378,24 @@ export default function App() {
         setItemsToPrint(savedLogsReal); setPrintType('product'); setShowPrintModal(true);
         await logUserAction('PRODUCAO', {
           productCode: productInfo ? productInfo.code : selectedProductCode,
-  pieces: totalProducedPieces,
-  scrapKg: prodScrap,
+          pieces: totalProducedPieces,
+          scrapKg: prodScrap,
   sourceChildIds: sourceIds
 });
+        await logProduction(
+          sourceIds[0] || (savedLogsReal[0]?.id ?? selectedProductCode),
+          savedLogsReal.map((log) => log.id),
+          user?.uid || 'local-dev',
+          {
+            productCode: productInfo ? productInfo.code : selectedProductCode,
+            productName: productInfo ? productInfo.name : selectedProductCode,
+            pieces: total,
+            scrap: prodScrap,
+            childIds: sourceIds,
+            date,
+            userEmail: user?.email || 'offline@local',
+          },
+        );
         alert("Produção salva na nuvem!");
 
     } catch (error) {
@@ -2171,6 +2451,14 @@ export default function App() {
           productCode: shipProduct,
           quantity: qty,
           destination: shipDest
+        });
+        await logShipping(savedLog.id, user?.uid || 'local-dev', {
+          productCode: shipProduct,
+          productName: prodInfo ? prodInfo.name : shipProduct,
+          quantity: qty,
+          destination: shipDest,
+          date: newShipLog.date,
+          userEmail: user?.email || 'offline@local',
         });
         
         alert("Expedição salva!");
@@ -2267,6 +2555,42 @@ export default function App() {
     setStockDetailsModalOpen(true);
   };
 
+  const openProductHistoryFromCode = (code, nameHint) => {
+    if (!code) return;
+    const productData =
+      productCatalog.find((item) => String(item.code) === String(code)) || {
+        code,
+        name: nameHint || `Produto ${code}`,
+      };
+    setSelectedGroupData(productData);
+    setShowHistoryModal(true);
+  };
+
+  const handleViewEventDetails = (event) => {
+    if (!event) return;
+    const { eventType, sourceId, details = {}, raw = {} } = event;
+
+    if (eventType === EVENT_TYPES.MP_ENTRY || eventType === EVENT_TYPES.B2_CUT) {
+      const code = details.motherCode || details.code || raw.motherCode || sourceId;
+      if (code) handleViewStockDetails(code, 'mother');
+      return;
+    }
+
+    if (eventType === EVENT_TYPES.B2_ENTRY_NF) {
+      const code = details.b2Code || raw.b2Code || sourceId;
+      if (code) handleViewStockDetails(code, 'b2');
+      return;
+    }
+
+    if (eventType === EVENT_TYPES.PA_PRODUCTION || eventType === EVENT_TYPES.PA_SHIPPING) {
+      const productCode = details.productCode || raw.productCode || sourceId;
+      openProductHistoryFromCode(productCode, details.productName || raw.productName);
+      return;
+    }
+
+    console.info('Evento sem ação específica:', event);
+  };
+
   const handleReprintSingle = (coil) => {
     setItemsToPrint([coil]);
     setPrintType('coil');
@@ -2299,6 +2623,83 @@ export default function App() {
     link.click();
     document.body.removeChild(link);
   };
+
+  const exportToExcelXml = (sheets, filename) => {
+    if (!Array.isArray(sheets) || sheets.length === 0) return alert("Nada para exportar.");
+
+    const xmlEscape = (value) =>
+      String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&apos;");
+
+    const sanitizeSheetName = (name) =>
+      String(name || "Planilha")
+        .slice(0, 31)
+        .replace(/[\[\]\*\/\\?\:]/g, " ")
+        .trim() || "Planilha";
+
+    const cellXml = (value, styleId) => {
+      if (value === null || value === undefined || value === "") {
+        return styleId
+          ? `<Cell ss:StyleID="${styleId}"><Data ss:Type="String"></Data></Cell>`
+          : `<Cell><Data ss:Type="String"></Data></Cell>`;
+      }
+      const isNumber = typeof value === "number" && Number.isFinite(value);
+      const type = isNumber ? "Number" : "String";
+      const cellOpen = styleId ? `<Cell ss:StyleID="${styleId}">` : `<Cell>`;
+      return `${cellOpen}<Data ss:Type="${type}">${xmlEscape(isNumber ? String(value) : String(value))}</Data></Cell>`;
+    };
+
+    const tableXml = (rows) => {
+      const safeRows = Array.isArray(rows) ? rows : [];
+      const headers = [];
+
+      safeRows.forEach((row) => {
+        Object.keys(row || {}).forEach((key) => {
+          if (!headers.includes(key)) headers.push(key);
+        });
+      });
+
+      const headerRow = `<Row>${headers.map((h) => cellXml(h)).join("")}</Row>`;
+      const dataRows = safeRows
+        .map((row) => {
+          const cells = headers.map((h) => {
+            const v = row?.[h] ?? "";
+            const styleId = h === "Espessura (mm)" && typeof v === "number" ? "sDecimal2" : undefined;
+            return cellXml(v, styleId);
+          });
+          return `<Row>${cells.join("")}</Row>`;
+        })
+        .join("");
+
+      return `<Table>${headerRow}${dataRows}</Table>`;
+    };
+
+    const workbookXml =
+      `<?xml version="1.0"?>` +
+      `<?mso-application progid="Excel.Sheet"?>` +
+      `<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:html="http://www.w3.org/TR/REC-html40">` +
+      `<Styles><Style ss:ID="sDecimal2"><NumberFormat ss:Format="0.00"/></Style></Styles>` +
+      sheets
+        .map((sheet) => {
+          const name = sanitizeSheetName(sheet?.name);
+          return `<Worksheet ss:Name="${xmlEscape(name)}">${tableXml(sheet?.rows || [])}</Worksheet>`;
+        })
+        .join("") +
+      `</Workbook>`;
+
+    const blob = new Blob([workbookXml], { type: "application/vnd.ms-excel;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `${filename}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
 
   const handleDownloadTemplate = (type) => {
     let headers = '';
@@ -4782,812 +5183,29 @@ const handleFullRestore = (e) => {
   };
 
 
-  const renderDashboard = () => {
-    try {
-        const ITEMS_LIMIT = 50; 
-        
-        // =================================================================================
-        // 1. FUNÇÕES DE EXPORTAÇÃO (DENTRO DA DASHBOARD PARA NÃO FALHAR)
-        // =================================================================================
-        const exportToCSV = (data, filename) => {
-            if (!data || data.length === 0) return alert("Nada para exportar.");
-            const headers = Object.keys(data[0]).join(';');
-            const csvContent = [headers, ...data.map(row => Object.values(row).map(val => `"${String(val).replace(/"/g, '""')}"`).join(';'))].join('\n');
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = `${filename}.csv`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        };
-
-        const exportToExcelXml = (sheets, filename) => {
-            if (!Array.isArray(sheets) || sheets.length === 0) return alert("Nada para exportar.");
-
-            const xmlEscape = (value) =>
-                String(value ?? "")
-                    .replace(/&/g, "&amp;")
-                    .replace(/</g, "&lt;")
-                    .replace(/>/g, "&gt;")
-                    .replace(/"/g, "&quot;")
-                    .replace(/'/g, "&apos;");
-
-            const sanitizeSheetName = (name) =>
-                String(name || "Planilha")
-                    .slice(0, 31)
-                    .replace(/[\[\]\*\/\\\?\:]/g, " ")
-                    .trim() || "Planilha";
-
-            const cellXml = (value, styleId) => {
-                if (value === null || value === undefined || value === "") {
-                    return styleId
-                        ? `<Cell ss:StyleID="${styleId}"><Data ss:Type="String"></Data></Cell>`
-                        : `<Cell><Data ss:Type="String"></Data></Cell>`;
-                }
-                const isNumber = typeof value === "number" && Number.isFinite(value);
-                const type = isNumber ? "Number" : "String";
-                const cellOpen = styleId ? `<Cell ss:StyleID="${styleId}">` : `<Cell>`;
-                return `${cellOpen}<Data ss:Type="${type}">${xmlEscape(isNumber ? String(value) : String(value))}</Data></Cell>`;
-            };
-
-            const tableXml = (rows) => {
-                const safeRows = Array.isArray(rows) ? rows : [];
-                const headers = [];
-
-                safeRows.forEach((row) => {
-                    Object.keys(row || {}).forEach((key) => {
-                        if (!headers.includes(key)) headers.push(key);
-                    });
-                });
-
-                const headerRow = `<Row>${headers.map((h) => cellXml(h)).join("")}</Row>`;
-                const dataRows = safeRows
-                    .map((row) => {
-                        const cells = headers.map((h) => {
-                            const v = row?.[h] ?? "";
-                            const styleId = h === "Espessura (mm)" && typeof v === "number" ? "sDecimal2" : undefined;
-                            return cellXml(v, styleId);
-                        });
-                        return `<Row>${cells.join("")}</Row>`;
-                    })
-                    .join("");
-
-                return `<Table>${headerRow}${dataRows}</Table>`;
-            };
-
-            const workbookXml =
-                `<?xml version="1.0"?>` +
-                `<?mso-application progid="Excel.Sheet"?>` +
-                `<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:html="http://www.w3.org/TR/REC-html40">` +
-                `<Styles><Style ss:ID="sDecimal2"><NumberFormat ss:Format="0.00"/></Style></Styles>` +
-                sheets
-                    .map((sheet) => {
-                        const name = sanitizeSheetName(sheet?.name);
-                        return `<Worksheet ss:Name="${xmlEscape(name)}">${tableXml(sheet?.rows || [])}</Worksheet>`;
-                    })
-                    .join("") +
-                `</Workbook>`;
-
-            const blob = new Blob([workbookXml], { type: "application/vnd.ms-excel;charset=utf-8;" });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = `${filename}.xls`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        };
-
-        const handleGeneratePDF = (title, data) => {
-            const printWindow = window.open('', '', 'height=600,width=800');
-            if (!printWindow) return alert("Pop-up bloqueado! Permita pop-ups.");
-            const htmlContent = `<html><head><title>${title}</title><style>body{font-family:Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f2f2f2}.right{text-align:right}</style></head><body><h2>${title}</h2><p>Emissão: ${new Date().toLocaleString()}</p><table><thead><tr><th>Código</th><th>Descrição</th><th class="right">Qtd/Detalhe</th></tr></thead><tbody>${data.map(i => `<tr><td>${i.code}</td><td>${i.name}</td><td class="right">${i.count}</td></tr>`).join('')}</tbody></table></body></html>`;
-            printWindow.document.write(htmlContent);
-            printWindow.document.close();
-            setTimeout(() => { printWindow.print(); printWindow.close(); }, 500);
-        };
-        
-        // --- 2. SEGURANÇA E UTILITÁRIOS ---
-        const safeNum = (val) => { const n = parseFloat(val); return isNaN(n) ? 0 : n; };
-        const normalizeCode = (v) => String(v ?? '').trim();
-
-        const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
-        const safeChild = Array.isArray(childCoils) ? childCoils : [];
-        const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
-        const safeShip = Array.isArray(shippingLogs) ? shippingLogs : [];
-        
-        // --- 3. PREPARAÇÃO DOS DADOS ---
-
-        const catalogByCode = (motherCatalog || []).reduce((acc, item) => {
-            const code = normalizeCode(item.code);
-            if (code) acc[code] = item;
-            return acc;
-        }, {});
-        
-        const motherStockByCode = safeMother.reduce((acc, item) => {
-          if(item.status === 'stock') {
-            const codeRaw = normalizeCode(item.code);
-            const width = safeNum(item.width);
-            const key = `${codeRaw}-${width}`;
-            
-            if(!acc[key]) { 
-                const catalogItem = catalogByCode[codeRaw];
-                const materialName = catalogItem?.description || item.material || `BOBINA ${item.code}`;
-
-                acc[key] = { 
-                    code: item.code, 
-                    material: materialName, 
-                    width: item.width, 
-                    weight: 0, 
-                    count: 0, 
-                    type: item.type 
-                }; 
-            }
-            acc[key].weight += safeNum(item.remainingWeight) || safeNum(item.weight);
-            acc[key].count += 1; 
-          }
-          return acc;
-        }, {});
-
-        const childStockByCode = safeChild.reduce((acc, item) => {
-          if(item.status === 'stock') {
-            if(!acc[item.b2Code]) acc[item.b2Code] = { code: item.b2Code, name: item.b2Name, weight: 0, count: 0, type: item.type };
-            acc[item.b2Code].weight += safeNum(item.weight);
-            acc[item.b2Code].count += 1; 
-          }
-          return acc;
-        }, {});
-
-        const stock = {};
-        safeProd.forEach(log => {
-            if (!stock[log.productCode]) stock[log.productCode] = { code: log.productCode, name: log.productName, count: 0 };
-            stock[log.productCode].count += (parseInt(log.pieces) || 0);
-        });
-        safeShip.forEach(log => {
-            if (stock[log.productCode]) {
-                stock[log.productCode].count -= (parseInt(log.quantity) || 0);
-            }
-        });
-        const finishedStockList = Object.values(stock).filter(item => item.count > 0);
-
-        // --- 4. FILTROS ---
-        const filteredMotherList = Object.values(motherStockByCode).filter(item => {
-            if (!dashSearchMother) return true;
-            const query = dashSearchMother.toLowerCase();
-            return String(item.code || '').toLowerCase().includes(query) || String(item.material || '').toLowerCase().includes(query);
-        });
-
-        const filteredB2List = Object.values(childStockByCode).filter(item => {
-            if (!dashSearchB2) return true;
-            const query = dashSearchB2.toLowerCase();
-            return String(item.code || '').toLowerCase().includes(query) || String(item.name || '').toLowerCase().includes(query);
-        });
-
-        const filteredFinishedList = finishedStockList.filter(item => {
-            if (!dashSearchFinished) return true;
-            const query = dashSearchFinished.toLowerCase();
-            return String(item.code || '').toLowerCase().includes(query) || String(item.name || '').toLowerCase().includes(query);
-        });
-
-        // --- 5. PAGINAÇÃO ---
-        const paginatedMotherStock = filteredMotherList.slice((motherPage - 1) * ITEMS_LIMIT, motherPage * ITEMS_LIMIT);
-        const paginatedChildStock = filteredB2List.slice((childPage - 1) * ITEMS_LIMIT, childPage * ITEMS_LIMIT);
-        const paginatedFinishedStock = filteredFinishedList.slice((finishedPage - 1) * ITEMS_LIMIT, finishedPage * ITEMS_LIMIT);
-
-        // --- 6. TOTAIS ---
-        const totalMotherWeight = safeMother.filter(m => m.status === 'stock').reduce((acc, m) => acc + safeNum(m.remainingWeight || m.weight), 0);
-        const totalB2Weight = safeChild.filter(c => c.status === 'stock').reduce((acc, c) => acc + safeNum(c.weight), 0);
-        const totalFinishedCount = finishedStockList.reduce((acc, item) => acc + (item.count || 0), 0);
-        const tileStockCount = safeMother.filter(m => m.status === 'stock' && String(m.code) === '10236').length;
-        const tileStockWeight = safeMother.filter(m => m.status === 'stock' && String(m.code) === '10236').reduce((acc, m) => acc + safeNum(m.remainingWeight || m.weight), 0);
-        const totalScrapAll = safeProd.reduce((acc, l) => acc + safeNum(l.scrap), 0) + safeMother.reduce((acc, m) => acc + safeNum(m.cutWaste), 0);
-
-        const exportMotherStockExcel = () => {
-            const getMotherMaterialName = (coil) => {
-                const codeRaw = normalizeCode(coil?.code);
-                const catalogItem = catalogByCode[codeRaw];
-                return catalogItem?.description || coil?.material || `BOBINA ${coil?.code || ""}`;
-            };
-
-            const normalizeThicknessNumber = (value) => {
-                if (value === null || value === undefined) return null;
-                const raw = String(value).trim();
-                if (!raw) return null;
-
-                if (/[.,]/.test(raw)) {
-                    const n = parseFloat(raw.replace(",", "."));
-                    return Number.isFinite(n) ? n : null;
-                }
-
-                const digits = raw.replace(/[^\d]/g, "");
-                if (!digits) return null;
-                const n = Number(digits);
-                if (!Number.isFinite(n)) return null;
-
-                // Padrão observado nos relatórios/imports:
-                // Heurística baseada nos dados reais do app/import:
-                // - 1 dígito: décimos (ex: 4 -> 0.40, 8 -> 0.80)
-                // - 2 dígitos: abaixo de 30 costuma ser 1.xx/2.x (ex: 12 -> 1.20, 19 -> 1.90, 26 -> 2.60)
-                //   acima disso costuma ser 0.xx (ex: 40 -> 0.40, 75 -> 0.75)
-                // - 3+ dígitos: centésimos (ex: 125 -> 1.25, 225 -> 2.25, 300 -> 3.00)
-                if (digits.length === 1) return n / 10;
-                if (digits.length === 2) return n < 30 ? n / 10 : n / 100;
-                return n / 100;
-            };
-
-            const query = String(dashSearchMother || "").toLowerCase().trim();
-
-            const summaryRows = filteredMotherList.map((i) => ({
-                "Código": i.code,
-                "Material": i.material,
-                "Largura (mm)": safeNum(i.width) || "",
-                "Qtd Bobinas": safeNum(i.count) || 0,
-                "Peso Total (kg)": safeNum(i.weight) || 0,
-                "Tipo": i.type || "",
-            }));
-
-            const detailedRows = safeMother
-                .filter((m) => m?.status === "stock")
-                .filter((m) => {
-                    if (!query) return true;
-                    const materialName = getMotherMaterialName(m);
-                    return (
-                        String(m?.code || "").toLowerCase().includes(query) ||
-                        String(materialName || "").toLowerCase().includes(query)
-                    );
-                })
-                .map((m) => ({
-                    "ID": m.id || "",
-                    "Data": m.date || m.entryDate || "",
-                    "Código": m.code || "",
-                    "NF": m.nf || "",
-                    "Material": getMotherMaterialName(m),
-                    "Largura (mm)": safeNum(m.width) || "",
-                    "Espessura (mm)": normalizeThicknessNumber(m.thickness) ?? "",
-                    "Tipo": m.type || "",
-                    "Peso Original (kg)": safeNum(m.originalWeight || m.weight) || 0,
-                    "Peso Saldo (kg)": safeNum(m.remainingWeight || m.weight) || 0,
-                    "Família": m.family || "",
-                    "Forma": m.form || "",
-                    "Inox": m.inoxGrade || "",
-                    "Qtd (inox)": m.qty || "",
-                    "Comprimento": m.length || "",
-                }));
-
-            exportToExcelXml(
-                [
-                    { name: "Resumo", rows: summaryRows },
-                    { name: "Bobinas", rows: detailedRows },
-                ],
-                "saldo_estoque_mae"
-            );
-        };
-
-        const normalizeThicknessNumberDash = (value) => {
-            if (value === null || value === undefined) return null;
-            const raw = String(value).trim();
-            if (!raw) return null;
-
-            if (/[.,]/.test(raw)) {
-                const n = parseFloat(raw.replace(",", "."));
-                return Number.isFinite(n) ? n : null;
-            }
-
-            const digits = raw.replace(/[^\d]/g, "");
-            if (!digits) return null;
-            const n = Number(digits);
-            if (!Number.isFinite(n)) return null;
-
-            if (digits.length === 1) return n / 10;
-            if (digits.length === 2) return n < 30 ? n / 10 : n / 100;
-            return n / 100;
-        };
-
-        const scrollToSection = (id) => {
-            const el = document.getElementById(id);
-            if (!el) return;
-            el.scrollIntoView({ behavior: "smooth", block: "start" });
-        };
-
-        const openGlobalResult = (result) => {
-            setIsGlobalSearchOpen(false);
-            setGlobalSearchQuery("");
-
-            if (!result) return;
-
-            if (result.kind === "mother") {
-                scrollToSection("dash-mother");
-                handleViewStockDetails(result.code, "mother");
-                return;
-            }
-
-            if (result.kind === "b2") {
-                scrollToSection("dash-b2");
-                handleViewStockDetails(result.code, "b2");
-                return;
-            }
-
-            if (result.kind === "product") {
-                setDashSearchFinished(result.code);
-                setFinishedPage(1);
-                scrollToSection("dash-finished");
-            }
-        };
-
-        const globalQ = String(globalSearchQuery || "").trim().toLowerCase();
-
-        const motherNfMap = safeMother.reduce((acc, m) => {
-            const key = (normalizeCode(m?.code) || m?.code || "").toLowerCase();
-            if (!key || !m?.nf) return acc;
-            if (!acc[key]) acc[key] = m.nf;
-            return acc;
-        }, {});
-
-        const childNfMap = safeChild.reduce((acc, c) => {
-            const key = String(c?.b2Code || c?.code || "").toLowerCase();
-            if (!key || !c?.nf) return acc;
-            if (!acc[key]) acc[key] = c.nf;
-            return acc;
-        }, {});
-
-        const motherNFMatches = new Set(
-            safeMother
-                .filter((m) => m?.status === "stock")
-                .filter((m) => String(m?.nf || "").toLowerCase().includes(globalQ))
-                .map((m) => (normalizeCode(m?.code) || m?.code || "").toLowerCase())
-        );
-
-        const childNFMatches = new Set(
-            safeChild
-                .filter((c) => c?.status === "stock")
-                .filter((c) => String(c?.nf || "").toLowerCase().includes(globalQ))
-                .map((c) => String(c?.b2Code || c?.code || "").toLowerCase())
-        );
-
-        const globalMatchesMother = globalQ
-            ? Object.values(motherStockByCode)
-                  .filter((i) => {
-                      const code = String(i.code || "").toLowerCase();
-                      const codeKey = (normalizeCode(i.code) || i.code || "").toLowerCase();
-                      const material = String(i.material || "").toLowerCase();
-                      const width = String(i.width || "").toLowerCase();
-                      return (
-                        code.includes(globalQ) ||
-                        material.includes(globalQ) ||
-                        width.includes(globalQ) ||
-                        motherNFMatches.has(codeKey)
-                      );
-                  })
-                  .slice(0, 6)
-                  .map((i) => {
-                      const codeKey = (normalizeCode(i.code) || i.code || "").toLowerCase();
-                      const nfLabel = motherNfMap[codeKey] ? ` - NF ${motherNfMap[codeKey]}` : "";
-                      return {
-                        kind: "mother",
-                        code: i.code,
-                        title: `${i.code} - ${safeNum(i.width) || ""}mm`,
-                        subtitle: `${i.material} - ${i.count} bob - ${(safeNum(i.weight) || 0).toFixed(0)} kg${nfLabel}`,
-                      };
-                  })
-            : [];
-
-        const globalMatchesB2 = globalQ
-            ? Object.values(childStockByCode)
-                  .filter((i) => {
-                      const code = String(i.code || "").toLowerCase();
-                      const name = String(i.name || "").toLowerCase();
-                      return (
-                        code.includes(globalQ) ||
-                        name.includes(globalQ) ||
-                        childNFMatches.has(code)
-                      );
-                  })
-                  .slice(0, 6)
-                  .map((i) => {
-                      const codeKey = String(i.code || "").toLowerCase();
-                      const nfLabel = childNfMap[codeKey] ? ` - NF ${childNfMap[codeKey]}` : "";
-                      return {
-                        kind: "b2",
-                        code: i.code,
-                        title: `${i.code}`,
-                        subtitle: `${i.name} - ${i.count} bob - ${(safeNum(i.weight) || 0).toFixed(0)} kg${nfLabel}`,
-                      };
-                  })
-            : [];
-
-        const globalMatchesProducts = globalQ
-            ? finishedStockList
-                  .filter((i) => {
-                      const code = String(i.code || "").toLowerCase();
-                      const name = String(i.name || "").toLowerCase();
-                      return code.includes(globalQ) || name.includes(globalQ);
-                  })
-                  .slice(0, 6)
-                  .map((i) => ({
-                      kind: "product",
-                      code: i.code,
-                      title: `${i.code}`,
-                      subtitle: `${i.name} • ${safeNum(i.count) || 0} pçs`,
-                  }))
-            : [];
-
-        const motherStockRaw = safeMother.filter((m) => m?.status === "stock");
-
-        const motherAggByCode = motherStockRaw.reduce((acc, m) => {
-            const codeRaw = normalizeCode(m.code);
-            if (!codeRaw) return acc;
-            const catalogItem = catalogByCode[codeRaw];
-            const materialName = catalogItem?.description || m.material || `BOBINA ${m.code}`;
-            if (!acc[codeRaw]) acc[codeRaw] = { code: m.code, material: materialName, count: 0, weight: 0 };
-            acc[codeRaw].count += 1;
-            acc[codeRaw].weight += safeNum(m.remainingWeight) || safeNum(m.weight);
-            return acc;
-        }, {});
-
-        const topMotherCodes = Object.values(motherAggByCode)
-            .sort((a, b) => (b.count || 0) - (a.count || 0))
-            .slice(0, 5);
-
-        const motherAggByMaterial = motherStockRaw.reduce((acc, m) => {
-            const codeRaw = normalizeCode(m.code);
-            const catalogItem = catalogByCode[codeRaw];
-            const materialName = catalogItem?.description || m.material || `BOBINA ${m.code}`;
-            if (!acc[materialName]) acc[materialName] = { material: materialName, count: 0, weight: 0 };
-            acc[materialName].count += 1;
-            acc[materialName].weight += safeNum(m.remainingWeight) || safeNum(m.weight);
-            return acc;
-        }, {});
-
-        const topMotherMaterials = Object.values(motherAggByMaterial)
-            .sort((a, b) => (b.weight || 0) - (a.weight || 0))
-            .slice(0, 5);
-
-        const motherAggByWidth = motherStockRaw.reduce((acc, m) => {
-            const w = safeNum(m.width) || 0;
-            const key = String(w || "");
-            if (!key) return acc;
-            if (!acc[key]) acc[key] = { width: w, count: 0 };
-            acc[key].count += 1;
-            return acc;
-        }, {});
-
-        const topMotherWidths = Object.values(motherAggByWidth)
-            .sort((a, b) => (b.count || 0) - (a.count || 0))
-            .slice(0, 5);
-
-        const motherAggByThickness = motherStockRaw.reduce((acc, m) => {
-            const t = normalizeThicknessNumberDash(m.thickness);
-            if (!Number.isFinite(t)) return acc;
-            const key = t.toFixed(2);
-            if (!acc[key]) acc[key] = { thickness: t, count: 0 };
-            acc[key].count += 1;
-            return acc;
-        }, {});
-
-        const topMotherThicknesses = Object.values(motherAggByThickness)
-            .sort((a, b) => (b.count || 0) - (a.count || 0))
-            .slice(0, 5);
-
-        return (
-          <div className="space-y-6">
-            {/* BUSCA GLOBAL */}
-            <Card className="p-4 relative z-30">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-white font-bold text-sm">Busca global</h3>
-                  <p className="text-xs text-gray-500">Procura em MP, B2 e Produto Acabado</p>
-                </div>
-              </div>
-              <div className="relative mt-3">
-                <Search className="absolute left-3 top-2.5 text-gray-500" size={16} />
-                <input
-                  value={globalSearchQuery}
-                  onChange={(e) => { setGlobalSearchQuery(e.target.value); setIsGlobalSearchOpen(true); }}
-                  onFocus={() => setIsGlobalSearchOpen(true)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") { setIsGlobalSearchOpen(false); return; }
-                    if (e.key === "Enter") {
-                      const first = globalMatchesMother[0] || globalMatchesB2[0] || globalMatchesProducts[0];
-                      if (first) openGlobalResult(first);
-                    }
-                  }}
-                  placeholder="Digite código, material, largura..."
-                  className="w-full bg-gray-900 border border-gray-700 rounded-xl py-2 pl-10 pr-3 text-sm text-white focus:border-blue-500 outline-none"
-                />
-
-                {isGlobalSearchOpen && globalQ && (
-                  <div
-                    className="absolute z-50 mt-2 w-full rounded-xl border border-white/10 bg-slate-950/95 backdrop-blur shadow-2xl overflow-hidden"
-                    onMouseDown={(e) => e.preventDefault()}
-                  >
-                    <div className="max-h-80 overflow-auto custom-scrollbar-dark">
-                      {(globalMatchesMother.length === 0 && globalMatchesB2.length === 0 && globalMatchesProducts.length === 0) ? (
-                        <div className="p-3 text-sm text-gray-400">Nenhum resultado.</div>
-                      ) : (
-                        <div className="divide-y divide-white/5">
-                          {globalMatchesMother.length > 0 && (
-                            <div className="p-2">
-                              <div className="px-2 py-1 text-[11px] uppercase tracking-widest text-gray-500 font-bold">MP</div>
-                              {globalMatchesMother.map((r, idx) => (
-                                <button key={`m-${idx}`} onClick={() => openGlobalResult(r)} className="w-full text-left px-2 py-2 rounded-lg hover:bg-white/5 transition-colors">
-                                  <div className="text-sm text-white font-semibold">{r.title}</div>
-                                  <div className="text-xs text-gray-400">{r.subtitle}</div>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-
-                          {globalMatchesB2.length > 0 && (
-                            <div className="p-2">
-                              <div className="px-2 py-1 text-[11px] uppercase tracking-widest text-gray-500 font-bold">B2</div>
-                              {globalMatchesB2.map((r, idx) => (
-                                <button key={`b2-${idx}`} onClick={() => openGlobalResult(r)} className="w-full text-left px-2 py-2 rounded-lg hover:bg-white/5 transition-colors">
-                                  <div className="text-sm text-white font-semibold">{r.title}</div>
-                                  <div className="text-xs text-gray-400">{r.subtitle}</div>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-
-                          {globalMatchesProducts.length > 0 && (
-                            <div className="p-2">
-                              <div className="px-2 py-1 text-[11px] uppercase tracking-widest text-gray-500 font-bold">Produto</div>
-                              {globalMatchesProducts.map((r, idx) => (
-                                <button key={`p-${idx}`} onClick={() => openGlobalResult(r)} className="w-full text-left px-2 py-2 rounded-lg hover:bg-white/5 transition-colors">
-                                  <div className="text-sm text-white font-semibold">{r.title}</div>
-                                  <div className="text-xs text-gray-400">{r.subtitle}</div>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </Card>
-            {/* KPI CARDS */}
-            <div className="kpi-cards grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
-              <Card className="border-l-4 border-blue-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Entrada de MP</h3><div className="flex flex-col"><p className="text-3xl font-bold text-white">{safeMother.filter(m => m.status === 'stock').length} <span className="text-sm text-gray-500 font-normal">bobinas</span></p><p className="text-sm text-blue-400 font-bold">{totalMotherWeight.toLocaleString('pt-BR')} kg</p></div></Card>
-              <Card className="border-l-4 border-indigo-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Estoque B2</h3><div className="flex flex-col"><p className="text-3xl font-bold text-white">{safeChild.filter(c => c.status === 'stock').length} <span className="text-sm text-gray-500 font-normal">bobinas</span></p><p className="text-sm text-indigo-400 font-bold">{totalB2Weight.toLocaleString('pt-BR')} kg</p></div></Card>
-              <Card className="border-l-4 border-emerald-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Estoque Acabado</h3><div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{totalFinishedCount}</p><span className="text-sm text-gray-500 mb-1">peças</span></div></Card>
-              <Card className="border-l-4 border-purple-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Estoque Telhas (10236)</h3><div className="flex flex-col"><p className="text-3xl font-bold text-white">{tileStockCount} <span className="text-sm text-gray-500 font-normal">bobinas</span></p><p className="text-sm text-purple-400 font-bold">{tileStockWeight.toLocaleString('pt-BR')} kg</p></div></Card>
-              <Card className="border-l-4 border-amber-500 bg-gray-800"><h3 className="text-gray-400 text-xs font-bold uppercase mb-2">Sucata Total</h3><div className="flex items-end gap-2"><p className="text-3xl font-bold text-white">{totalScrapAll.toFixed(1)}</p><span className="text-sm text-gray-500 mb-1">kg</span></div></Card>
-            </div>
-
-            {/* PONTOS DE ATENÇÃO (SEM HISTÓRICO) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-              <Card className="p-4">
-                <h3 className="text-white font-bold text-sm mb-1">Top códigos (MP)</h3>
-                <p className="text-xs text-gray-500 mb-3">Mais bobinas em estoque</p>
-                <div className="space-y-2">
-                  {topMotherCodes.map((i, idx) => (
-                    <button key={idx} onClick={() => handleViewStockDetails(i.code, 'mother')} className="w-full text-left rounded-lg px-2 py-1.5 hover:bg-white/5 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-white font-semibold">{i.code}</span>
-                        <span className="text-xs text-gray-400">{i.count} bob</span>
-                      </div>
-                      <div className="text-xs text-gray-500 truncate">{i.material} • {(safeNum(i.weight) || 0).toFixed(0)} kg</div>
-                    </button>
-                  ))}
-                  {topMotherCodes.length === 0 && <div className="text-sm text-gray-500">Sem dados.</div>}
-                </div>
-              </Card>
-
-              <Card className="p-4">
-                <h3 className="text-white font-bold text-sm mb-1">Top materiais (MP)</h3>
-                <p className="text-xs text-gray-500 mb-3">Maior peso total</p>
-                <div className="space-y-2">
-                  {topMotherMaterials.map((i, idx) => (
-                    <div key={idx} className="rounded-lg px-2 py-1.5 hover:bg-white/5 transition-colors">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm text-white font-semibold truncate" title={i.material}>{i.material}</span>
-                        <span className="text-xs text-gray-400 whitespace-nowrap">{(safeNum(i.weight) || 0).toFixed(0)} kg</span>
-                      </div>
-                      <div className="text-xs text-gray-500">{i.count} bobinas</div>
-                    </div>
-                  ))}
-                  {topMotherMaterials.length === 0 && <div className="text-sm text-gray-500">Sem dados.</div>}
-                </div>
-              </Card>
-
-              <Card className="p-4">
-                <h3 className="text-white font-bold text-sm mb-1">Top larguras (MP)</h3>
-                <p className="text-xs text-gray-500 mb-3">Mais bobinas por largura</p>
-                <div className="space-y-2">
-                  {topMotherWidths.map((i, idx) => (
-                    <div key={idx} className="rounded-lg px-2 py-1.5 hover:bg-white/5 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-white font-semibold">{i.width} mm</span>
-                        <span className="text-xs text-gray-400">{i.count} bob</span>
-                      </div>
-                    </div>
-                  ))}
-                  {topMotherWidths.length === 0 && <div className="text-sm text-gray-500">Sem dados.</div>}
-                </div>
-              </Card>
-
-              <Card className="p-4">
-                <h3 className="text-white font-bold text-sm mb-1">Top espessuras (MP)</h3>
-                <p className="text-xs text-gray-500 mb-3">Mais bobinas por espessura</p>
-                <div className="space-y-2">
-                  {topMotherThicknesses.map((i, idx) => (
-                    <div key={idx} className="rounded-lg px-2 py-1.5 hover:bg-white/5 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-white font-semibold">{(Number(i.thickness) || 0).toFixed(2).replace('.', ',')} mm</span>
-                        <span className="text-xs text-gray-400">{i.count} bob</span>
-                      </div>
-                    </div>
-                  ))}
-                  {topMotherThicknesses.length === 0 && <div className="text-sm text-gray-500">Sem dados.</div>}
-                </div>
-              </Card>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-               {/* TABELA 1: MÃE */}
-               <Card id="dash-mother" className="h-[500px] flex flex-col overflow-hidden col-span-1 lg:col-span-1">
-                 <div className="mb-4">
-                     <div className="flex justify-between items-center mb-2">
-                          <h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-blue-500"/> Entrada de MP</h3>
-                          <div className="mother-mp-actions flex gap-2">
-                             <Button variant="secondary" onClick={() => { const data = filteredMotherList.map(i => ({ code: i.code, name: `${i.material} (${i.width}mm)`, count: `${i.count} bob (${i.weight}kg)` })); handleGeneratePDF('Estoque Entrada de MP', data); }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button>
-                             <Button variant="secondary" onClick={exportMotherStockExcel} className="h-8 text-xs bg-blue-900/20 text-blue-400 border-blue-900/50 hover:bg-blue-900/40" title="Baixar Excel (Resumo + Bobinas)"><Download size={14}/> EXCEL</Button>
-                            <Button variant="secondary" onClick={() => { const data = filteredMotherList.map(i => ({ "Código": i.code, "Material": i.material, "Largura": i.width, "Qtd Bobinas": i.count, "Peso Total (kg)": i.weight })); exportToCSV(data, 'saldo_estoque_mae'); }} className="h-8 text-xs bg-blue-900/20 text-blue-400 border-blue-900/50 hover:bg-blue-900/40"><Download size={14}/> CSV</Button>
-                         </div>
-                     </div>
-                     <div className="relative"><Search className="absolute left-2 top-2 text-gray-500" size={14}/><input type="text" placeholder="Buscar..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-blue-500 outline-none" value={dashSearchMother} onChange={e => setDashSearchMother(e.target.value)} /></div>
-                 </div>
-                 <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
-                   <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
-                     <thead className="bg-gray-900/50 text-gray-500 sticky top-0"><tr><th className="p-2 rounded-l-lg">Bobina / Material</th><th className="p-2 text-center">Larg.</th><th className="p-2 text-center">Qtd</th><th className="p-2 text-right rounded-r-lg">Peso</th><th className="p-2 text-center">Ver</th></tr></thead>
-                     <tbody className="divide-y divide-gray-700/50">
-                        {paginatedMotherStock.map((row, idx) => (
-                          <tr key={idx} className="hover:bg-gray-700/30 transition-colors">
-                            <td className="p-3 align-top"><div className="font-bold text-white text-base">{row.code}</div><div className="text-[10px] text-gray-400 leading-tight mt-0.5 max-w-[180px]" title={row.material}>{row.material}</div><div className="text-[9px] text-blue-500 font-bold mt-1 inline-block border border-blue-900/50 px-1 rounded bg-blue-900/20">{row.type}</div></td>
-                            <td className="p-3 text-center text-white align-top font-bold pt-4">{row.width}</td><td className="p-3 text-center font-bold text-white align-top pt-4">{row.count}</td><td className="p-3 text-right font-mono text-gray-300 align-top pt-4">{(Number(row.weight)||0).toLocaleString('pt-BR')}</td>
-                            <td className="p-3 text-center align-top pt-3"><button onClick={() => handleViewStockDetails(row.code, 'mother')} className="p-2 hover:text-blue-400 text-gray-400 transition-colors"><Eye size={18}/></button></td>
-                          </tr>
-                        ))}
-                     </tbody>
-                   </table>
-                 </div>
-                 <PaginationControls currentPage={motherPage} totalItems={filteredMotherList.length} itemsPerPage={ITEMS_LIMIT} onPageChange={setMotherPage} />
-               </Card>
-               
-               {/* TABELA 2: B2 */}
-               <Card id="dash-b2" className="h-[500px] flex flex-col overflow-hidden">
-                 <div className="mb-4">
-                     <div className="flex justify-between items-center mb-2"><h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg mb-2"><PieChart className="text-indigo-500"/> Estoque B2</h3><div className="flex gap-2"><Button variant="secondary" onClick={() => { const data = filteredB2List.map(i => ({ code: i.code, name: i.name, count: `${i.count} bob (${i.weight}kg)` })); handleGeneratePDF('Estoque Bobina 2 (Slitter)', data); }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button><Button 
-  variant="secondary" 
-  onClick={() => {
-    // --- LISTA DE EMERGÊNCIA (Mantida para garantir os itens manuais) ---
-    const itensDeEmergencia = [
-        { b2Code: '85525C', b2Name: 'BOB 2 PERFIL UE 150X50X17X2,25', type: 'BQ', thickness: '2,25' },
-        { b2Code: '85510A', b2Name: 'BOB 2 PERFIL US 127X50X1,80', type: 'BQ', thickness: '1,80' }
-    ];
-
-    // FUNÇÃO AJUDANTE: Arruma o número pro Excel BR (Vírgula e 2 casas decimais)
-    const formatarPeso = (valor) => {
-        if (!valor && valor !== 0) return "0,00";
-        return Number(valor).toFixed(2).replace('.', ','); 
-    };
-
-    // 1. Mapeamento (Mantém números puros para cálculo)
-    const dadosCalculo = filteredB2List.map(i => {
-        const cleanCode = String(i.code).trim().toUpperCase();
-        
-        // Busca no catálogo ou na emergência
-        let catalogItem = productCatalog.find(p => String(p.b2Code || '').trim().toUpperCase() === cleanCode);
-        if (!catalogItem) {
-            catalogItem = itensDeEmergencia.find(p => String(p.b2Code).trim().toUpperCase() === cleanCode);
-        }
-        const itemSeguro = catalogItem || {};
-
-        return {
-            "Código": i.code,
-            "Descrição": itemSeguro.b2Name || i.name, 
-            "Tip": itemSeguro.type || "Indef.",
-            "Largura": itemSeguro.thickness ? String(itemSeguro.thickness).replace('.', ',') : "0", 
-            "Qtd Bobina": Number(i.count) || 0,
-            "PesoNum": Number(i.weight) || 0 // Campo temporário numérico para a soma funcionar
-        };
-    });
-
-    // 2. Calcula Totais (Usando os números puros)
-    const totaisPorTipo = dadosCalculo.reduce((acc, curr) => {
-        const tipo = curr["Tip"] || "Outros";
-        if (!acc[tipo]) acc[tipo] = 0;
-        acc[tipo] += curr["PesoNum"];
-        return acc;
-    }, {});
-
-    const totalGeralQtd = dadosCalculo.reduce((sum, item) => sum + item["Qtd Bobina"], 0);
-    const totalGeralPeso = dadosCalculo.reduce((sum, item) => sum + item["PesoNum"], 0);
-
-    // 3. Monta o CSV Final (Agora aplicando a formatação com vírgula)
-    const finalData = [
-        ...dadosCalculo.map(item => ({
-            "Código": item["Código"],
-            "Descrição": item["Descrição"],
-            "Tip": item["Tip"],
-            "Largura": item["Largura"],
-            "Qtd Bobina": item["Qtd Bobina"],
-            "Peso Total (kg)": formatarPeso(item["PesoNum"]) // <--- AQUI A MÁGICA
-        })),
-        // Linhas de Rodapé
-        { "Código": "", "Descrição": "", "Tip": "", "Largura": "", "Qtd Bobina": "", "Peso Total (kg)": "" },
-        { "Código": "", "Descrição": "TOTAL GERAL", "Tip": "", "Largura": "", "Qtd Bobina": totalGeralQtd, "Peso Total (kg)": formatarPeso(totalGeralPeso) },
-        { "Código": "", "Descrição": "", "Tip": "", "Largura": "", "Qtd Bobina": "", "Peso Total (kg)": "" }
-    ];
-
-    Object.keys(totaisPorTipo).sort().forEach(tipo => {
-        finalData.push({
-            "Código": "", "Descrição": "", "Tip": tipo, "Largura": "", "Qtd Bobina": "", "Peso Total (kg)": formatarPeso(totaisPorTipo[tipo])
-        });
-    });
-
-    exportToCSV(finalData, 'saldo_estoque_b2');
-}}
-  className="h-8 text-xs bg-indigo-900/20 text-indigo-400 border-indigo-900/50 hover:bg-indigo-900/40"
->
-  <Download size={14}/> CSV
-</Button></div></div>
-                     <div className="relative"><Search className="absolute left-2 top-2 text-gray-500" size={14}/><input type="text" placeholder="Buscar..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-blue-500 outline-none" value={dashSearchB2} onChange={e => setDashSearchB2(e.target.value)} /></div>
-                 </div>
-                 <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
-                   <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
-                     <thead className="bg-gray-900/50 text-gray-500 sticky top-0"><tr><th className="p-3 rounded-l-lg">Código</th><th className="p-3 text-center">Qtd</th><th className="p-3 text-right">Peso</th><th className="p-3 text-center rounded-r-lg">Ver</th></tr></thead>
-                     <tbody className="divide-y divide-gray-700/50">
-                        {paginatedChildStock.map(row => (
-                          <tr key={row.code} className="hover:bg-gray-700/30 transition-colors">
-                            <td className="p-3 font-medium text-white" title={row.name}>{row.code}</td><td className="p-3 text-center font-bold text-white">{row.count}</td><td className="p-3 text-right font-mono text-gray-300">{(Number(row.weight)||0).toFixed(0)}</td><td className="p-3 text-center"><button onClick={() => handleViewStockDetails(row.code, 'b2')} className="p-2 hover:text-white text-gray-400"><Eye size={18}/></button></td>
-                          </tr>
-                        ))}
-                     </tbody>
-                   </table>
-                 </div>
-                 <PaginationControls currentPage={childPage} totalItems={filteredB2List.length} itemsPerPage={ITEMS_LIMIT} onPageChange={setChildPage} />
-               </Card>
-
-               {/* TABELA 3: ACABADO */}
-               <Card id="dash-finished" className="h-[500px] flex flex-col border-l-4 border-emerald-500/50 overflow-hidden">
-                 <div className="mb-4">
-                     <div className="flex justify-between items-center mb-2"><h3 className="font-bold text-gray-200 flex items-center gap-2 text-lg"><Package className="text-emerald-500"/> Produto Acabado</h3><div className="flex gap-2"><Button variant="secondary" onClick={() => { const data = filteredFinishedList.map(i => ({ code: i.code, name: i.name, count: i.count })); handleGeneratePDF('Produto Acabado', data); }} className="h-8 text-xs bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40" title="Gerar PDF"><FileText size={14}/> PDF</Button><Button variant="secondary" onClick={() => { const data = filteredFinishedList.map(i => ({ "Código": i.code, "Produto": i.name, "Saldo Atual": i.count })); exportToCSV(data, 'saldo_produto_acabado'); }} className="h-8 text-xs bg-emerald-900/20 text-emerald-400 border-emerald-900/50 hover:bg-emerald-900/40" title="Baixar CSV"><Download size={14}/> CSV</Button></div></div>
-                     <div className="relative"><Search className="absolute left-2 top-2 text-gray-500" size={14}/><input type="text" placeholder="Buscar produto..." className="w-full bg-gray-900 border border-gray-700 rounded-lg py-1.5 pl-8 text-xs text-white focus:border-blue-500 outline-none" value={dashSearchFinished} onChange={e => setDashSearchFinished(e.target.value)} /></div>
-                 </div>
-                 <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar-dark">
-                   <table className="w-full text-sm text-left text-gray-300 min-w-[300px]">
-                     <thead className="bg-gray-900/50 text-gray-500 sticky top-0"><tr><th className="p-3 rounded-l-lg">Produto</th><th className="p-3 text-right">Total</th><th className="p-3 text-center rounded-r-lg">Ações</th></tr></thead>
-                     <tbody className="divide-y divide-gray-700/50">
-                        {paginatedFinishedStock.length === 0 && <tr><td colSpan="3" className="p-4 text-center text-gray-600 italic">Nada encontrado.</td></tr>}
-                        {paginatedFinishedStock.map(row => (
-                          <tr key={row.code} className="hover:bg-gray-700/30 transition-colors">
-                            <td className="p-3"><div className="font-bold text-white">{row.code}</div><div className="text-[10px] text-gray-400 truncate max-w-[150px]" title={row.name}>{row.name}</div></td>
-                            <td className="p-3 text-right font-mono text-emerald-400 font-bold text-lg">{row.count}</td>
-                             <td className="p-3 text-center">
-                                <div className="flex justify-center gap-2">
-                                    <button onClick={() => { setSelectedGroupData({code: row.code, name: row.name}); setShowHistoryModal(true); }} className="p-1.5 bg-gray-700 text-gray-300 rounded hover:bg-blue-600 hover:text-white transition-colors" title="Ver Lotes"><List size={16}/></button>
-                                    <button onClick={() => { setSelectedProductForHistory(row); }} className="p-1.5 bg-gray-700 text-gray-300 rounded hover:bg-emerald-600 hover:text-white transition-colors" title="Imprimir"><Printer size={16}/></button>
-                                </div>
-                             </td>
-                          </tr>
-                        ))}
-                     </tbody>
-                   </table>
-                 </div>
-                 <PaginationControls currentPage={finishedPage} totalItems={filteredFinishedList.length} itemsPerPage={ITEMS_LIMIT} onPageChange={setFinishedPage} />
-               </Card>
-            </div>
-            
-            
-          </div>
-        );
-    } catch (err) {
-        return <div className="p-10 text-center text-red-500">Erro no Dashboard: {err.message}</div>;
-    }
-  };
+  const renderDashboard = () => (
+    <Dashboard
+      motherCoils={motherCoils}
+      childCoils={childCoils}
+      productionLogs={productionLogs}
+      shippingLogs={shippingLogs}
+      cuttingLogs={cuttingLogs}
+      motherCatalog={motherCatalog}
+      productCatalog={productCatalog}
+      getUnitWeight={getUnitWeight}
+      exportToExcelXml={exportToExcelXml}
+      exportToCSV={exportToCSV}
+      onViewStockDetails={handleViewStockDetails}
+      onViewProductHistory={(product) => {
+        setSelectedGroupData(product);
+        setShowHistoryModal(true);
+      }}
+      onPrintProduct={handleReprintStockBalance}
+      eventLogs={eventLogs}
+      eventLogsLoading={eventLogsLoading}
+      onViewEventDetails={handleViewEventDetails}
+    />
+  );
 
 // --- AUXILIARES --- //
 const formatKgToT = (kg) => {
@@ -6355,7 +5973,14 @@ const handleUploadJSONToFirebase = async (e) => {
       </div>
 
       {showCatalogModal && renderCatalogModal()}
-      {showPrintModal && <PrintLabelsModal items={itemsToPrint} type={printType} onClose={() => setShowPrintModal(false)} />}
+      {showPrintModal && (
+        <PrintLabelsModal
+          items={itemsToPrint}
+          type={printType}
+          motherCatalog={motherCatalog}
+          onClose={() => setShowPrintModal(false)}
+        />
+      )}
       {stockDetailsModalOpen && viewingStockCode && (
         <StockDetailsModal 
           code={viewingStockCode}
@@ -6365,6 +5990,7 @@ const handleUploadJSONToFirebase = async (e) => {
               ? motherCoils.filter(c => String(c.code) === String(viewingStockCode) && c.status === 'stock')
               : childCoils.filter(c => c.b2Code === viewingStockCode && c.status === 'stock')
           }
+          motherCatalog={motherCatalog}
           onClose={() => setStockDetailsModalOpen(false)}
           onReprint={handleReprintSingle}
         />
@@ -6422,10 +6048,9 @@ const handleUploadJSONToFirebase = async (e) => {
   <ProductHistoryModal
     product={selectedGroupData}
     logs={
-      selectedGroupData.context === 'CORTE' ||
-      selectedGroupData.type === 'CORTE'
-        ? cuttingLogs          // cortes
-        : productionLogs       // produção
+      selectedGroupData.context === 'CORTE' || selectedGroupData.type === 'CORTE'
+        ? cuttingLogs // cortes
+        : dedupeProductionLogs(productionLogs) // produção
     }
     motherCoils={motherCoils}  // 👈 NOVO
     onClose={() => setShowHistoryModal(false)}
