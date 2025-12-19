@@ -1,7 +1,6 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
-  AlertCircle,
   Eye,
   Factory,
   History,
@@ -11,6 +10,9 @@ import {
   Boxes,
 } from 'lucide-react';
 import { EVENT_TYPES, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS } from '../../utils/constants';
+import PaginationControls from '../common/PaginationControls';
+
+const ITEMS_PER_PAGE = 8;
 
 const TYPE_ICON = {
   [EVENT_TYPES.MP_ENTRY]: Package,
@@ -165,11 +167,24 @@ const groupProductionEvents = (events, productionLogs = []) => {
 };
 
 export const LatestMovementsPanel = ({ events = [], isLoading = false, onViewDetails, productionLogs = [] }) => {
+  const [currentPage, setCurrentPage] = useState(1);
   const sortedEvents = groupProductionEvents([...events], productionLogs).sort((a, b) => {
     const aTime = toTimestamp(a.timestamp || a.createdAt || a.raw?.timestamp);
     const bTime = toTimestamp(b.timestamp || b.createdAt || b.raw?.timestamp);
     return bTime - aTime;
   });
+  const paginatedEvents = useMemo(
+    () =>
+      sortedEvents.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE,
+      ),
+    [sortedEvents, currentPage],
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [sortedEvents.length]);
 
   const renderEmpty = () => (
     <div className="text-center text-gray-500 py-8">Nenhum movimento registrado.</div>
@@ -198,7 +213,7 @@ export const LatestMovementsPanel = ({ events = [], isLoading = false, onViewDet
         ) : sortedEvents.length === 0 ? (
           renderEmpty()
         ) : (
-          sortedEvents.slice(0, 15).map((event) => {
+          paginatedEvents.map((event) => {
             const Icon = TYPE_ICON[event.eventType] || Activity;
             const label = EVENT_TYPE_LABELS[event.eventType] || event.eventType;
             const color = EVENT_TYPE_COLORS[event.eventType] || 'text-gray-400';
@@ -263,12 +278,12 @@ export const LatestMovementsPanel = ({ events = [], isLoading = false, onViewDet
         )}
       </div>
 
-      {sortedEvents.length > 15 && (
-        <div className="mt-3 pt-3 border-t border-gray-800 text-xs text-gray-500 flex items-center gap-2">
-          <AlertCircle size={14} />
-          Mostrando 15 de {sortedEvents.length} registros. Utilize o relatorio completo para mais detalhes.
-        </div>
-      )}
+      <PaginationControls
+        currentPage={currentPage}
+        totalItems={sortedEvents.length}
+        itemsPerPage={ITEMS_PER_PAGE}
+        onPageChange={setCurrentPage}
+      />
     </div>
   );
 };
