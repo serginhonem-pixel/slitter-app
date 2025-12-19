@@ -43,6 +43,7 @@ export const StockTabs = ({
   eventLogs = [],
   eventLogsLoading = false,
   onViewEventDetails,
+  productionLogs = [],
 }) => {
   const [activeTab, setActiveTab] = useState('mother');
 
@@ -134,6 +135,7 @@ export const StockTabs = ({
               events={eventLogs}
               isLoading={eventLogsLoading}
               onViewDetails={onViewEventDetails}
+              productionLogs={productionLogs}
             />
           </div>
         ),
@@ -148,13 +150,14 @@ export const StockTabs = ({
       onExportMother,
       onExportShipments,
       onPrintProduct,
-      eventLogs,
-      eventLogsLoading,
-      onViewEventDetails,
-      onViewProductHistory,
-      onViewStockDetails,
-      shipments,
-    ],
+    eventLogs,
+    eventLogsLoading,
+    onViewEventDetails,
+    onViewProductHistory,
+    onViewStockDetails,
+    productionLogs,
+    shipments,
+  ],
   );
 
   const activeTabDefinition = tabs.find((tab) => tab.id === activeTab) || tabs[0];

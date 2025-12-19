@@ -31,6 +31,23 @@ const formatDateTime = (value) => {
   });
 };
 
+const toTimestamp = (value) => {
+  if (!value) return 0;
+  if (typeof value === 'number') return value;
+  if (typeof value !== 'string') return 0;
+  const trimmed = value.trim();
+  if (!trimmed) return 0;
+  if (trimmed.includes('/')) {
+    const [datePart, timePart = '00:00'] = trimmed.split(' ');
+    const [day, month, year] = datePart.split('/');
+    const iso = `${year}-${month}-${day}T${timePart}`;
+    const parsed = Date.parse(iso);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  const parsed = Date.parse(trimmed);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
 const buildSummary = (event) => {
   const { eventType, details = {}, raw } = event;
   if (eventType === EVENT_TYPES.MP_ENTRY) {
@@ -42,24 +59,118 @@ const buildSummary = (event) => {
     return `Entrada B2 ${details.b2Code || raw?.b2Code || event.sourceId} (${details.weight || raw?.weight || '-'} kg)`;
   }
   if (eventType === EVENT_TYPES.B2_CUT) {
-    return `Corte da bobina ${details.motherCode || raw?.motherCode || event.sourceId} • ${
+    return `Corte da bobina ${details.motherCode || raw?.motherCode || event.sourceId} - ${
       details.newChildCount || raw?.outputCount || 0
-    } B2 • Sucata ${details.scrap ?? raw?.scrap ?? 0} kg`;
+    } B2 - Sucata ${details.scrap ?? raw?.scrap ?? 0} kg`;
   }
   if (eventType === EVENT_TYPES.PA_PRODUCTION) {
-    return `Produção ${details.productCode || raw?.productCode || event.sourceId} • ${
+    const lotLabel = details.lotBaseId ? `Lote ${details.lotBaseId} - ` : '';
+    return `${lotLabel}Produ\u00e7\u00e3o ${details.productCode || raw?.productCode || event.sourceId} - ${
       details.pieces || raw?.pieces || 0
-    } peças`;
+    } pe\u00e7as`;
   }
   if (eventType === EVENT_TYPES.PA_SHIPPING) {
-    return `Expedição ${details.productCode || raw?.productCode || event.sourceId} • ${
+    return `Expedi\u00e7\u00e3o ${details.productCode || raw?.productCode || event.sourceId} - ${
       details.quantity || raw?.quantity || 0
-    } peças`;
+    } pe\u00e7as`;
   }
   return details.description || '-';
 };
 
-export const LatestMovementsPanel = ({ events = [], isLoading = false, onViewDetails }) => {
+const getProductionGroupKey = (event) => {
+  if (!event || event.eventType !== EVENT_TYPES.PA_PRODUCTION) return null;
+  const tracking = event.raw?.trackingId || event.details?.trackingId;
+  if (!tracking) return null;
+  const parts = String(tracking).split('-');
+  if (parts.length <= 1) return tracking;
+  return parts.slice(0, -1).join('-');
+};
+
+const getLogKey = (log) => {
+  if (!log) return '';
+  if (log.id) return String(log.id);
+  const tracking = log.trackingId || '';
+  const pack = log.packIndex || '';
+  const date = log.date || '';
+  const qty = log.pieces || '';
+  return `${tracking}|${pack}|${date}|${qty}`;
+};
+
+const getLotLogs = (groupKey, productionLogs) => {
+  if (!groupKey || !Array.isArray(productionLogs)) return [];
+  const logs = productionLogs.filter((log) =>
+    String(log.trackingId || '').startsWith(String(groupKey)),
+  );
+  const unique = new Map();
+  logs.forEach((log) => {
+    const key = getLogKey(log);
+    if (!key || unique.has(key)) return;
+    unique.set(key, log);
+  });
+  return Array.from(unique.values());
+};
+
+const groupProductionEvents = (events, productionLogs = []) => {
+  const result = [];
+  const map = new Map();
+
+  events.forEach((event) => {
+    const groupKey = getProductionGroupKey(event);
+    if (!groupKey) {
+      result.push(event);
+      return;
+    }
+
+    if (!map.has(groupKey)) {
+      const lotLogs = getLotLogs(groupKey, productionLogs);
+      const lotPieces = lotLogs.reduce(
+        (acc, log) => acc + (Number(log?.pieces) || 0),
+        0,
+      );
+      const clone = {
+        ...event,
+        details: {
+          ...event.details,
+          lotBaseId: groupKey,
+          productCode:
+            event.details?.productCode || lotLogs[0]?.productCode || event.raw?.productCode,
+          productName:
+            event.details?.productName || lotLogs[0]?.productName || event.raw?.productName,
+          pieces: lotPieces || Number(event.details?.pieces || event.raw?.pieces || 0),
+        },
+        referenceId: groupKey,
+        rawLogs: lotLogs,
+        targetIds: lotLogs.map((log) => log.id),
+      };
+      map.set(groupKey, clone);
+      result.push(clone);
+      return;
+    }
+
+    const grouped = map.get(groupKey);
+    if (!productionLogs.length) {
+      const pieces = Number(event.details?.pieces || event.raw?.pieces || 0);
+      grouped.details = {
+        ...grouped.details,
+        pieces: Number(grouped.details?.pieces || 0) + pieces,
+      };
+    }
+    if (!grouped.rawLogs?.length && event.raw) grouped.rawLogs = [event.raw];
+    if ((!grouped.targetIds || grouped.targetIds.length === 0) && Array.isArray(event.targetIds)) {
+      grouped.targetIds = Array.from(new Set(event.targetIds));
+    }
+  });
+
+  return result;
+};
+
+export const LatestMovementsPanel = ({ events = [], isLoading = false, onViewDetails, productionLogs = [] }) => {
+  const sortedEvents = groupProductionEvents([...events], productionLogs).sort((a, b) => {
+    const aTime = toTimestamp(a.timestamp || a.createdAt || a.raw?.timestamp);
+    const bTime = toTimestamp(b.timestamp || b.createdAt || b.raw?.timestamp);
+    return bTime - aTime;
+  });
+
   const renderEmpty = () => (
     <div className="text-center text-gray-500 py-8">Nenhum movimento registrado.</div>
   );
@@ -69,9 +180,9 @@ export const LatestMovementsPanel = ({ events = [], isLoading = false, onViewDet
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <History size={20} className="text-blue-400" />
-          <h3 className="text-lg font-bold text-white">Últimos Movimentos</h3>
-          {events.length > 0 && (
-            <span className="text-xs text-gray-500 ml-2">({events.length} registros)</span>
+          <h3 className="text-lg font-bold text-white">Ultimos Movimentos</h3>
+          {sortedEvents.length > 0 && (
+            <span className="text-xs text-gray-500 ml-2">({sortedEvents.length} registros)</span>
           )}
         </div>
         {isLoading && (
@@ -82,12 +193,12 @@ export const LatestMovementsPanel = ({ events = [], isLoading = false, onViewDet
       </div>
 
       <div className="space-y-2 overflow-y-auto custom-scrollbar-dark flex-1 min-h-[260px]">
-        {isLoading && events.length === 0 ? (
+        {isLoading && sortedEvents.length === 0 ? (
           <div className="text-center text-gray-500 py-8">Carregando movimentações...</div>
-        ) : events.length === 0 ? (
+        ) : sortedEvents.length === 0 ? (
           renderEmpty()
         ) : (
-          events.slice(0, 15).map((event) => {
+          sortedEvents.slice(0, 15).map((event) => {
             const Icon = TYPE_ICON[event.eventType] || Activity;
             const label = EVENT_TYPE_LABELS[event.eventType] || event.eventType;
             const color = EVENT_TYPE_COLORS[event.eventType] || 'text-gray-400';
@@ -118,7 +229,10 @@ export const LatestMovementsPanel = ({ events = [], isLoading = false, onViewDet
                       <div>
                         <p className={`text-sm font-semibold ${color}`}>{label}</p>
                         <p className="text-xs text-gray-400 font-mono break-all">
-                          ID referência: {referenceId}
+                          Movimento ID: {event.id || '-'}
+                        </p>
+                        <p className="text-xs text-gray-400 font-mono break-all">
+                          ID referencia: {referenceId}
                         </p>
                         <p className="text-sm text-gray-300 mt-1">{summary}</p>
                       </div>
@@ -149,10 +263,10 @@ export const LatestMovementsPanel = ({ events = [], isLoading = false, onViewDet
         )}
       </div>
 
-      {events.length > 15 && (
+      {sortedEvents.length > 15 && (
         <div className="mt-3 pt-3 border-t border-gray-800 text-xs text-gray-500 flex items-center gap-2">
           <AlertCircle size={14} />
-          Mostrando 15 de {events.length} registros. Utilize o relatório completo para mais detalhes.
+          Mostrando 15 de {sortedEvents.length} registros. Utilize o relatorio completo para mais detalhes.
         </div>
       )}
     </div>
@@ -160,3 +274,4 @@ export const LatestMovementsPanel = ({ events = [], isLoading = false, onViewDet
 };
 
 export default LatestMovementsPanel;
+

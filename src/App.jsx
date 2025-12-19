@@ -46,6 +46,8 @@ import {
 
 
 import CutDetailsModal from './components/modals/CutDetailsModal';
+import CutEventDetailsModal from './components/modals/CutEventDetailsModal';
+import ProductionEventDetailsModal from './components/modals/ProductionEventDetailsModal';
 import EditMotherCoilModal from './components/modals/EditMotherCoilModal';
 import InoxBlanksPlanner from "./components/modals/InoxBlanksPlanner";
 import ProductHistoryModal from './components/modals/ProductHistoryModal';
@@ -343,8 +345,7 @@ const DailyGlobalModal = ({ group, onClose }) => {
               <thead className="bg-gray-900 text-gray-400 sticky top-0">
                 <tr>
                   <th className="p-2">Movimento ID</th>
-                  <th className="p-2">{typeKey === 'PRODUCAO' ? 'Lote' : 'Código'}</th>
-                  <th className="p-2">Produto</th>
+                  <th className="p-2">{typeKey === 'PRODUCAO' ? 'Lote' : 'Produto'}</th>
                   <th className="p-2">Descrição</th>
                   <th className="p-2 text-right">Qtd</th>
                   <th className="p-2 text-right">Peso</th>
@@ -358,9 +359,6 @@ const DailyGlobalModal = ({ group, onClose }) => {
                     </td>
                     <td className="p-2 font-mono text-xs text-blue-300">
                       {typeKey === 'PRODUCAO' ? e.id : (e.code || e.id)}
-                    </td>
-                    <td className="p-2 font-mono text-xs text-gray-300">
-                      {e.code || '-'}
                     </td>
                     <td className="p-2 text-gray-300">
                       {e.desc}
@@ -531,10 +529,13 @@ const ReportGroupModal = ({ group, onClose }) => {
              <table className="w-full text-sm text-left text-gray-300">
                 <thead className="bg-gray-800 text-gray-400 sticky top-0 shadow-md">
                   <tr>
-                    {/* CABEÇALHOS DINÂMICOS */}
-                    {isMP && <><th className="p-3">Código</th><th className="p-3">Material</th><th className="p-3">NF</th><th className="p-3 text-right">Peso</th></>}
-                    {isCut && <><th className="p-3">Mãe Origem</th><th className="p-3">Saída (Bobinas 2)</th><th className="p-3 text-right">Sucata</th><th className="p-3 text-right">Peso Consumido</th></>}
-                    {(isProd || isShip) && <><th className="p-3">Lote/ID</th><th className="p-3">Produto</th><th className="p-3">Detalhes</th><th className="p-3 text-right">Qtd</th><th className="p-3 text-right">Peso</th></>}
+                    <th className="p-3">Data</th>
+                    <th className="p-3">Movimento</th>
+                    <th className="p-3">Movimento ID</th>
+                    <th className="p-3">Hist\u00f3rico / Documento</th>
+                    <th className="p-3 text-right text-emerald-400">Entrada</th>
+                    <th className="p-3 text-right text-red-400">Sa\u00edda</th>
+                    <th className="p-3 text-right font-bold text-white bg-gray-800 border-l border-gray-700">Saldo Acumulado</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700">
@@ -607,9 +608,10 @@ const MpDetailsModal = ({ data, onClose }) => {
                   <tr>
                     <th className="p-3">Data</th>
                     <th className="p-3">Movimento</th>
-                    <th className="p-3">Histórico / Documento</th>
+                    <th className="p-3">Movimento ID</th>
+                    <th className="p-3">Hist\u00f3rico / Documento</th>
                     <th className="p-3 text-right text-emerald-400">Entrada</th>
-                    <th className="p-3 text-right text-red-400">Saída</th>
+                    <th className="p-3 text-right text-red-400">Sa\u00edda</th>
                     <th className="p-3 text-right font-bold text-white bg-gray-800 border-l border-gray-700">Saldo Acumulado</th>
                   </tr>
                 </thead>
@@ -617,7 +619,7 @@ const MpDetailsModal = ({ data, onClose }) => {
                   
                   {/* LINHA 0: SALDO ANTERIOR */}
                   <tr className="bg-gray-900/50">
-                      <td className="p-3 text-xs text-gray-500 font-bold" colSpan="5">SALDO ANTERIOR (INÍCIO DO PERÍODO)</td>
+                      <td className="p-3 text-xs text-gray-500 font-bold" colSpan="7">SALDO ANTERIOR (INÍCIO DO PERÍODO)</td>
                       <td className="p-3 text-right font-bold text-gray-400 font-mono border-l border-gray-700">
                           {data.initialBalance.toLocaleString('pt-BR')}
                       </td>
@@ -639,6 +641,7 @@ const MpDetailsModal = ({ data, onClose }) => {
                                     {row.type}
                                 </span>
                             </td>
+                            <td className="p-3 font-mono text-[10px] text-gray-400">{row.movementId || '-'}</td>
                             <td className="p-3">
                                 <div className="text-gray-200">{isEntry ? 'Entrada Nota Fiscal' : 'Consumo Slitter'}</div>
                                 <div className="text-[10px] text-gray-500">{row.detail}</div>
@@ -1193,6 +1196,8 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [viewingCutLog, setViewingCutLog] = useState(null); // Para abrir o modal de detalhes do corte
+  const [viewingCutEvent, setViewingCutEvent] = useState(null);
+  const [viewingProductionEvent, setViewingProductionEvent] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   // --- ESTADOS PARA O RELATÓRIO DINÂMICO B2 ---
   const [b2ReportSearch, setB2ReportSearch] = useState('');
@@ -2179,9 +2184,15 @@ export default function App() {
         user?.uid || 'local-dev',
         {
           totalWeight: totalCutsWeight,
+          inputWeight: totalCutsWeight,
           scrap: manualScrap,
           date: cuttingDate,
           motherCode: mother.code,
+          motherMaterial: mother.material,
+          originalWeight: mother.originalWeight || mother.weight,
+          remainingWeight: motherUpdateData.remainingWeight,
+          generatedItems: newCutLog.generatedItems,
+          cuttingLogId: savedLog.id,
           childCount: savedChildrenReal.length,
           userEmail: user?.email || 'offline@local',
         },
@@ -2419,6 +2430,8 @@ export default function App() {
             pieces: total,
             scrap: prodScrap,
             childIds: sourceIds,
+            trackingId: baseTrackingId,
+            lotBaseId: baseTrackingId,
             date,
             userEmail: user?.email || 'offline@local',
           },
@@ -2597,7 +2610,12 @@ export default function App() {
     if (!event) return;
     const { eventType, sourceId, details = {}, raw = {} } = event;
 
-    if (eventType === EVENT_TYPES.MP_ENTRY || eventType === EVENT_TYPES.B2_CUT) {
+    if (eventType === EVENT_TYPES.B2_CUT) {
+      setViewingCutEvent(event);
+      return;
+    }
+
+    if (eventType === EVENT_TYPES.MP_ENTRY) {
       const code = details.motherCode || details.code || raw.motherCode || sourceId;
       if (code) handleViewStockDetails(code, 'mother');
       return;
@@ -2609,7 +2627,12 @@ export default function App() {
       return;
     }
 
-    if (eventType === EVENT_TYPES.PA_PRODUCTION || eventType === EVENT_TYPES.PA_SHIPPING) {
+    if (eventType === EVENT_TYPES.PA_PRODUCTION) {
+      setViewingProductionEvent(event);
+      return;
+    }
+
+    if (eventType === EVENT_TYPES.PA_SHIPPING) {
       const productCode = details.productCode || raw.productCode || sourceId;
       openProductHistoryFromCode(productCode, details.productName || raw.productName);
       return;
@@ -4242,6 +4265,7 @@ const handleGlobalDetail = (group) => {
       timestamp: getTimestamp(m.date),
       type: 'ENTRADA',
       weightChange: w,
+      movementId: m.id || '',
       width, // guarda largura no movimento
       desc: m.material,
       detail: `NF: ${m.nf || '-'}`,
@@ -4297,6 +4321,7 @@ const handleGlobalDetail = (group) => {
     timestamp: getTimestamp(c.date),
     type: 'SAÍDA',
     weightChange: -w,
+    movementId: c.id || '',
     width: movementsMap[key].width,
     desc: movementsMap[key].desc,
     detail, // 👈 é isso que aparece no modal em {row.detail}
@@ -6074,6 +6099,23 @@ const handleUploadJSONToFirebase = async (e) => {
         <CutDetailsModal 
             log={viewingCutLog} 
             onClose={() => setViewingCutLog(null)} 
+        />
+      )}
+      {viewingCutEvent && (
+        <CutEventDetailsModal
+          event={viewingCutEvent}
+          motherCoils={motherCoils}
+          childCoils={childCoils}
+          cuttingLogs={cuttingLogs}
+          onClose={() => setViewingCutEvent(null)}
+        />
+      )}
+      {viewingProductionEvent && (
+        <ProductionEventDetailsModal
+          event={viewingProductionEvent}
+          productionLogs={productionLogs}
+          childCoils={childCoils}
+          onClose={() => setViewingProductionEvent(null)}
         />
       )}
       {reportGroupData && (

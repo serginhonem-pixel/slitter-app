@@ -404,6 +404,7 @@ const Dashboard = ({
         eventLogs={derivedEventLogs}
         eventLogsLoading={eventLogsLoading}
         onViewEventDetails={onViewEventDetails}
+        productionLogs={productionLogs}
       />
     </div>
   );
