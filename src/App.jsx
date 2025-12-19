@@ -7,7 +7,7 @@ import Login from './components/Login';
 import IndicatorsDashboard from './components/modals/IndicatorsDashboard.jsx';
 import Button from './components/ui/Button';
 
-import { auth, db, deleteFromDb, loadFromDb, logoutUser, saveToDb, updateInDb } from './services/api'; // Certifique-se de exportar 'db' no seu arquivo de configuração
+import { auth, db, deleteFromDb, isLocalHost, loadFromDb, logoutUser, saveToDb, updateInDb } from './services/api'; // Certifique-se de exportar 'db' no seu arquivo de configuração
 
 import { onAuthStateChanged } from 'firebase/auth';
 import {
@@ -162,6 +162,12 @@ const ReportFilters = ({
   </Card>
 );
 
+const normalizeTypeKey = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+
 const GlobalStatsSummary = ({ stats }) => {
   const entries = [
     {
@@ -250,14 +256,14 @@ const GlobalTimelineOverview = ({ timeline, onExport, onViewDetail, getTypeColor
                 <td className="p-3 text-xs text-gray-400 font-mono">{g.date}</td>
                 <td className={`p-3 font-bold text-xs ${getTypeColor(g.type)}`}>{g.type}</td>
                 <td className="p-3 text-white">
-                  {g.type === 'ENTRADA MP' &&
+                  {normalizeTypeKey(g.type) === 'ENTRADA MP' &&
                     `Entradas de MP (${g.events.length} registro${g.events.length !== 1 ? 's' : ''})`}
-                  {g.type === 'CORTE' &&
+                  {normalizeTypeKey(g.type) === 'CORTE' &&
                     `Cortes Slitter (${g.events.length} registro${g.events.length !== 1 ? 's' : ''})`}
-                  {g.type === 'PRODUÇÎÇŸO' &&
-                    `Produções de PA (${g.events.length} registro${g.events.length !== 1 ? 's' : ''})`}
-                  {g.type === 'EXPEDIÇÎÇŸO' &&
-                    `Expedições de PA (${g.events.length} registro${g.events.length !== 1 ? 's' : ''})`}
+                  {normalizeTypeKey(g.type) === 'PRODUCAO' &&
+                    `Produ\u00e7\u00f5es de PA (${g.events.length} registro${g.events.length !== 1 ? 's' : ''})`}
+                  {normalizeTypeKey(g.type) === 'EXPEDICAO' &&
+                    `Expedi\u00e7\u00f5es de PA (${g.events.length} registro${g.events.length !== 1 ? 's' : ''})`}
                 </td>
                 <td className="p-3 text-right text-gray-300">{g.totalQty}</td>
                 <td className="p-3 text-right font-mono text-gray-300">
@@ -286,14 +292,27 @@ const GlobalTimelineOverview = ({ timeline, onExport, onViewDetail, getTypeColor
 const DailyGlobalModal = ({ group, onClose }) => {
   const { type, date, events, totalQty, totalWeight } = group;
 
+  const typeKey = normalizeTypeKey(type);
+  const displayEvents = Array.isArray(events) ? events : [];
+  const displayCount = displayEvents.length;
+  const displayTotals = displayEvents.reduce(
+    (acc, item) => {
+      const qty = Number(item?.qty) || 0;
+      const weight = Number(item?.weight) || 0;
+      acc.qty += qty;
+      acc.weight += weight;
+      return acc;
+    },
+    { qty: 0, weight: 0 },
+  );
   const titleMap = {
-    'ENTRADA MP': 'Entradas de Matéria-Prima',
+    'ENTRADA MP': 'Entradas de Mat\u00e9ria-Prima',
     CORTE: 'Cortes Slitter',
-    PRODUÇÃO: 'Produção de PA',
-    EXPEDIÇÃO: 'Expedição de PA',
+    PRODUCAO: 'Produ\u00e7\u00e3o de PA',
+    EXPEDICAO: 'Expedi\u00e7\u00e3o de PA',
   };
 
-  const title = titleMap[type] || type;
+  const title = titleMap[typeKey] || type;
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
@@ -302,8 +321,8 @@ const DailyGlobalModal = ({ group, onClose }) => {
           <div>
             <h3 className="text-white font-bold text-lg">{title}</h3>
             <p className="text-gray-400 text-sm">
-              Dia {date} • {events.length} registro
-              {events.length !== 1 ? 's' : ''}
+              Dia {date} - {displayCount} registro
+              {displayCount !== 1 ? 's' : ''}
             </p>
           </div>
           <button
@@ -315,7 +334,7 @@ const DailyGlobalModal = ({ group, onClose }) => {
         </div>
 
         <div className="p-4 overflow-y-auto flex-1 custom-scrollbar-dark">
-          {events.length === 0 ? (
+          {displayEvents.length === 0 ? (
             <div className="text-center text-gray-500 py-8">
               Nenhum registro.
             </div>
@@ -323,17 +342,25 @@ const DailyGlobalModal = ({ group, onClose }) => {
             <table className="w-full text-sm text-left text-gray-300">
               <thead className="bg-gray-900 text-gray-400 sticky top-0">
                 <tr>
-                  <th className="p-2">Código</th>
+                  <th className="p-2">Movimento ID</th>
+                  <th className="p-2">{typeKey === 'PRODUCAO' ? 'Lote' : 'Código'}</th>
+                  <th className="p-2">Produto</th>
                   <th className="p-2">Descrição</th>
                   <th className="p-2 text-right">Qtd</th>
                   <th className="p-2 text-right">Peso</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-700">
-                {events.map((e, idx) => (
+                {displayEvents.map((e, idx) => (
                   <tr key={idx} className="hover:bg-gray-700/50">
                     <td className="p-2 font-mono text-xs text-blue-300">
-                      {e.id}
+                      {e.movementId || '-'}
+                    </td>
+                    <td className="p-2 font-mono text-xs text-blue-300">
+                      {typeKey === 'PRODUCAO' ? e.id : (e.code || e.id)}
+                    </td>
+                    <td className="p-2 font-mono text-xs text-gray-300">
+                      {e.code || '-'}
                     </td>
                     <td className="p-2 text-gray-300">
                       {e.desc}
@@ -358,8 +385,8 @@ const DailyGlobalModal = ({ group, onClose }) => {
 
         <div className="p-3 border-t border-gray-700 bg-gray-900/50 flex justify-between items-center">
           <span className="text-xs text-gray-500">
-            Total: {totalQty} registros •{' '}
-            {totalWeight.toLocaleString('pt-BR', {
+            Total: {displayTotals.qty} registros -{' '}
+            {displayTotals.weight.toLocaleString('pt-BR', {
               minimumFractionDigits: 1,
               maximumFractionDigits: 1,
             })}{' '}
@@ -1295,7 +1322,7 @@ export default function App() {
     return localStorage.getItem('currentFileName') || 'Nenhum arquivo carregado';
   });
 
-  const USE_LOCAL_JSON = window.location.hostname === 'localhost';
+  const USE_LOCAL_JSON = isLocalHost();
   // true no npm run dev, false no build/Vercel
 
   const {
@@ -2929,7 +2956,7 @@ export default function App() {
             <div className="grid grid-cols-3 gap-2">
               <div className="col-span-3">
                 <label className="block text-xs font-bold text-blue-400/70 uppercase mb-1">
-                  Tipo de Mat?ria-prima
+                  Tipo de Matéria-prima
                 </label>
                 <div className="flex gap-2">
                   <button
@@ -4084,9 +4111,11 @@ const renderReports = () => {
   };
 
   const getTypeColor = (type) => {
-    if (type === 'ENTRADA MP') return 'text-blue-400';
-    if (type === 'CORTE') return 'text-purple-400';
-    if (type === 'PRODUÇÃO') return 'text-emerald-400';
+    const typeKey = normalizeTypeKey(type);
+    if (typeKey === 'ENTRADA MP') return 'text-blue-400';
+    if (typeKey === 'CORTE') return 'text-purple-400';
+    if (typeKey === 'PRODUCAO') return 'text-emerald-400';
+    if (typeKey === 'EXPEDICAO') return 'text-amber-400';
     return 'text-amber-400';
   };
 
@@ -4165,7 +4194,9 @@ const handleGlobalDetail = (group) => {
   // Arrays seguros
   const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
   const safeCutting = Array.isArray(cuttingLogs) ? cuttingLogs : [];
-  const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
+  const safeProd = Array.isArray(productionLogs)
+    ? dedupeProductionLogs(productionLogs)
+    : [];
   const safeShipping = Array.isArray(shippingLogs) ? shippingLogs : [];
 
   // =================================================================================
@@ -4349,7 +4380,9 @@ const handleGlobalDetail = (group) => {
     rawGlobalEvents.push({
       rawDate: m.date,
       type: 'ENTRADA MP',
-      id: m.code || '?',
+      id: m.id || m.code || '?',
+      movementId: m.id || '',
+      code: m.code || '?',
       desc: m.material || '-',
       qty: 1,
       weight: safeNum(m.originalWeight) || safeNum(m.weight),
@@ -4384,7 +4417,9 @@ safeCutting.forEach((c) => {
   rawGlobalEvents.push({
     rawDate: c.date,
     type: 'CORTE',
-    id: code,
+    id: c.id || code,
+    movementId: c.id || '',
+    code,
     desc,
     qty,
     weight,
@@ -4393,45 +4428,55 @@ safeCutting.forEach((c) => {
 
 
 
-  // PRODUÇÃO PA
+  // PRODUCAO PA
   safeProd.forEach((p) => {
   const code = p.productCode || 'S/ COD';
+  const lotId =
+    p.trackingId ||
+    p.id ||
+    p.batchId ||
+    p.lotId ||
+    (p.packIndex ? `${code}-${p.packIndex}` : null) ||
+    `${code}-${p.date || ''}-${p.timestamp || ''}`;
 
   const qty = safeNum(p.pieces);
-  const unitWeight = getUnitWeight(code);      // kg por peça
-  const totalWeight = unitWeight * qty;        // kg total da produção
+  const unitWeight = getUnitWeight(code);      // kg por pe?a
+  const totalWeight = unitWeight * qty;        // kg total da produ??o
 
   rawGlobalEvents.push({
     rawDate: p.date,
-    type: 'PRODUÇÃO',
-    id: code,
-    desc: p.productName || '-',
+    type: 'PRODU\u00c7\u00c3O',
+    id: lotId,
+    movementId: p.id || '',
+    code,
+    desc: `${code} - ${p.productName || '-'}`,
     qty,
     unitWeight,                                // (se quiser usar depois)
-    weight: totalWeight,                       // 👈 agora vem do mapa de peso
+    weight: totalWeight,                       // agora vem do mapa de peso
   });
 });
 
-
-  // EXPEDIÇÃO PA
+  // EXPEDICAO PA
   safeShipping.forEach((s) => {
   const code = s.productCode || 'S/ COD';
+  const logId = s.id || s.timestamp || `${code}-${s.date}-${s.quantity || 0}`;
 
-  const qty = safeNum(s.quantity);          // quantidade expedida (peças)
-  const unitWeight = getUnitWeight(code);   // kg por peça, vindo do PESO_UNITARIO_PA
+  const qty = safeNum(s.quantity);          // quantidade expedida (pe?as)
+  const unitWeight = getUnitWeight(code);   // kg por pe?a, vindo do PESO_UNITARIO_PA
   const totalWeight = unitWeight * qty;     // peso total expedido
 
   rawGlobalEvents.push({
     rawDate: s.date,
-    type: 'EXPEDIÇÃO',
-    id: code,
-    desc: s.productName || '-',
+    type: 'EXPEDI\u00c7\u00c3O',
+    id: logId,
+    movementId: s.id || '',
+    code,
+    desc: `${code} - ${s.productName || '-'}`,
     qty,
     unitWeight,                             // se quiser ver no detalhe depois
-    weight: totalWeight,                    // 👈 agora com valor correto
+    weight: totalWeight,                    // agora com valor correto
   });
 });
-
 
   // ---- AGRUPAMENTO POR DIA + TIPO ----
   const stats = { entradaKg: 0, corteKg: 0, prodPcs: 0, expPcs: 0 };
@@ -4443,6 +4488,14 @@ safeCutting.forEach((c) => {
     const iso = toISODate(e.rawDate);
     if (iso < reportStartDate || iso > reportEndDate) return;
 
+    const typeKey = normalizeTypeKey(e.type);
+    const displayType =
+      typeKey == 'PRODUCAO'
+        ? 'PRODU\u00c7\u00c3O'
+        : typeKey == 'EXPEDICAO'
+          ? 'EXPEDI\u00c7\u00c3O'
+          : e.type;
+
     if (reportSearch) {
       const term = reportSearch.toLowerCase();
       const text = (
@@ -4453,13 +4506,13 @@ safeCutting.forEach((c) => {
       if (!text.includes(term)) return;
     }
 
-    const key = `${iso}|${e.type}`;
+    const key = `${iso}|${typeKey}`;
 
     if (!globalGroupsMap[key]) {
       globalGroupsMap[key] = {
         date: e.rawDate,
         isoDate: iso,
-        type: e.type,
+        type: displayType,
         events: [],
         totalQty: 0,
         totalWeight: 0,
@@ -4471,10 +4524,10 @@ safeCutting.forEach((c) => {
     group.totalQty += e.qty;
     group.totalWeight += e.weight;
 
-    if (e.type === 'ENTRADA MP') stats.entradaKg += e.weight;
-    if (e.type === 'CORTE') stats.corteKg += e.weight;
-    if (e.type === 'PRODUÇÃO') stats.prodPcs += e.qty;
-    if (e.type === 'EXPEDIÇÃO') stats.expPcs += e.qty;
+    if (typeKey === 'ENTRADA MP') stats.entradaKg += e.weight;
+    if (typeKey === 'CORTE') stats.corteKg += e.weight;
+    if (typeKey === 'PRODUCAO') stats.prodPcs += e.qty;
+    if (typeKey === 'EXPEDICAO') stats.expPcs += e.qty;
   });
 
   // Lista final, agrupada e ORDENADA (mais recente primeiro)
@@ -4483,14 +4536,21 @@ safeCutting.forEach((c) => {
   );
 
   const handleExportGlobalTimeline = () => {
-    const data = globalTimeline.map((e) => ({
-      Data: e.rawDate,
-      Tipo: e.type,
-      Código: e.id,
-      Descrição: e.desc,
-      Qtd: e.qty,
-      Peso: e.weight,
-    }));
+    const data = globalTimeline.flatMap((group) =>
+      group.events.map((e) => {
+        const typeKey = normalizeTypeKey(group.type);
+        return {
+          Data: group.date,
+          Tipo: group.type,
+          MovimentoId: e.movementId || e.id || '',
+          LoteId: typeKey === 'PRODUCAO' ? e.id || '' : '',
+          Codigo: e.code || '',
+          Descricao: e.desc || '',
+          Qtd: e.qty,
+          Peso: e.weight,
+        };
+      })
+    );
     exportToCSV(data, `relatorio_global`);
   };
 

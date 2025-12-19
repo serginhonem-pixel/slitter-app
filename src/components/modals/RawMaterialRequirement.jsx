@@ -3,7 +3,7 @@ import { TrendingUp, FileText, Plus, CheckCircle, X, Tag, Trash2 } from "lucide-
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { INITIAL_INOX_BLANK_PRODUCTS } from "../../data/inoxCatalog";
-import { loadFromDb, saveToDb, updateInDb, deleteFromDb } from "../../services/api";
+import { deleteFromDb, isLocalHost, loadFromDb, saveToDb, updateInDb } from "../../services/api";
 
 // ajusta o caminho se sua pasta for diferente
 
@@ -92,7 +92,7 @@ const RawMaterialRequirement = ({
   const [selectedPurchaseGroup, setSelectedPurchaseGroup] = useState(null);
   const [mpOrderQty, setMpOrderQty] = useState("");
   const [mpOrderDate, setMpOrderDate] = useState("");
-  const isLocal = typeof window !== "undefined" && window.location.hostname === "localhost";
+  const isLocal = isLocalHost();
   const removeOrder = async (id) => {
     try {
       if (!id) return;

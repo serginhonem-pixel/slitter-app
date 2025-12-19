@@ -14,7 +14,15 @@ import {
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 
 // --- EXPORTAÇÕES ESSENCIAIS PARA O APP.JSX ---
-export { db, auth }; 
+const isLocalHost = () => {
+  if (typeof window === "undefined") return false;
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+};
+
+const isFirestoreBlocked = () => isLocalHost();
+
+export { db, auth, isLocalHost }; 
 
 // ============================================================
 // FUNÇÕES DE AUTENTICAÇÃO (LOGIN / LOGOUT)
@@ -46,6 +54,10 @@ export const logoutUser = async () => {
 // --- BUSCAR (LÊ TUDO) ---
 export const loadFromDb = async (collectionName) => {
   try {
+    if (isFirestoreBlocked()) {
+      console.warn("[FIREBASE] loadFromDb bloqueado no localhost:", collectionName);
+      return [];
+    }
     const snapshot = await getDocs(collection(db, collectionName));
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
   } catch (error) {
@@ -57,6 +69,10 @@ export const loadFromDb = async (collectionName) => {
 // --- ADICIONAR ---
 export const saveToDb = async (collectionName, data) => {
   try {
+    if (isFirestoreBlocked()) {
+      console.warn("[FIREBASE] saveToDb bloqueado no localhost:", collectionName);
+      return { ...data, id: `LOCAL-${Date.now()}` };
+    }
     const docRef = await addDoc(collection(db, collectionName), data);
     return { ...data, id: docRef.id };
   } catch (error) {
@@ -68,6 +84,10 @@ export const saveToDb = async (collectionName, data) => {
 // --- DELETAR ---
 export const deleteFromDb = async (collectionName, id) => {
   try {
+    if (isFirestoreBlocked()) {
+      console.warn("[FIREBASE] deleteFromDb bloqueado no localhost:", collectionName);
+      return;
+    }
     await deleteDoc(doc(db, collectionName, id));
   } catch (error) {
     console.error(`Erro ao deletar de ${collectionName}:`, error);
@@ -78,6 +98,10 @@ export const deleteFromDb = async (collectionName, id) => {
 // --- ATUALIZAR ---
 export const updateInDb = async (collectionName, id, data) => {
   try {
+    if (isFirestoreBlocked()) {
+      console.warn("[FIREBASE] updateInDb bloqueado no localhost:", collectionName);
+      return;
+    }
     const docRef = doc(db, collectionName, id);
     await updateDoc(docRef, data);
   } catch (error) {
