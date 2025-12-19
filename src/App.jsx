@@ -48,6 +48,7 @@ import {
 import CutDetailsModal from './components/modals/CutDetailsModal';
 import CutEventDetailsModal from './components/modals/CutEventDetailsModal';
 import ProductionEventDetailsModal from './components/modals/ProductionEventDetailsModal';
+import ShippingEventDetailsModal from './components/modals/ShippingEventDetailsModal';
 import EditMotherCoilModal from './components/modals/EditMotherCoilModal';
 import InoxBlanksPlanner from "./components/modals/InoxBlanksPlanner";
 import ProductHistoryModal from './components/modals/ProductHistoryModal';
@@ -1198,6 +1199,7 @@ export default function App() {
   const [viewingCutLog, setViewingCutLog] = useState(null); // Para abrir o modal de detalhes do corte
   const [viewingCutEvent, setViewingCutEvent] = useState(null);
   const [viewingProductionEvent, setViewingProductionEvent] = useState(null);
+  const [viewingShippingEvent, setViewingShippingEvent] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   // --- ESTADOS PARA O RELATÓRIO DINÂMICO B2 ---
   const [b2ReportSearch, setB2ReportSearch] = useState('');
@@ -2633,8 +2635,7 @@ export default function App() {
     }
 
     if (eventType === EVENT_TYPES.PA_SHIPPING) {
-      const productCode = details.productCode || raw.productCode || sourceId;
-      openProductHistoryFromCode(productCode, details.productName || raw.productName);
+      setViewingShippingEvent(event);
       return;
     }
 
@@ -6116,6 +6117,14 @@ const handleUploadJSONToFirebase = async (e) => {
           productionLogs={productionLogs}
           childCoils={childCoils}
           onClose={() => setViewingProductionEvent(null)}
+        />
+      )}
+      {viewingShippingEvent && (
+        <ShippingEventDetailsModal
+          event={viewingShippingEvent}
+          productionLogs={productionLogs}
+          shippingLogs={shippingLogs}
+          onClose={() => setViewingShippingEvent(null)}
         />
       )}
       {reportGroupData && (
