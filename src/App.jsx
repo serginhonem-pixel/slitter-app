@@ -417,6 +417,42 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [] })
     );
   };
 
+  const normalizeThicknessValue = (value) => {
+    if (value === undefined || value === null || value === '') return null;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      let parsed = value;
+      while (parsed > 5 && parsed > 0.05) parsed /= 10;
+      return parsed;
+    }
+    const cleaned = String(value).trim();
+    if (!cleaned) return null;
+    const numeric = Number(cleaned.replace(',', '.').replace(/[^0-9.]/g, ''));
+    if (!Number.isFinite(numeric) || numeric <= 0) return null;
+    let parsed = numeric;
+    while (parsed > 5 && parsed > 0.05) parsed /= 10;
+    return parsed;
+  };
+
+  const formatThicknessNumber = (value) => {
+    if (value === null || value === undefined) return '-';
+    return value.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+
+  const getThicknessDisplay = (item) => {
+    const catalogEntry = motherCatalog.find(
+      (entry) => String(entry.code) === String(item.motherCode || item.code)
+    );
+    const candidates = [catalogEntry?.thickness, item.thickness];
+    for (const candidate of candidates) {
+      const parsed = normalizeThicknessValue(candidate);
+      if (parsed !== null) return formatThicknessNumber(parsed);
+    }
+    return '-';
+  };
+
   return (
     <div className="fixed inset-0 bg-black/90 z-[60] flex flex-col items-center justify-center overflow-hidden">
         <div className="bg-gray-900 w-full p-4 border-b border-gray-700 flex justify-between items-center print:hidden">
@@ -487,7 +523,7 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [] })
                    {!isProduct && (
                      <div className="grid grid-cols-3 gap-1 mt-2 text-center">
                         <div className="bg-gray-200 p-1"><p className="text-[8px] font-bold">LARGURA</p><p className="font-bold text-sm">{item.width} mm</p></div>
-                        <div className="bg-gray-200 p-1"><p className="text-[8px] font-bold">ESPESSURA</p><p className="font-bold text-sm">{item.thickness}</p></div>
+                        <div className="bg-gray-200 p-1"><p className="text-[8px] font-bold">ESPESSURA</p><p className="font-bold text-sm">{getThicknessDisplay(item)}</p></div>
                         <div className="bg-gray-200 p-1"><p className="text-[8px] font-bold">TIPO</p><p className="font-bold text-sm">{item.type}</p></div>
                      </div>
                    )}

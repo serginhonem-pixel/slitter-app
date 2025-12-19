@@ -43,14 +43,24 @@ const Dashboard = ({
     if (value === undefined || value === null || value === '') return null;
     const cleaned = String(value).replace(',', '.').replace(/[^0-9.]/g, '');
     if (!cleaned) return null;
-    const parsed = parseFloat(cleaned);
+    let parsed = parseFloat(cleaned);
     if (!Number.isFinite(parsed)) return null;
+    while (parsed > 5 && parsed > 0.05) parsed /= 10;
     return Number(parsed.toFixed(3));
   };
 
   const getCatalogThickness = (code) => {
     const entry = catalogByCode?.[String(code)] || catalogByCode?.[Number(code)];
     return entry?.thickness ?? null;
+  };
+
+  const formatThicknessDisplay = (value) => {
+    const normalized = normalizeThicknessForExport(value);
+    if (normalized === null) return '-';
+    return normalized.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
   };
 
   const getCatalogDescription = (code, fallback) => {
@@ -399,23 +409,31 @@ const Dashboard = ({
     const detailedRows = stockRows
       .slice()
       .sort((a, b) => String(a.code).localeCompare(String(b.code)))
-      .map((coil) => [
-        coil.id || '-',
-        coil.code || '-',
-        getCatalogDescription(coil.code, coil.material) || '-',
-        Number(coil.remainingWeight ?? coil.weight ?? 0).toLocaleString('pt-BR', {
-          maximumFractionDigits: 1,
-        }),
-        String(coil.width ?? '-'),
-        String(coil.thickness ?? '-'),
-        coil.nf || '-',
-        coil.entryDate || coil.date || '-',
-      ]);
+      .map((coil) => {
+        const catalogThickness = getCatalogThickness(coil.code);
+        const thicknessDisplay = formatThicknessDisplay(
+          catalogThickness ?? coil.thickness,
+        );
+        return [
+          coil.id || '-',
+          coil.code || '-',
+          getCatalogDescription(coil.code, coil.material) || '-',
+          Number(coil.remainingWeight ?? coil.weight ?? 0).toLocaleString('pt-BR', {
+            maximumFractionDigits: 1,
+          }),
+          String(coil.width ?? '-'),
+          thicknessDisplay,
+          coil.nf || '-',
+          coil.entryDate || coil.date || '-',
+        ];
+      });
+
+    const detailedRowsNoId = detailedRows.map((row) => row.slice(1));
 
     autoTable(doc, {
       startY: detailsStart + 4,
-      head: [['ID', 'Codigo', 'Descricao', 'Peso (kg)', 'Largura', 'Espessura', 'NF', 'Data']],
-      body: detailedRows,
+      head: [['Codigo', 'Descricao', 'Peso (kg)', 'Largura', 'Espessura', 'NF', 'Data']],
+      body: detailedRowsNoId,
       theme: 'grid',
       styles: { fontSize: 7 },
       headStyles: { fillColor: [50, 50, 50], textColor: [255, 255, 255] },
