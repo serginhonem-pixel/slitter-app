@@ -1,4 +1,6 @@
 import React, { useMemo } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { useStockData } from '../../hooks/useStockData';
 import { StockSummary } from './StockSummary';
 import { StockTabs } from './StockTabs';
@@ -341,6 +343,87 @@ const Dashboard = ({
     exportToExcelXml([{ name: 'Estoque MP', rows: dataToExport }], 'Estoque_Bobinas_Mae');
   };
 
+  const exportMotherPdf = () => {
+    const stockRows = motherCoils.filter((coil) => coil.status === 'stock');
+    if (!stockRows.length) {
+      alert('Nenhuma bobina em estoque.');
+      return;
+    }
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    doc.setFontSize(14);
+    doc.text('Conferencia de Saldos - Bobinas Mae (Estoque)', 14, 16);
+    doc.setFontSize(9);
+    doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 22);
+
+    const groupedMap = new Map();
+    stockRows.forEach((coil) => {
+      const code = String(coil.code || 'S/ COD');
+      const key = code;
+      if (!groupedMap.has(key)) {
+        groupedMap.set(key, {
+          code,
+          description: getCatalogDescription(code, coil.material),
+          qty: 0,
+          weight: 0,
+        });
+      }
+      const entry = groupedMap.get(key);
+      const weight = Number(coil.remainingWeight ?? coil.weight ?? 0);
+      entry.qty += 1;
+      entry.weight += weight;
+    });
+
+    const groupedRows = Array.from(groupedMap.values()).sort((a, b) =>
+      String(a.code).localeCompare(String(b.code)),
+    );
+
+    autoTable(doc, {
+      startY: 26,
+      head: [['Codigo', 'Descricao', 'Qtd', 'Peso (kg)']],
+      body: groupedRows.map((row) => [
+        row.code,
+        row.description || '-',
+        String(row.qty),
+        row.weight.toLocaleString('pt-BR', { maximumFractionDigits: 1 }),
+      ]),
+      theme: 'grid',
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [50, 50, 50], textColor: [255, 255, 255] },
+    });
+
+    const detailsStart = (doc.lastAutoTable?.finalY || 26) + 8;
+    doc.setFontSize(11);
+    doc.text('Detalhado (ordem por codigo)', 14, detailsStart);
+
+    const detailedRows = stockRows
+      .slice()
+      .sort((a, b) => String(a.code).localeCompare(String(b.code)))
+      .map((coil) => [
+        coil.id || '-',
+        coil.code || '-',
+        getCatalogDescription(coil.code, coil.material) || '-',
+        Number(coil.remainingWeight ?? coil.weight ?? 0).toLocaleString('pt-BR', {
+          maximumFractionDigits: 1,
+        }),
+        String(coil.width ?? '-'),
+        String(coil.thickness ?? '-'),
+        coil.nf || '-',
+        coil.entryDate || coil.date || '-',
+      ]);
+
+    autoTable(doc, {
+      startY: detailsStart + 4,
+      head: [['ID', 'Codigo', 'Descricao', 'Peso (kg)', 'Largura', 'Espessura', 'NF', 'Data']],
+      body: detailedRows,
+      theme: 'grid',
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [50, 50, 50], textColor: [255, 255, 255] },
+    });
+
+    doc.save('saldos_bobinas_mae.pdf');
+  };
+
   const exportChild = () => {
     const dataToExport = childCoils
       .filter((coil) => coil.status === 'stock')
@@ -393,6 +476,7 @@ const Dashboard = ({
         finishedData={finishedStockList}
         shipments={shipmentRows}
         onExportMother={exportMother}
+        onExportMotherPdf={exportMotherPdf}
         onExportChild={exportChild}
         onExportFinished={exportFinished}
         onExportShipments={exportShipments}

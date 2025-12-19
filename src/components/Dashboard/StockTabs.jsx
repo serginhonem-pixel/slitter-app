@@ -35,6 +35,7 @@ export const StockTabs = ({
   onExportChild,
   onExportFinished,
   onExportShipments,
+  onExportMotherPdf,
   onViewStockDetails,
   onViewProductHistory,
   onPrintProduct,
@@ -155,6 +156,7 @@ export const StockTabs = ({
     onViewEventDetails,
     onViewProductHistory,
     onViewStockDetails,
+    onExportMotherPdf,
     productionLogs,
     shipments,
   ],
@@ -177,14 +179,24 @@ export const StockTabs = ({
             />
           ))}
         </div>
-        {!activeTabDefinition?.disableExport && activeTabDefinition?.onExport && (
-          <button
-            onClick={activeTabDefinition.onExport}
-            className="text-xs text-gray-200 hover:text-white flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/5 transition-colors"
-          >
-            <Download size={16} /> Exportar {activeTabDefinition.exportLabel}
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {!activeTabDefinition?.disableExport && activeTabDefinition?.onExport && (
+            <button
+              onClick={activeTabDefinition.onExport}
+              className="text-xs text-gray-200 hover:text-white flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/5 transition-colors"
+            >
+              <Download size={16} /> Exportar {activeTabDefinition.exportLabel}
+            </button>
+          )}
+          {activeTabDefinition?.id === 'mother' && onExportMotherPdf && (
+            <button
+              onClick={onExportMotherPdf}
+              className="text-xs text-gray-200 hover:text-white flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/5 transition-colors"
+            >
+              <Download size={16} /> PDF MP
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="relative">
