@@ -62,6 +62,38 @@ const Dashboard = ({
     return Number((unit * (count || 0)).toFixed(2));
   };
 
+  const parseLogDate = (rawValue) => {
+    if (!rawValue) return new Date();
+    if (rawValue instanceof Date) return rawValue;
+    if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+      return new Date(rawValue);
+    }
+    if (typeof rawValue === 'string') {
+      const normalized = rawValue.replace(',', '').trim();
+      const ddmmyy =
+        normalized.match(
+          /(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/,
+        ) || normalized.match(/(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+      if (ddmmyy) {
+        const [, p1, p2, p3, hh = '00', mm = '00', ss = '00'] = ddmmyy;
+        const [year, month, day] =
+          normalized.includes('/') && !normalized.startsWith(p3)
+            ? [p3, p2, p1]
+            : [p1, p2, p3];
+        const iso = `${year}-${month}-${day}T${hh}:${mm}:${ss}`;
+        const parsed = new Date(iso);
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+      }
+      const parsed = new Date(normalized);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+    return new Date();
+  };
+
+  const normalizeTimestamp = (timestamp, date) => {
+    return parseLogDate(timestamp || date).toISOString();
+  };
+
   const shipmentRows = useMemo(() => {
     const safeShipments = Array.isArray(shippingLogs) ? shippingLogs : [];
     return safeShipments
@@ -71,6 +103,7 @@ const Dashboard = ({
         const totalWeight = unitWeight
           ? Number((unitWeight * quantity).toFixed(2))
           : Number(log.weight || 0);
+        const normalizedTimestamp = normalizeTimestamp(log.timestamp, log.date);
         return {
           id: log.id,
           code: log.productCode || '-',
@@ -79,8 +112,10 @@ const Dashboard = ({
           weight: totalWeight,
           unitWeight: unitWeight || null,
           destination: log.destination || '-',
-          date: log.date,
-          timestamp: log.timestamp,
+          date:
+            log.date ||
+            (normalizedTimestamp && new Date(normalizedTimestamp).toLocaleDateString('pt-BR')),
+          timestamp: normalizedTimestamp,
         };
       })
       .sort(
@@ -91,12 +126,11 @@ const Dashboard = ({
   }, [shippingLogs, getUnitWeight]);
 
   const fallbackEvents = useMemo(() => {
-    const nowIso = new Date().toISOString();
     return [
       ...cuttingLogs.map((log) => ({
         id: `cut-${log.id}`,
         eventType: EVENT_TYPES.B2_CUT,
-        timestamp: log.timestamp || nowIso,
+        timestamp: normalizeTimestamp(log.timestamp, log.date),
         sourceId: log.motherId || log.motherCode || log.id,
         details: {
           motherCode: log.motherCode,
@@ -110,7 +144,7 @@ const Dashboard = ({
       ...productionLogs.map((log) => ({
         id: `prod-${log.id}`,
         eventType: EVENT_TYPES.PA_PRODUCTION,
-        timestamp: log.timestamp || nowIso,
+        timestamp: normalizeTimestamp(log.timestamp, log.date),
         sourceId: log.productCode || log.id,
         targetIds: [log.id],
         details: {
@@ -124,7 +158,7 @@ const Dashboard = ({
       ...shippingLogs.map((log) => ({
         id: `ship-${log.id}`,
         eventType: EVENT_TYPES.PA_SHIPPING,
-        timestamp: log.timestamp || nowIso,
+        timestamp: normalizeTimestamp(log.timestamp, log.date),
         sourceId: log.productCode || log.id,
         details: {
           productCode: log.productCode,
