@@ -5,7 +5,7 @@ import {
   BarChart3, Calendar, Save, ArrowRight, Settings2, Box, Scroll, 
   History, AlertCircle, ChevronDown, ChevronUp
 } from 'lucide-react';
-import bobinasPorProdutoData from './bobinas_por_produto.json';
+import estruturaMpPiPa from './estrutura_mp_pi_pa.json';
 
 // --- DADOS DE EXEMPLO (Focados em Carrinhos) ---
 const MOCK_PRODUCTS = [
@@ -22,6 +22,62 @@ const INITIAL_STOCK = [
   { material: "BF 0.60", qty: 0 },
   { material: "BF 0.75", qty: 0 }
 ];
+
+
+const ESTRUTURA_DATA = estruturaMpPiPa || {};
+const ESTRUTURA_ITEMS = ESTRUTURA_DATA.items || {};
+const ESTRUTURA_EDGES = Array.isArray(ESTRUTURA_DATA.edges) ? ESTRUTURA_DATA.edges : [];
+const ESTRUTURA_ROOTS = Array.isArray(ESTRUTURA_DATA.roots) ? ESTRUTURA_DATA.roots : [];
+
+const buildEdgeMap = () => {
+  return ESTRUTURA_EDGES.reduce((acc, edge) => {
+    const parent = String(edge?.parent || '').trim();
+    if (!parent) return acc;
+    if (!acc[parent]) acc[parent] = [];
+    acc[parent].push(edge);
+    return acc;
+  }, {});
+};
+
+const explodeBom = (rootCode, edgesByParent) => {
+  const aggregated = {};
+  const stack = [{ code: String(rootCode || '').trim(), factor: 1, lastPiLevel: null }];
+
+  while (stack.length) {
+    const current = stack.pop();
+    const edges = edgesByParent[current.code] || [];
+    edges.forEach((edge) => {
+      const child = String(edge?.child || '').trim();
+      if (!child) return;
+      const qtdNec = Number(edge.qtdNec || 0);
+      const qtdBase = Number(edge.qtdBase || 1) || 1;
+      const perdaPct = Number(edge.perdaPct || 0);
+      const factor = current.factor * (qtdNec / qtdBase) * (1 + perdaPct / 100);
+      const tp = String(edge.tp || ESTRUTURA_ITEMS[child]?.tp || '').trim();
+      const nivel = Number(edge.nivel || 0) || null;
+
+      if (tp === 'MP') {
+        if (!aggregated[child]) {
+          aggregated[child] = {
+            cod: child,
+            desc: String(ESTRUTURA_ITEMS[child]?.desc || ''),
+            porUnidade: 0,
+            nivelMp: nivel,
+            nivelPi: current.lastPiLevel,
+          };
+        }
+        aggregated[child].porUnidade += factor;
+        if (nivel && !aggregated[child].nivelMp) aggregated[child].nivelMp = nivel;
+        if (current.lastPiLevel && !aggregated[child].nivelPi) aggregated[child].nivelPi = current.lastPiLevel;
+      } else {
+        const nextPiLevel = tp === 'PI' ? nivel : current.lastPiLevel;
+        stack.push({ code: child, factor, lastPiLevel: nextPiLevel });
+      }
+    });
+  }
+
+  return Object.values(aggregated);
+};
 
 const LS_KEYS = {
   categoryOverrides: 'demandaaco.categoryOverrides.v1',
@@ -164,7 +220,7 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
   }
 
   const mergeImported = (rows) => {
-    const produtoSet = new Set((Array.isArray(bobinasPorProdutoData?.produtos) ? bobinasPorProdutoData.produtos : []).map(p => String(p.produto ?? '')));
+    const produtoSet = new Set((Array.isArray(ESTRUTURA_ROOTS) ? ESTRUTURA_ROOTS : []).map(p => String(p ?? '')));
 
     const imported = {};
     let importedCount = 0;
@@ -475,15 +531,29 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
   }, [calcMode, metaTotalInput, metaDailyInput, workDays, products, stockItems]);
 
   const bomSummary = useMemo(() => {
-    const produtos = Array.isArray(bobinasPorProdutoData?.produtos) ? bobinasPorProdutoData.produtos : [];
+    const produtos = (Array.isArray(ESTRUTURA_ROOTS) ? ESTRUTURA_ROOTS : [])
+      .map((code) => {
+        const key = String(code ?? '').trim();
+        const item = ESTRUTURA_ITEMS[key] || {};
+        return {
+          produto: key,
+          desc: String(item.desc || ''),
+          tp: String(item.tp || ''),
+        };
+      })
+      .filter((p) => p.produto);
+
+    const edgesByParent = buildEdgeMap();
+
     const produtoRows = produtos
       .map(p => ({
         produto: String(p.produto ?? ''),
         desc: String(p.desc ?? ''),
-        bobinas: Array.isArray(p.bobinas) ? p.bobinas : [],
-        categoriaKey: String(categoryOverrides[String(p.produto ?? '')] ?? p.categoriaKey ?? p.categoria?.categoriaKey ?? '').trim()
+        bobinas: explodeBom(p.produto, edgesByParent),
+        categoriaKey: String(categoryOverrides[String(p.produto ?? '')] ?? p.categoriaKey ?? '').trim()
       }))
       .filter(p => p.produto);
+
 
     const withQtyAndDemand = produtoRows.map(p => {
       const qty = Number(qtdPorProduto[p.produto] || 0);
@@ -534,7 +604,9 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
           desc: p.desc,
           qty: p.qty,
           porUnidade,
-          demandKg
+          demandKg,
+          nivelMp: b.nivelMp ?? null,
+          nivelPi: b.nivelPi ?? null,
         });
       });
     });
@@ -1164,7 +1236,7 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
                      <Package size={18} />
                      <span>Cálculo por Produto (BOM) — </span>
                      <span className="font-mono">bobinas_por_produto.json</span>
-                     <span> v{String(bobinasPorProdutoData?.version || '')}</span>
+                     <span> v{String(ESTRUTURA_DATA?.meta?.generated_at || '')}</span>
                    </div>
                    <div className="text-sm text-indigo-700/80">
                      Base: consumo <span className="font-mono">porUnidade</span> × quantidade planejada por produto.
@@ -1345,7 +1417,7 @@ export default function ModuloPCP({ initialProducts = MOCK_PRODUCTS }) {
                                            <div className="min-w-0">
                                              <div className="font-mono font-bold text-slate-700">{c.produto}</div>
                                              <div className="text-xs text-slate-500 truncate" title={c.desc}>{c.desc}</div>
-                                             <div className="text-[11px] text-slate-400 mt-1">{fmtNum(c.qty)} un × {fmtKg(c.porUnidade)} kg/un</div>
+                                             <div className="text-[11px] text-slate-400 mt-1">{fmtNum(c.qty)} un - {fmtKg(c.porUnidade)} kg/un - PI N{c.nivelPi ?? "-"} - MP N{c.nivelMp ?? "-"}</div>
                                            </div>
                                            <div className="text-right">
                                              <div className="font-mono font-bold text-slate-700">{fmtKg(c.demandKg)} kg</div>

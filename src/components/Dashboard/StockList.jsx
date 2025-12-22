@@ -19,6 +19,7 @@ const StockList = ({
   variant = 'card',
   className = '',
   showHeader = true,
+  columnCount = 6,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -91,6 +92,7 @@ const StockList = ({
                 <th className="p-3">Variantes</th>
                 <th className="p-3 text-right">Peso (kg)</th>
                 <th className="p-3 text-right">Qtd</th>
+                <th className="p-3 text-center">Status</th>
                 <th className="p-3 text-center">Ver</th>
               </tr>
             )}
@@ -100,6 +102,7 @@ const StockList = ({
                 <th className="p-3">Descricao</th>
                 <th className="p-3 text-right">Peso (kg)</th>
                 <th className="p-3 text-right">Qtd</th>
+                <th className="p-3 text-center">Status</th>
                 <th className="p-3 text-center">Ver</th>
               </tr>
             )}
@@ -109,6 +112,7 @@ const StockList = ({
                 <th className="p-3">Descricao</th>
                 <th className="p-3 text-right">Peso (kg)</th>
                 <th className="p-3 text-right">Pecas</th>
+                <th className="p-3 text-center">Status</th>
                 <th className="p-3 text-center">Acoes</th>
               </tr>
             )}
@@ -125,7 +129,7 @@ const StockList = ({
           <tbody className="divide-y divide-gray-700">
             {paginatedData.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center text-gray-500 py-4">
+                <td colSpan={columnCount} className="text-center text-gray-500 py-4">
                   Nenhum item encontrado.
                 </td>
               </tr>
@@ -148,6 +152,7 @@ const StockList = ({
 
 export const MotherCoilStockList = ({ data, onExport, onViewDetails, ...rest }) => {
   const [expandedCodes, setExpandedCodes] = useState({});
+  const statusByCode = rest.statusByCode || {};
 
   const normalizeThicknessDisplay = (value) => {
     if (value === undefined || value === null || value === '') return null;
@@ -210,6 +215,27 @@ export const MotherCoilStockList = ({ data, onExport, onViewDetails, ...rest }) 
     }));
   };
 
+  const renderStatusBadge = (info) => {
+    const status = info?.status || 'OK';
+    const styles = {
+      CRITICO: 'bg-red-500/20 text-red-300 border-red-500/40',
+      SEM_GIRO: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+      USAR: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
+      OK: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    };
+    return (
+      <span
+        className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${styles[status] || styles.OK}`}
+        title={
+          info?.reason ||
+          `Min: ${info?.min ?? '-'} | Ult mov: ${info?.lastMoveDays ?? '-'}d | Lote: ${info?.oldestDays ?? '-'}d`
+        }
+      >
+        {status}
+      </span>
+    );
+  };
+
   return (
     <StockList
       title="Estoque Bobinas Mae"
@@ -218,9 +244,11 @@ export const MotherCoilStockList = ({ data, onExport, onViewDetails, ...rest }) 
       icon={Package}
       colorClass="text-blue-400"
       itemsPerPage={12}
+      columnCount={7}
       {...rest}
       renderRow={(item, index) => {
         const isExpanded = Boolean(expandedCodes[item.code]);
+        const statusInfo = statusByCode[item.code];
         return (
           <React.Fragment key={`${item.code}-${index}`}>
             <tr
@@ -287,6 +315,9 @@ export const MotherCoilStockList = ({ data, onExport, onViewDetails, ...rest }) 
               </td>
               <td className="p-3 text-right text-gray-400">{item.totalCount}</td>
               <td className="p-3 text-center">
+                {renderStatusBadge(statusInfo)}
+              </td>
+              <td className="p-3 text-center">
                 {onViewDetails && (
                   <button
                     onClick={(event) => {
@@ -303,7 +334,7 @@ export const MotherCoilStockList = ({ data, onExport, onViewDetails, ...rest }) 
             </tr>
             {isExpanded && (
               <tr>
-                <td colSpan={6} className="bg-slate-900/60 p-3">
+                <td colSpan={7} className="bg-slate-900/60 p-3">
                   <div className="grid grid-cols-4 gap-2 text-[11px] text-gray-300 font-semibold px-1 pb-1 border-b border-gray-700">
                     <span>Variante</span>
                     <span>Espessura / Tipo</span>
@@ -340,106 +371,159 @@ export const MotherCoilStockList = ({ data, onExport, onViewDetails, ...rest }) 
   );
 };
 
-export const ChildCoilStockList = ({ data, onExport, onViewDetails, ...rest }) => (
-  <StockList
-    title="Estoque Bobinas B2"
-    data={data}
-    onExport={onExport}
-    icon={Scissors}
-    colorClass="text-purple-400"
-    itemsPerPage={12}
-    {...rest}
-    renderRow={(item, index) => (
-      <tr key={`${item.code}-${index}`} className="hover:bg-gray-700/50">
-        <td className="p-3 font-mono text-xs text-purple-300">{item.code}</td>
-        <td className="p-3">
-          <p className="text-sm text-white">{item.name}</p>
-          <p className="text-[11px] text-gray-500">{item.type || 'Tipo não informado'}</p>
-        </td>
-        <td className="p-3 text-right font-bold text-white text-sm">{item.weight.toFixed(0)}</td>
-        <td className="p-3 text-right text-gray-400">{item.count}</td>
-        <td className="p-3 text-center">
-          {onViewDetails && (
-            <button
-              onClick={() => onViewDetails(item.code)}
-              className="p-1.5 text-gray-400 hover:text-purple-300 transition-colors"
-              title="Ver detalhes"
-            >
-              <Eye size={16} />
-            </button>
-          )}
-        </td>
-      </tr>
-    )}
-  />
-);
+export const ChildCoilStockList = ({ data, onExport, onViewDetails, ...rest }) => {
+  const statusByCode = rest.statusByCode || {};
+  const renderStatusBadge = (info) => {
+    const status = info?.status || 'OK';
+    const styles = {
+      CRITICO: 'bg-red-500/20 text-red-300 border-red-500/40',
+      SEM_GIRO: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+      USAR: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
+      OK: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    };
+    return (
+      <span
+        className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${styles[status] || styles.OK}`}
+        title={
+          info?.reason ||
+          `Min: ${info?.min ?? '-'} | Ult mov: ${info?.lastMoveDays ?? '-'}d | Lote: ${info?.oldestDays ?? '-'}d`
+        }
+      >
+        {status}
+      </span>
+    );
+  };
+
+  return (
+    <StockList
+      title="Estoque Bobinas B2"
+      data={data}
+      onExport={onExport}
+      icon={Scissors}
+      colorClass="text-purple-400"
+      itemsPerPage={12}
+      columnCount={6}
+      {...rest}
+      renderRow={(item, index) => (
+        <tr key={`${item.code}-${index}`} className="hover:bg-gray-700/50">
+          <td className="p-3 font-mono text-xs text-purple-300">{item.code}</td>
+          <td className="p-3">
+            <p className="text-sm text-white">{item.name}</p>
+            <p className="text-[11px] text-gray-500">{item.type || 'Tipo n??o informado'}</p>
+          </td>
+          <td className="p-3 text-right font-bold text-white text-sm">{item.weight.toFixed(0)}</td>
+          <td className="p-3 text-right text-gray-400">{item.count}</td>
+          <td className="p-3 text-center">{renderStatusBadge(statusByCode[item.code])}</td>
+          <td className="p-3 text-center">
+            {onViewDetails && (
+              <button
+                onClick={() => onViewDetails(item.code)}
+                className="p-1.5 text-gray-400 hover:text-purple-300 transition-colors"
+                title="Ver detalhes"
+              >
+                <Eye size={16} />
+              </button>
+            )}
+          </td>
+        </tr>
+      )}
+    />
+  );
+};
 
 export const FinishedStockList = ({
   data,
   onExport,
+  statusByCode,
   onViewHistory,
   onPrint,
   getUnitWeight,
   calcProductWeight,
   ...rest
-}) => (
-  <StockList
-    title="Estoque Produto Acabado"
-    data={data}
-    onExport={onExport}
-    icon={Factory}
-    colorClass="text-emerald-400"
-    itemsPerPage={10}
-    {...rest}
-    renderRow={(item, index) => (
-      <tr key={`${item.code}-${index}`} className="hover:bg-gray-700/50">
-        <td className="p-3 font-mono text-xs text-emerald-300">{item.code}</td>
-        <td className="p-3">
-          <div className="text-sm text-white" title={item.name}>
-            {item.name}
-          </div>
-        </td>
-        <td className="p-3 text-right text-white">
-          {(() => {
-            const totalWeight = calcProductWeight?.(item.code, item.count) ?? 0;
-            const unitWeight = getUnitWeight?.(item.code) ?? 0;
-            return (
-              <div>
-                <span className="font-bold">{totalWeight.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</span>
-                <div className="text-[11px] text-gray-500">
-                  {unitWeight ? `${unitWeight.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kg/un` : 'Peso não cadastrado'}
+}) => {
+  const safeStatusByCode = statusByCode || {};
+  const renderStatusBadge = (info) => {
+    const status = info?.status || 'OK';
+    const styles = {
+      CRITICO: 'bg-red-500/20 text-red-300 border-red-500/40',
+      SEM_GIRO: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+      USAR: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
+      OK: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    };
+    return (
+      <span
+        className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${styles[status] || styles.OK}`}
+        title={
+          info?.reason ||
+          `Min: ${info?.min ?? '-'} | Ult mov: ${info?.lastMoveDays ?? '-'}d | Lote: ${info?.oldestDays ?? '-'}d`
+        }
+      >
+        {status}
+      </span>
+    );
+  };
+
+  return (
+    <StockList
+      title="Estoque Produto Acabado"
+      data={data}
+      onExport={onExport}
+      icon={Factory}
+      colorClass="text-emerald-400"
+      itemsPerPage={10}
+      columnCount={6}
+      {...rest}
+      renderRow={(item, index) => (
+        <tr key={`${item.code}-${index}`} className="hover:bg-gray-700/50">
+          <td className="p-3 font-mono text-xs text-emerald-300">{item.code}</td>
+          <td className="p-3">
+            <div className="text-sm text-white" title={item.name}>
+              {item.name}
+            </div>
+          </td>
+          <td className="p-3 text-right text-white">
+            {(() => {
+              const totalWeight = calcProductWeight?.(item.code, item.count) ?? 0;
+              const unitWeight = getUnitWeight?.(item.code) ?? 0;
+              return (
+                <div>
+                  <span className="font-bold">{totalWeight.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</span>
+                  <div className="text-[11px] text-gray-500">
+                    {unitWeight ? `${unitWeight.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kg/un` : 'Peso n??o cadastrado'}
+                  </div>
                 </div>
-              </div>
-            );
-          })()}
-        </td>
-        <td className="p-3 text-right font-bold text-white">{item.count}</td>
-        <td className="p-3 text-center">
-          <div className="flex items-center justify-center gap-2">
-            {onViewHistory && (
-              <button
-                onClick={() => onViewHistory({ code: item.code, name: item.name, context: 'PROD' })}
-                className="p-1.5 bg-gray-800 text-gray-200 rounded hover:bg-blue-600 hover:text-white transition-colors"
-                title="Ver lotes"
-              >
-                <List size={16} />
-              </button>
-            )}
-            {onPrint && (
-              <button
-                onClick={() => onPrint(item)}
-                className="p-1.5 bg-gray-800 text-gray-200 rounded hover:bg-emerald-600 hover:text-white transition-colors"
-                title="Imprimir"
-              >
-                <Printer size={16} />
-              </button>
-            )}
-          </div>
-        </td>
-      </tr>
-    )}
-  />
-);
+              );
+            })()}
+          </td>
+          <td className="p-3 text-right font-bold text-white">{item.count}</td>
+          <td className="p-3 text-center">{renderStatusBadge(safeStatusByCode[item.code])}</td>
+          <td className="p-3 text-center">
+            <div className="flex items-center justify-center gap-2">
+              {onViewHistory && (
+                <button
+                  onClick={() => onViewHistory({ code: item.code, name: item.name, context: 'PROD' })}
+                  className="p-1.5 bg-gray-800 text-gray-200 rounded hover:bg-blue-600 hover:text-white transition-colors"
+                  title="Ver lotes"
+                >
+                  <List size={16} />
+                </button>
+              )}
+              {onPrint && (
+                <button
+                  onClick={() => onPrint(item)}
+                  className="p-1.5 bg-gray-800 text-gray-200 rounded hover:bg-emerald-600 hover:text-white transition-colors"
+                  title="Imprimir"
+                >
+                  <Printer size={16} />
+                </button>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    />
+  );
+};
 
 export const ShipmentList = ({ data, onExport }) => (
   <StockList
@@ -450,6 +534,7 @@ export const ShipmentList = ({ data, onExport }) => (
     colorClass="text-amber-400"
     variant="embedded"
     showHeader={false}
+    columnCount={5}
     renderRow={(item, index) => (
       <tr key={item.id || index} className="hover:bg-gray-700/50">
         <td className="p-3 font-mono text-xs text-amber-300">{item.code}</td>

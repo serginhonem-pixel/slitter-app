@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import bobinasPorProdutoData from './bobinas_por_produto.json';
+import estruturaData from './estrutura_mp_pi_pa.json';
 
 const parseQty = (value) => {
   if (value == null) return 0;
@@ -106,7 +107,7 @@ const aggregateRows = (rows) => {
 };
 
 const tabOptions = [
-  { id: 'produtos', title: 'Produtos', description: 'Controle das quantidades e categorias.' },
+  { id: 'produtos', title: 'Produtos', description: 'Componentes agrupados por código.' },
   { id: 'bobinas', title: 'Bobinas', description: 'Consumo por bobina e necessidades.' },
   { id: 'componentes', title: 'Itens & Componentes', description: 'Itens pai com seus componentes e bobinas.' },
 ];
@@ -116,6 +117,72 @@ const screenOptions = [
   { id: 'tabela', title: 'Tabela geral' },
 ];
 
+const ESTRUTURA_EDGES = Array.isArray(estruturaData?.edges) ? estruturaData.edges : [];
+const ESTRUTURA_ITEMS = estruturaData?.items || {};
+const buildEdgeMap = (edges) => {
+  const byParent = new Map();
+  edges.forEach((edge) => {
+    const parent = String(edge?.parent ?? '').trim();
+    if (!parent) return;
+    if (!byParent.has(parent)) byParent.set(parent, []);
+    byParent.get(parent).push(edge);
+  });
+  return byParent;
+};
+
+const collectMpEdges = (rootCode, edgesByParent) => {
+  const root = String(rootCode ?? '').trim();
+  if (!root) return [];
+  const result = [];
+  const stack = [root];
+  const visited = new Set();
+  while (stack.length > 0) {
+    const code = stack.pop();
+    if (!code) continue;
+    if (visited.has(code)) continue;
+    visited.add(code);
+    const edges = edgesByParent.get(code) || [];
+    edges.forEach((edge) => {
+      const child = String(edge?.child ?? '').trim();
+      if (!child) return;
+      const tp = String(edge?.tp ?? '').trim().toUpperCase();
+      if (tp === 'MP') {
+        result.push(edge);
+        return;
+      }
+      if (tp === 'PA' || tp === 'PI') {
+        stack.push(child);
+      }
+    });
+  }
+  return result;
+};
+
+const aggregateMpEdges = (edges) => {
+  const map = new Map();
+  edges.forEach((edge) => {
+    const child = String(edge?.child ?? '').trim();
+    if (!child) return;
+    const key = child;
+    if (!map.has(key)) {
+      map.set(key, { ...edge });
+      return;
+    }
+    const current = map.get(key);
+    current.qtdNec = Number(current.qtdNec || 0) + Number(edge?.qtdNec || 0);
+    const currentNivel = Number(current.nivel || 0);
+    const nextNivel = Number(edge?.nivel || 0);
+    if (nextNivel > currentNivel) current.nivel = nextNivel;
+  });
+  return Array.from(map.values());
+};
+
+const getItemDesc = (code) => {
+  const key = String(code ?? '').trim();
+  if (!key) return '';
+  return ESTRUTURA_ITEMS?.[key]?.desc || '';
+};
+
 const DemandFocus = () => {
   const [qtdPorProduto, setQtdPorProduto] = useState({});
   const [importResumo, setImportResumo] = useState(null);
@@ -123,6 +190,7 @@ const DemandFocus = () => {
   const [categoriaOverrides, setCategoriaOverrides] = useState({});
   const [viewMode, setViewMode] = useState('produtos');
   const [screenMode, setScreenMode] = useState('grupos');
+  const [planMode, setPlanMode] = useState('carteira');
   const [categoriasAbertas, setCategoriasAbertas] = useState(new Set());
   const [categoriaGrupoDrafts, setCategoriaGrupoDrafts] = useState({});
   const [producaoPorProduto, setProducaoPorProduto] = useState({});
@@ -217,56 +285,11 @@ const DemandFocus = () => {
     };
   }, [produtos, qtdPorProduto, categoriaOverrides, producaoPorProduto]);
 
-  const produtosVisiveis = useMemo(() => {
-    let list = bomSummary.produtoRows;
-    if (mostrarSelecionados) {
-      list = list.filter((item) => (item.demanded || 0) > 0 || (item.produced || 0) > 0);
-    }
-    if (filtroProgresso === 'pendentes') {
-      list = list.filter((item) => item.qty > 0);
-    } else if (filtroProgresso === 'concluidos') {
-      list = list.filter((item) => item.qty <= 0);
-    }
-    return list;
-  }, [bomSummary.produtoRows, bomSummary.totalDemanded, mostrarSelecionados, filtroProgresso]);
-  const categoriaOptions = useMemo(() => {
-    const set = new Set(produtos.map((p) => p.categoriaKey || 'Sem categoria'));
-    set.add('Sem categoria');
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [produtos]);
-
-  const produtosAgrupados = useMemo(() => {
-    const map = new Map();
-    produtosVisiveis.forEach((item) => {
-      const key = item.categoriaKey || 'Sem categoria';
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(item);
-    });
-    const groups = Array.from(map.entries()).map(([categoria, items]) => ({
-      categoria,
-      items: items.slice().sort((a, b) => b.totalKg - a.totalKg),
-    }));
-    groups.sort((a, b) => {
-      const totalA = a.items.reduce((sum, i) => sum + i.totalKg, 0);
-      const totalB = b.items.reduce((sum, i) => sum + i.totalKg, 0);
-      if (totalB !== totalA) return totalB - totalA;
-      return a.categoria.localeCompare(b.categoria, 'pt-BR');
-    });
-    return groups;
-  }, [produtosVisiveis]);
-
-  const parentItems = useMemo(
-    () => bomSummary.selected.slice().sort((a, b) => b.totalKg - a.totalKg),
-    [bomSummary.selected],
-  );
-  const getEstoquePorBobina = (code) => motherStock.byCode?.[String(code || '').trim()] || 0;
   const metaMensal = Math.max(0, metaDiaria * diasUteis);
-  const demandaTotal = bomSummary.totalUnits;
-  const faltaProduzir = Math.max(0, demandaTotal - metaMensal);
-  const sobraCapacidade = Math.max(0, metaMensal - demandaTotal);
-  const diasNecessarios = metaDiaria > 0 ? Math.ceil(demandaTotal / metaDiaria) : 0;
   const totalDemandado = bomSummary.totalDemanded || 0;
   const totalProduzido = bomSummary.totalProduced || 0;
+
+  const getEstoquePorBobina = (code) => motherStock.byCode?.[String(code || '').trim()] || 0;
 
   const extraCapacidade = useMemo(() => {
     const extra = Math.max(0, metaMensal - totalDemandado);
@@ -295,6 +318,188 @@ const DemandFocus = () => {
       });
     return { byProd, totalExtra: extra };
   }, [metaMensal, totalDemandado, bomSummary.produtoRows]);
+
+  const pmpSummary = useMemo(() => {
+    const enriched = produtos.map((item) => {
+      const demanded = Number(qtdPorProduto[item.produto] || 0);
+      const producedRaw = Number(producaoPorProduto[item.produto] || 0);
+      const produced = Number.isFinite(producedRaw) ? Math.max(0, Math.round(producedRaw)) : 0;
+      const extra = Number(extraCapacidade.byProd?.[item.produto] || 0);
+      const pmpDemanded = demanded + extra;
+      const qty = Math.max(pmpDemanded - produced, 0);
+      const totalKg = item.bobinas.reduce((acc, bobina) => acc + Number(bobina.porUnidade || 0) * qty, 0);
+      const categoriaKey = categoriaOverrides[item.produto] || item.categoriaKey || 'Sem categoria';
+      return { ...item, qty, demanded: pmpDemanded, produced, totalKg, categoriaKey };
+    });
+    const selected = enriched.filter((item) => item.qty > 0 || item.demanded > 0);
+    const bobinasAgg = selected.reduce((acc, item) => {
+      item.bobinas.forEach((bobina) => {
+        const cod = String(bobina.cod ?? '').trim();
+        if (!cod) return;
+        if (!acc[cod]) {
+          acc[cod] = { cod, desc: bobina.desc, totalKg: 0 };
+        }
+        acc[cod].totalKg += Number(bobina.porUnidade || 0) * item.qty;
+      });
+      return acc;
+    }, {});
+
+    const categoriasAgg = selected.reduce((acc, item) => {
+      const key = item.categoriaKey || 'Sem categoria';
+      if (!acc[key]) {
+        acc[key] = { categoriaKey: key, totalKg: 0, products: 0 };
+      }
+      acc[key].totalKg += item.totalKg;
+      acc[key].products += 1;
+      return acc;
+    }, {});
+
+    return {
+      produtoRows: enriched,
+      selected,
+      bobinasAgg: Object.values(bobinasAgg).sort((a, b) => b.totalKg - a.totalKg),
+      categoriasAgg: Object.values(categoriasAgg).sort((a, b) => b.totalKg - a.totalKg),
+      totalUnits: selected.reduce((sum, item) => sum + item.qty, 0),
+      totalKg: selected.reduce((sum, item) => sum + item.totalKg, 0),
+      totalDemanded: enriched.reduce((sum, item) => sum + item.demanded, 0),
+      totalProduced: enriched.reduce((sum, item) => sum + Math.min(item.produced, item.demanded), 0),
+    };
+  }, [produtos, qtdPorProduto, producaoPorProduto, categoriaOverrides, extraCapacidade.byProd]);
+
+  const demandaBase = planMode === 'pmp' ? pmpSummary.totalUnits : bomSummary.totalUnits;
+  const faltaProduzir = Math.max(0, demandaBase - metaMensal);
+  const sobraCapacidade = Math.max(0, metaMensal - demandaBase);
+  const diasNecessarios = metaDiaria > 0 ? Math.ceil(demandaBase / metaDiaria) : 0;
+
+  const isPmp = planMode === 'pmp';
+  const viewFactor = 1;
+  const viewSummary = isPmp ? pmpSummary : bomSummary;
+  const fmtUnits = (value) => {
+    const scaled = Number(value || 0) * viewFactor;
+    const rounded = isPmp ? Math.ceil(scaled) : Math.round(scaled);
+    return fmtNum(rounded);
+  };
+  const fmtKgScaled = (value) => fmtKg(Number(value || 0) * viewFactor);
+  const unitLabel = 'un';
+  const kgLabel = 'kg';
+  const produtosVisiveis = useMemo(() => {
+    let list = viewSummary.produtoRows;
+    if (mostrarSelecionados) {
+      list = list.filter((item) => (item.demanded || 0) > 0 || (item.produced || 0) > 0);
+    }
+    if (filtroProgresso === 'pendentes') {
+      list = list.filter((item) => item.qty > 0);
+    } else if (filtroProgresso === 'concluidos') {
+      list = list.filter((item) => item.qty <= 0);
+    }
+    return list;
+  }, [viewSummary.produtoRows, viewSummary.totalDemanded, mostrarSelecionados, filtroProgresso]);
+  const categoriaOptions = useMemo(() => {
+    const set = new Set(produtos.map((p) => p.categoriaKey || 'Sem categoria'));
+    set.add('Sem categoria');
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [produtos]);
+
+  const produtosAgrupados = useMemo(() => {
+    const map = new Map();
+    produtosVisiveis.forEach((item) => {
+      const key = item.categoriaKey || 'Sem categoria';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(item);
+    });
+    const groups = Array.from(map.entries()).map(([categoria, items]) => ({
+      categoria,
+      items: items.slice().sort((a, b) => b.totalKg - a.totalKg),
+    }));
+    groups.sort((a, b) => {
+      const totalA = a.items.reduce((sum, i) => sum + i.totalKg, 0);
+      const totalB = b.items.reduce((sum, i) => sum + i.totalKg, 0);
+      if (totalB !== totalA) return totalB - totalA;
+      return a.categoria.localeCompare(b.categoria, 'pt-BR');
+    });
+    return groups;
+  }, [produtosVisiveis]);
+
+  const parentItems = useMemo(
+    () => viewSummary.selected.slice().sort((a, b) => b.totalKg - a.totalKg),
+    [viewSummary.selected],
+  );
+  const edgesByParent = useMemo(() => buildEdgeMap(ESTRUTURA_EDGES), []);
+  const componentesAgrupados = useMemo(() => {
+    const map = new Map();
+    parentItems.forEach((item) => {
+      const parentCode = String(item.produto ?? '').trim();
+      const parentQty = Number(item.qty || 0);
+      if (!parentCode || parentQty <= 0) return;
+      const edges = edgesByParent.get(parentCode) || [];
+      edges.forEach((edge) => {
+        const child = String(edge?.child ?? '').trim();
+        if (!child) return;
+        const tp = String(edge?.tp ?? '').toUpperCase();
+        if (!tp) return;
+        const qtdNec = Number(edge?.qtdNec || 0) || 0;
+        const needed = qtdNec * parentQty;
+        if (!map.has(child)) {
+          map.set(child, {
+            code: child,
+            desc: getItemDesc(child),
+            tpSet: new Set(),
+            umSet: new Set(),
+            total: 0,
+            nivel: Number(edge?.nivel || 0) || 0,
+            parents: new Set(),
+          });
+        }
+        const entry = map.get(child);
+        entry.total += needed;
+        if (tp) entry.tpSet.add(tp);
+        if (edge?.um) entry.umSet.add(edge.um);
+        const nivel = Number(edge?.nivel || 0) || 0;
+        if (nivel > entry.nivel) entry.nivel = nivel;
+        entry.parents.add(parentCode);
+      });
+    });
+    return Array.from(map.values())
+      .map((entry) => ({
+        code: entry.code,
+        desc: entry.desc,
+        tipo: entry.tpSet.size > 1 ? 'MIX' : Array.from(entry.tpSet)[0] || '-',
+        um: entry.umSet.size > 1 ? 'MIX' : Array.from(entry.umSet)[0] || '',
+        total: entry.total,
+        nivel: entry.nivel || '-',
+        parents: entry.parents.size,
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [parentItems, edgesByParent]);
+  const estruturaByParent = useMemo(() => {
+    if (!edgesByParent || edgesByParent.size === 0) return {};
+    const result = {};
+    parentItems.forEach((item) => {
+      const parentCode = String(item.produto ?? '').trim();
+      if (!parentCode) return;
+      const edges = edgesByParent.get(parentCode) || [];
+      const children = edges.filter((edge) => {
+        const tp = String(edge?.tp ?? '').toUpperCase();
+        return tp === 'PA' || tp === 'PI';
+      });
+      const directMps = edges.filter((edge) => String(edge?.tp ?? '').toUpperCase() === 'MP');
+      result[parentCode] = {
+        children: children.map((edge) => {
+          const childCode = String(edge?.child ?? '').trim();
+          const childMps = aggregateMpEdges(collectMpEdges(childCode, edgesByParent));
+          return {
+            edge,
+            code: childCode,
+            desc: getItemDesc(childCode),
+            tp: String(edge?.tp ?? '').toUpperCase(),
+            mps: childMps,
+          };
+        }),
+        directMps: aggregateMpEdges(directMps),
+      };
+    });
+    return result;
+  }, [parentItems, edgesByParent]);
 
   const handleUpload = async (file) => {
     if (!file) return;
@@ -356,21 +561,47 @@ const DemandFocus = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0d152c] text-slate-100 py-8 px-3 sm:px-6 font-sans">
-      <div className="max-w-6xl mx-auto space-y-6 sm:space-y-7">
-        <div className="bg-[#0f1729] text-white rounded-3xl border border-white/5 p-6 sm:p-8 shadow-[0_30px_80px_-40px_rgba(0,0,0,0.8)] space-y-6">
+    <div className="min-h-screen bg-[#0d152c] text-slate-100 py-5 px-3 sm:px-6 font-sans">
+      <div className="max-w-6xl mx-auto space-y-4 sm:space-y-5">
+        <div className="bg-[#0f1729] text-white rounded-3xl border border-white/5 p-5 sm:p-6 shadow-[0_30px_80px_-40px_rgba(0,0,0,0.8)] space-y-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-2">
-              <p className="text-[11px] uppercase tracking-[0.3em] text-sky-200 font-semibold">Carteira de Demanda</p>
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-3xl font-bold tracking-tight">Demanda de Aço</h1>
-                <span className="px-3 py-1 text-[11px] uppercase tracking-wide rounded-full bg-white/10 border border-white/10">
-                  Controle de produção
+                <h1 className="text-2xl font-bold tracking-tight">Carteira de demanda</h1>
+                <span className="px-3 py-1 text-[11px] uppercase tracking-wide rounded-full bg-white/10 border border-white/10 text-slate-200">
+                  Controle de producao
                 </span>
               </div>
-              <p className="text-sm text-slate-200 max-w-3xl">Suba o arquivo da carteira para ver o BOM por produto, bobina e categoria. Os totais aparecem por aqui mesmo.</p>
+              <p className="text-sm text-slate-300 max-w-3xl">Suba o arquivo da carteira para ver o BOM por produto, bobina e categoria. Os totais aparecem por aqui mesmo.</p>
+              {isPmp && (
+                <p className="text-xs text-slate-400">PMP: valores distribuídos por dia usando a capacidade diária.</p>
+              )}
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center rounded-full bg-white/5 border border-white/10 p-1">
+                <button
+                  type="button"
+                  onClick={() => setPlanMode('carteira')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-full transition ${
+                    planMode === 'carteira'
+                      ? 'bg-[#2f6fed] text-white'
+                      : 'text-slate-200 hover:text-white'
+                  }`}
+                >
+                  Carteira
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPlanMode('pmp')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-full transition ${
+                    planMode === 'pmp'
+                      ? 'bg-[#2f6fed] text-white'
+                      : 'text-slate-200 hover:text-white'
+                  }`}
+                >
+                  PMP
+                </button>
+              </div>
               <button
                 onClick={handleDownloadModelo}
                 className="px-4 py-2 rounded-xl bg-[#4f46e5] hover:bg-[#4338ca] text-white text-sm font-semibold shadow-lg shadow-indigo-900/40 transition"
@@ -386,14 +617,14 @@ const DemandFocus = () => {
             </div>
           </div>
           {importResumo && (
-            <div className={`rounded-2xl p-3 text-sm font-semibold border ${importResumo.error ? 'bg-rose-100/90 text-rose-800 border-rose-200/60' : 'bg-emerald-50 text-emerald-900 border-emerald-100/70'}`}>
+            <div className={`rounded-2xl p-2 text-sm font-semibold border ${importResumo.error ? 'bg-rose-100/90 text-rose-800 border-rose-200/60' : 'bg-emerald-50 text-emerald-900 border-emerald-100/70'}`}>
               {importResumo.error ? (
                 importResumo.error
               ) : (
                 <div className="flex flex-col gap-1">
                   <span>Importado {fmtNum(importResumo.imported)} produtos ({fmtNum(importResumo.rowsCounted)} linhas válidas de {fmtNum(importResumo.lines)}).</span>
                   {(importResumo.invalidProduto > 0 || importResumo.invalidQty > 0) && (
-                    <span className="text-xs font-normal text-slate-700">
+                    <span className="text-xs font-normal text-slate-200">
                       Ignorado: {fmtNum(importResumo.invalidProduto)} linha(s) sem código + {fmtNum(importResumo.invalidQty)} linha(s) com quantidade inválida/zero.
                     </span>
                   )}
@@ -401,20 +632,20 @@ const DemandFocus = () => {
               )}
             </div>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <div className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3 shadow-inner">
               <p className="text-[11px] uppercase tracking-wide text-slate-200/80">Produtos ativos</p>
-              <p className="text-3xl font-bold mt-1">{fmtNum(bomSummary.totalUnits)} un</p>
+              <p className="text-3xl font-bold mt-1">{fmtUnits(viewSummary.totalUnits)} {unitLabel}</p>
               <p className="text-xs text-slate-300">Com quantidade positiva</p>
             </div>
             <div className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3 shadow-inner">
               <p className="text-[11px] uppercase tracking-wide text-slate-200/80">Consumo estimado</p>
-              <p className="text-3xl font-bold mt-1">{fmtKg(bomSummary.totalKg)} kg</p>
+              <p className="text-3xl font-bold mt-1">{fmtKgScaled(viewSummary.totalKg)} {kgLabel}</p>
               <p className="text-xs text-slate-300">Baseado no BOM por unidade</p>
             </div>
             <div className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3 shadow-inner">
               <p className="text-[11px] uppercase tracking-wide text-slate-200/80">Categorias</p>
-              <p className="text-3xl font-bold mt-1">{fmtNum(bomSummary.categoriasAgg.length)} grupos</p>
+              <p className="text-3xl font-bold mt-1">{fmtNum(viewSummary.categoriasAgg.length)} grupos</p>
               <p className="text-xs text-slate-300">Agrupadas por categoria atual</p>
             </div>
             <div className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3 shadow-inner">
@@ -422,13 +653,15 @@ const DemandFocus = () => {
               <p className="text-3xl font-bold mt-1">{fmtKg(motherStock.totalKg)} kg</p>
               <p className="text-xs text-slate-300">Saldo atual em estoque (mãe)</p>
             </div>
-            <div className="rounded-2xl bg-amber-50/70 border border-amber-200 px-4 py-3 shadow-inner text-amber-800">
+            {!isPmp && (
+              <div className="rounded-2xl bg-amber-50/70 border border-amber-200 px-4 py-3 shadow-inner text-amber-800">
               <p className="text-[11px] uppercase tracking-wide text-amber-700">Sugestão de produção</p>
               <p className="text-2xl font-semibold">
-                {fmtNum(Math.max(0, extraCapacidade.totalExtra))} un
+                {fmtUnits(Math.max(0, extraCapacidade.totalExtra))} {unitLabel}
               </p>
               <p className="text-xs text-amber-700">Produzir além da carteira para atingir a capacidade</p>
-            </div>
+              </div>
+            )}
           </div>
         </div>
         <input
@@ -438,77 +671,77 @@ const DemandFocus = () => {
           onChange={(e) => handleUpload(e.target.files?.[0])}
           className="hidden"
         />
-        <section className="bg-white rounded-3xl border border-slate-200 shadow-lg p-6 space-y-5 text-slate-900">
+        <section className="bg-[#0f1729] rounded-3xl border border-white/10 shadow-[0_25px_60px_-40px_rgba(0,0,0,0.8)] p-5 sm:p-6 space-y-5 text-slate-100">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-semibold">Planejamento mensal</h2>
-              <p className="text-xs text-slate-500">Capacidade vs. demanda carregada.</p>
+              <p className="text-xs text-slate-300">Capacidade vs. demanda carregada.</p>
             </div>
-            <div className="flex flex-wrap gap-2 text-xs text-slate-600">
-              <label className="flex items-center gap-2 bg-slate-100 border border-slate-200 rounded-full px-3 py-1.5 shadow-inner">
-                <span className="font-semibold">Dias úteis</span>
+            <div className="flex flex-wrap gap-2 text-xs text-slate-300">
+              <label className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 shadow-inner">
+                <span className="font-semibold text-slate-200">Dias úteis</span>
                 <input
                   type="number"
                   min="1"
                   max="31"
                   value={diasUteis}
                   onChange={(e) => setDiasUteis(Math.max(1, parseQty(e.target.value)))}
-                  className="w-16 text-right font-mono text-sm bg-white border border-slate-200 rounded-full px-2 py-1 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  className="w-16 text-right font-mono text-sm bg-[#0b1220] border border-white/10 rounded-full px-2 py-1 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30 text-slate-100"
                 />
               </label>
-              <label className="flex items-center gap-2 bg-slate-100 border border-slate-200 rounded-full px-3 py-1.5 shadow-inner">
-                <span className="font-semibold">Capacidade diária</span>
+              <label className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 shadow-inner">
+                <span className="font-semibold text-slate-200">Capacidade diária</span>
                 <input
                   type="number"
                   min="0"
                   step="50"
                   value={metaDiaria}
                   onChange={(e) => setMetaDiaria(Math.max(0, parseQty(e.target.value)))}
-                  className="w-24 text-right font-mono text-sm bg-white border border-slate-200 rounded-full px-2 py-1 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  className="w-24 text-right font-mono text-sm bg-[#0b1220] border border-white/10 rounded-full px-2 py-1 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30 text-slate-100"
                 />
               </label>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-[11px] uppercase tracking-wide text-slate-500">Meta diária</p>
-              <p className="text-2xl font-semibold text-slate-900">{fmtNum(metaDiaria)} un</p>
-              <p className="text-xs text-slate-500">Produção alvo por dia</p>
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <p className="text-[11px] uppercase tracking-wide text-slate-300">Meta diária</p>
+              <p className="text-2xl font-semibold text-slate-100">{fmtNum(metaDiaria)} un</p>
+              <p className="text-xs text-slate-300">Produção alvo por dia</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-[11px] uppercase tracking-wide text-slate-500">Meta mensal</p>
-              <p className="text-2xl font-semibold text-slate-900">{fmtNum(metaMensal)} un</p>
-              <p className="text-xs text-slate-500">{fmtNum(diasUteis)} dias úteis</p>
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <p className="text-[11px] uppercase tracking-wide text-slate-300">Meta mensal</p>
+              <p className="text-2xl font-semibold text-slate-100">{fmtNum(metaMensal)} un</p>
+              <p className="text-xs text-slate-300">{fmtNum(diasUteis)} dias úteis</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-[11px] uppercase tracking-wide text-slate-500">Demanda carregada</p>
-              <p className="text-2xl font-semibold text-slate-900">{fmtNum(totalDemandado)} un</p>
-              <p className="text-xs text-slate-500">Subtotal da carteira</p>
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <p className="text-[11px] uppercase tracking-wide text-slate-300">Demanda carregada</p>
+              <p className="text-2xl font-semibold text-slate-100">{fmtUnits(viewSummary.totalDemanded)} {unitLabel}</p>
+              <p className="text-xs text-slate-300">Subtotal da carteira</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-[11px] uppercase tracking-wide text-slate-500">Produzido (informado)</p>
-              <p className="text-2xl font-semibold text-slate-900">{fmtNum(totalProduzido)} un</p>
-              <p className="text-xs text-slate-500">Abatido da demanda</p>
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <p className="text-[11px] uppercase tracking-wide text-slate-300">Produzido (informado)</p>
+              <p className="text-2xl font-semibold text-slate-100">{fmtUnits(viewSummary.totalProduced)} {unitLabel}</p>
+              <p className="text-xs text-slate-300">Abatido da demanda</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-[11px] uppercase tracking-wide text-slate-500">{faltaProduzir > 0 ? 'Falta produzir' : 'Capacidade ociosa'}</p>
-              <p className={`text-2xl font-semibold ${faltaProduzir > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                {fmtNum(faltaProduzir > 0 ? faltaProduzir : sobraCapacidade)} un
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <p className="text-[11px] uppercase tracking-wide text-slate-300">{faltaProduzir > 0 ? 'Falta produzir' : 'Capacidade ociosa'}</p>
+              <p className={`text-2xl font-semibold ${faltaProduzir > 0 ? 'text-rose-300' : 'text-emerald-200'}`}>
+                {fmtUnits(faltaProduzir > 0 ? faltaProduzir : sobraCapacidade)} {unitLabel}
               </p>
-              <p className="text-xs text-slate-500">Dias necessários: {diasNecessarios || '-'}d</p>
-              {extraCapacidade.totalExtra > 0 && (
-                <p className="mt-1 text-[11px] text-amber-700 font-semibold">
+              <p className="text-xs text-slate-300">Dias necessários: {diasNecessarios || '-'}d</p>
+              {!isPmp && extraCapacidade.totalExtra > 0 && (
+                <p className="mt-1 text-[11px] text-amber-200 font-semibold">
                   Distribua +{fmtNum(extraCapacidade.totalExtra)} un para preencher a capacidade.
                 </p>
               )}
             </div>
           </div>
         </section>
-        <section className="bg-white rounded-3xl border border-slate-200 shadow-lg p-6 space-y-5 text-slate-900">
+        <section className="bg-[#0f1729] rounded-3xl border border-white/10 shadow-[0_25px_60px_-40px_rgba(0,0,0,0.8)] p-5 sm:p-6 space-y-5 text-slate-100">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="text-xl font-semibold">Visão profissional</h2>
-              <p className="text-xs text-slate-500">Acompanhe a demanda como um controle de produção completo.</p>
+              <p className="text-xs text-slate-300">Acompanhe a demanda como um controle de produção completo.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {screenOptions.map((screen) => (
@@ -518,8 +751,8 @@ const DemandFocus = () => {
                   onClick={() => setScreenMode(screen.id)}
                   className={`text-xs font-semibold px-4 py-2 rounded-2xl border transition ${
                     screenMode === screen.id
-                      ? 'bg-[#4f46e5] text-white border-indigo-200 shadow-md shadow-indigo-200/40'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 shadow-sm'
+                      ? 'bg-[#2f6fed] text-white border-[#2f6fed]/40 shadow-md shadow-[#2f6fed]/30'
+                      : 'bg-white/5 text-slate-200 border-white/10 hover:bg-white/10 shadow-sm'
                   }`}
                   aria-pressed={screenMode === screen.id}
                 >
@@ -531,11 +764,11 @@ const DemandFocus = () => {
           {screenMode === 'grupos' && (
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-3">
-                {bomSummary.categoriasAgg.map((category) => (
-                  <div key={category.categoriaKey} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-                    <p className="text-xs uppercase tracking-wide text-slate-400">{category.categoriaKey}</p>
-                    <p className="text-2xl font-semibold text-slate-900">{fmtKg(category.totalKg || 0)} kg</p>
-                    <p className="text-xs text-slate-500">({fmtNum(category.products)} produtos)</p>
+                {viewSummary.categoriasAgg.map((category) => (
+                  <div key={category.categoriaKey} className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-sm">
+                    <p className="text-xs uppercase tracking-wide text-slate-300">{category.categoriaKey}</p>
+                    <p className="text-2xl font-semibold text-slate-100">{fmtKg(category.totalKg || 0)} kg</p>
+                    <p className="text-xs text-slate-400">({fmtNum(category.products)} produtos)</p>
                   </div>
                 ))}
               </div>
@@ -543,7 +776,7 @@ const DemandFocus = () => {
                 <button
                   type="button"
                   onClick={() => setScreenMode('tabela')}
-                  className="px-4 py-2 rounded-2xl bg-indigo-600 text-white text-xs font-semibold transition hover:bg-indigo-500"
+                  className="px-4 py-2 rounded-2xl bg-[#2f6fed] text-white text-xs font-semibold transition hover:bg-[#2559c9]"
                 >
                   Ir para tabela geral
                 </button>
@@ -561,8 +794,8 @@ const DemandFocus = () => {
                       onClick={() => setViewMode(tab.id)}
                       className={`text-xs font-semibold px-4 py-2 rounded-2xl border transition ${
                         viewMode === tab.id
-                          ? 'bg-[#4f46e5] text-white border-indigo-200 shadow-md shadow-indigo-200/40'
-                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 shadow-sm'
+                          ? 'bg-[#2f6fed] text-white border-[#2f6fed]/40 shadow-md shadow-[#2f6fed]/30'
+                          : 'bg-white/5 text-slate-200 border-white/10 hover:bg-white/10 shadow-sm'
                       }`}
                       aria-pressed={viewMode === tab.id}
                     >
@@ -574,317 +807,44 @@ const DemandFocus = () => {
               </div>
               <div className="mt-2">
                 {viewMode === 'produtos' && (
-                  <div className="space-y-5">
+                  <div className="space-y-4">
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                       <div>
-                        <h3 className="text-lg font-semibold text-slate-900">Produtos</h3>
-                        <p className="text-xs text-slate-500">Controle das quantidades e categorias.</p>
+                        <h3 className="text-lg font-semibold text-slate-100">Componentes (por código)</h3>
+                        <p className="text-xs text-slate-300">Agrupa todos os componentes dos itens pai selecionados.</p>
                       </div>
-                      <div className="flex flex-wrap gap-2 text-xs text-slate-600 items-center">
-                        <label className="flex items-center gap-2 font-bold">
-                          <input
-                            type="checkbox"
-                            checked={mostrarSelecionados}
-                            onChange={(e) => setMostrarSelecionados(e.target.checked)}
-                            className="accent-indigo-600"
-                          />
-                          Mostrar só selecionados
-                        </label>
-                        <select
-                          value={filtroProgresso}
-                          onChange={(e) => setFiltroProgresso(e.target.value)}
-                          className="rounded-xl border border-slate-200 bg-white px-2 py-1 font-semibold text-xs outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                        >
-                          <option value="todos">Todos</option>
-                          <option value="pendentes">Só pendentes</option>
-                          <option value="concluidos">Só concluídos</option>
-                        </select>
-                        <label className="flex items-center gap-1 font-bold">
-                          <input
-                            type="checkbox"
-                            checked={filtroEstoqueFaltante}
-                            onChange={(e) => setFiltroEstoqueFaltante(e.target.checked)}
-                            className="accent-rose-600"
-                          />
-                          Só faltando estoque
-                        </label>
-                      </div>
+                      <div className="text-xs text-slate-400">{fmtNum(componentesAgrupados.length)} itens</div>
                     </div>
-                    {produtosVisiveis.length === 0 ? (
-                      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
-                        Nenhum produto: suba a carteira para visualizar o BOM.
+                    {componentesAgrupados.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-white/10 bg-[#0b1220] p-6 text-center text-sm text-slate-300">
+                        Nenhum componente encontrado para a carteira atual.
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
                         <table className="min-w-full border-collapse text-sm">
                           <thead>
-                          <tr className="text-[11px] uppercase tracking-[0.12em] text-slate-500 border-b border-slate-200">
-                            <th className="py-3 pl-3 pr-2 text-left">Categoria</th>
-                            <th className="py-3 px-2 text-left">Produtos</th>
-                            <th className="py-3 px-2 text-right">Demanda</th>
-                            <th className="py-3 px-2 text-right">Produzido</th>
-                            <th className="py-3 px-2 text-right">Restante</th>
-                            <th className="py-3 pr-3 pl-2 text-right">Itens</th>
-                          </tr>
-                        </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {produtosAgrupados.slice(0, 50).map((group) => {
-                              const totalGrupoDemandado = group.items.reduce((sum, item) => sum + (item.demanded || 0), 0);
-                              const totalGrupoProduzido = group.items.reduce(
-                                (sum, item) => sum + Math.min(item.produced || 0, item.demanded || 0),
-                                0,
-                              );
-                              const totalGrupoQtd = group.items.reduce((sum, item) => sum + (item.qty || 0), 0);
-                              const totalGrupoKg = group.items.reduce((sum, item) => sum + (item.totalKg || 0), 0);
-                              const isOpen = categoriasAbertas.has(group.categoria);
-                              const filteredItems = group.items.filter((item) => {
-                                if (filtroEstoqueFaltante) {
-                                  const faltaEstoque = item.bobinas?.some((b) => getEstoquePorBobina(b.cod) < (b.porUnidade || 0) * item.qty);
-                                  if (!faltaEstoque) return false;
-                                }
-                                if (filtroProgresso === 'pendentes') return item.qty > 0;
-                                if (filtroProgresso === 'concluidos') return item.qty <= 0;
-                                return true;
-                              });
-                              return (
-                                <React.Fragment key={group.categoria}>
-                                  <tr
-                                    className={`transition-colors ${
-                                      isOpen
-                                        ? 'bg-white border border-indigo-200 shadow-md shadow-indigo-100/60 ring-1 ring-indigo-100'
-                                        : 'hover:bg-slate-50'
-                                    }`}
-                                  >
-                                    <td className="py-3 pl-3 pr-2 font-semibold text-slate-900">
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleCategoriaOpen(group.categoria)}
-                                        className="inline-flex items-center gap-2 text-left"
-                                      >
-                                        <span
-                                          className={`h-5 w-5 rounded-full border border-slate-200 flex items-center justify-center text-[11px] font-bold ${
-                                            isOpen ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600'
-                                          }`}
-                                        >
-                                          {isOpen ? '-' : '+'}
-                                        </span>
-                                        <span>{group.categoria || 'Sem categoria'}</span>
-                                      </button>
-                                    </td>
-                                    <td className="py-3 px-2 text-slate-600">{fmtNum(group.items.length)} produtos</td>
-                                    <td className="py-3 px-2 text-right font-mono font-semibold text-slate-900">
-                                      {fmtNum(totalGrupoDemandado)}
-                                    </td>
-                                    <td className="py-3 px-2 text-right font-mono font-semibold text-slate-900">
-                                      {fmtNum(totalGrupoProduzido)}
-                                    </td>
-                                    <td className="py-3 px-2 text-right font-mono font-semibold text-slate-900">
-                                      {fmtNum(totalGrupoQtd)}
-                                    </td>
-                                    <td className="py-3 pr-3 pl-2 text-right">
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleCategoriaOpen(group.categoria)}
-                                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-500"
-                                      >
-                                        {isOpen ? 'Fechar itens' : 'Ver itens'}
-                                      </button>
-                                    </td>
-                                  </tr>
-                                  {isOpen && (
-                                    <tr className="bg-slate-50/70">
-                                      <td colSpan={5} className="p-3">
-                                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-2">
-                                          <div className="flex flex-col gap-1 text-xs text-slate-600">
-                                            <p className="font-semibold text-slate-800">Atualizações em lote</p>
-                                            <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
-                                              <input
-                                                list="categoria-options"
-                                                value={categoriaGrupoDrafts[group.categoria] ?? group.categoria ?? ''}
-                                                onChange={(e) => handleCategoriaGrupoChange(group.categoria, e.target.value)}
-                                                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition min-w-[220px]"
-                                                placeholder="Nova categoria"
-                                              />
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  handleAplicarCategoriaGrupo(
-                                                    group.categoria,
-                                                    categoriaGrupoDrafts[group.categoria] ?? group.categoria,
-                                                  )
-                                                }
-                                                className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold shadow-md hover:bg-indigo-500 transition"
-                                              >
-                                                Aplicar ao grupo
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  setProducaoPorProduto((prev) => {
-                                                    const next = { ...prev };
-                                                    filteredItems.forEach((it) => {
-                                                      next[it.produto] = Math.max(prev[it.produto] || 0, it.demanded || 0);
-                                                    });
-                                                    return next;
-                                                  })
-                                                }
-                                                className="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold shadow-md hover:bg-emerald-500 transition"
-                                              >
-                                                Produzir restante
-                                              </button>
-                                            </div>
-                                          </div>
-                                        </div>
-                                        <div className="space-y-3">
-                                          {group.items.slice(0, 200).map((item) => {
-                                            const isDone = (item.demanded || 0) > 0 && item.qty <= 0;
-                                            return (
-                                              <div
-                                                key={item.produto}
-                                                className={`rounded-2xl border p-4 transition shadow-sm flex flex-col gap-3 ${
-                                                  isDone
-                                                    ? 'bg-emerald-50 border-emerald-100 text-emerald-900'
-                                                    : 'bg-white border-slate-200 hover:border-indigo-200 hover:shadow-md'
-                                                }`}
-                                              >
-                                                <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-                                                  <div className="space-y-1">
-                                                    <div className="flex items-center gap-2">
-                                                      <p className="text-xs uppercase tracking-wide text-slate-400">{item.produto}</p>
-                                                      {isDone && (
-                                                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[11px] font-semibold border border-emerald-200">
-                                                          Concluído
-                                                        </span>
-                                                      )}
-                                                      {extraCapacidade.byProd[item.produto] > 0 && (
-                                                        <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-semibold border border-amber-200">
-                                                          +{fmtNum(extraCapacidade.byProd[item.produto])} sug. produção
-                                                        </span>
-                                                      )}
-                                                    </div>
-                                                <p className="text-sm font-semibold text-slate-900">{item.desc}</p>
-                                                <p className="text-xs text-slate-600">
-                                                  <span className="font-semibold text-slate-700">Demandado:</span> {fmtNum(item.demanded)} ·{' '}
-                                                  <span className="font-semibold text-emerald-700">Produzido:</span>{' '}
-                                                  {fmtNum(Math.min(item.produced, item.demanded))} ·{' '}
-                                                  <span className={`font-semibold ${item.qty > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-                                                    Restante: {fmtNum(item.qty)}
-                                                  </span>
-                                                    </p>
-                                                  </div>
-                                    <div className="flex items-center gap-3 text-sm text-slate-500">
-                                      <div className="text-right">
-                                        <p className="text-xs uppercase tracking-wide text-slate-400">Qtd</p>
-                                        <p className="text-lg font-semibold text-slate-900">{fmtNum(item.qty)}</p>
-                                      </div>
-                                      <div className="text-right">
-                                        <p className="text-xs uppercase tracking-wide text-slate-400">Consumo</p>
-                                        <p className="text-lg font-semibold text-slate-900">{fmtKg(item.totalKg)}</p>
-                                      </div>
-                                    </div>
-                                  </div>
-                                                  <div className="grid gap-3 md:grid-cols-4 items-end">
-                                                    <label className="flex flex-col text-xs text-slate-500">
-                                                      Categoria
-                                                      <input
-                                                        list="categoria-options"
-                                                      value={categoriaOverrides[item.produto] ?? item.categoriaKey ?? ''}
-                                                      onChange={(e) => handleCategoriaChange(item.produto, e.target.value)}
-                                                      className="mt-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition shadow-inner"
-                                                      placeholder="Sem categoria"
-                                                    />
-                                                  </label>
-                                                    <label className="flex flex-col text-xs text-slate-500">
-                                                      Demanda total
-                                                      <input
-                                                        type="number"
-                                                        min="0"
-                                                        step="1"
-                                                      value={qtdPorProduto[item.produto] ?? ''}
-                                                      onChange={(e) =>
-                                                        setQtdPorProduto((prev) => ({
-                                                          ...prev,
-                                                          [item.produto]: Math.round(parseQty(e.target.value)),
-                                                        }))
-                                                      }
-                                                      className="mt-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition shadow-inner"
-                                                      />
-                                                      <span className="mt-1 text-[11px] text-slate-500">Valor total carregado</span>
-                                                    </label>
-                                                    <label className="flex flex-col text-xs text-slate-500">
-                                                      Produzido
-                                                      <input
-                                                        type="number"
-                                                        min="0"
-                                                        step="1"
-                                                      value={producaoPorProduto[item.produto] ?? ''}
-                                                      onChange={(e) =>
-                                                        setProducaoPorProduto((prev) => ({
-                                                          ...prev,
-                                                          [item.produto]: Math.round(parseQty(e.target.value)),
-                                                        }))
-                                                      }
-                                                      className="mt-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition shadow-inner"
-                                                      />
-                                                      <span className="mt-1 text-[11px] text-slate-500">O que já saiu do chão</span>
-                                                    </label>
-                                                    <div className="flex gap-2 text-xs">
-                                                      <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                          setProducaoPorProduto((prev) => ({
-                                                            ...prev,
-                                                            [item.produto]: Math.round(parseQty(producaoPorProduto[item.produto] || 0) + 100),
-                                                          }))
-                                                        }
-                                                        className="px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 hover:border-indigo-200 hover:text-indigo-700 transition"
-                                                      >
-                                                        +100
-                                                      </button>
-                                                      <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                          setProducaoPorProduto((prev) => ({
-                                                            ...prev,
-                                                            [item.produto]: Math.max(0, Math.round(parseQty(producaoPorProduto[item.produto] || 0) - 100)),
-                                                          }))
-                                                        }
-                                                        className="px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 hover:border-indigo-200 hover:text-indigo-700 transition"
-                                                      >
-                                                        -100
-                                                      </button>
-                                                      {extraCapacidade.byProd[item.produto] > 0 && (
-                                                        <button
-                                                          type="button"
-                                                          onClick={() => applySugestaoItem(item.produto, extraCapacidade.byProd[item.produto])}
-                                                          className="px-2 py-1 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:border-amber-400 transition font-semibold"
-                                                        >
-                                                          Aplicar +{fmtNum(extraCapacidade.byProd[item.produto])}
-                                                        </button>
-                                                      )}
-                                                    </div>
-                                                    <div className="flex flex-col text-xs text-slate-500">
-                                                      <span className="uppercase tracking-wide text-slate-400">Consumo estimado</span>
-                                                      <span className="mt-2 text-sm font-semibold text-slate-800">{fmtKg(item.totalKg || 0)}</span>
-                                                    </div>
-                                                  </div>
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  )}
-                                </React.Fragment>
-                              );
-                            })}
+                            <tr className="text-[11px] uppercase tracking-[0.12em] text-slate-300 border-b border-white/10">
+                              <th className="py-3 pl-3 pr-2 text-left">Código</th>
+                              <th className="py-3 px-2 text-left">Descrição</th>
+                              <th className="py-3 px-2 text-left">Tipo</th>
+                              <th className="py-3 px-2 text-right">Qtd</th>
+                              <th className="py-3 px-2 text-left">UM</th>
+                              <th className="py-3 pr-3 pl-2 text-right">Pais</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/10">
+                            {componentesAgrupados.slice(0, 300).map((comp) => (
+                              <tr key={comp.code} className="hover:bg-white/5">
+                                <td className="py-3 pl-3 pr-2 font-mono font-semibold text-slate-100">{comp.code}</td>
+                                <td className="py-3 px-2 text-slate-300">{comp.desc || 'Sem descrição'}</td>
+                                <td className="py-3 px-2 text-slate-300">{comp.tipo}</td>
+                                <td className="py-3 px-2 text-right font-mono font-semibold text-slate-100">{fmtUnits(comp.total)}</td>
+                                <td className="py-3 px-2 text-slate-300">{comp.um || '-'}</td>
+                                <td className="py-3 pr-3 pl-2 text-right text-slate-300">{fmtNum(comp.parents)}</td>
+                              </tr>
+                            ))}
                           </tbody>
                         </table>
-                        <datalist id="categoria-options">
-                          {categoriaOptions.map((value) => (
-                            <option key={value} value={value} />
-                          ))}
-                        </datalist>
                       </div>
                     )}
                   </div>
@@ -893,18 +853,18 @@ const DemandFocus = () => {
                   <div className="space-y-5">
                     <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
                       <div>
-                        <h3 className="text-lg font-semibold text-slate-900">Bobinas</h3>
-                        <p className="text-xs text-slate-500">Consumo por código</p>
+                        <h3 className="text-lg font-semibold text-slate-100">Bobinas</h3>
+                        <p className="text-xs text-slate-300">Consumo por código</p>
                       </div>
                       <div className="text-right text-xs text-slate-400 space-y-1">
-                        <p>{fmtKg(bomSummary.totalKg)} kg totais</p>
+                        <p>{fmtKgScaled(viewSummary.totalKg)} {kgLabel} totais</p>
                         <p>{fmtKg(motherStock.totalKg)} kg em estoque</p>
                       </div>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="min-w-full text-left border-collapse">
                         <thead>
-                          <tr className="text-xs uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                          <tr className="text-xs uppercase tracking-wider text-slate-300 border-b border-white/10">
                             <th className="p-3">Bobina</th>
                             <th className="p-3">Descrição</th>
                             <th className="p-3 text-right">Consumo (kg)</th>
@@ -912,23 +872,24 @@ const DemandFocus = () => {
                             <th className="p-3 text-right">Diferença</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {bomSummary.bobinasAgg.length === 0 ? (
+                        <tbody className="divide-y divide-white/10">
+                          {viewSummary.bobinasAgg.length === 0 ? (
                             <tr>
                               <td colSpan={4} className="p-6 text-center text-sm text-slate-400">
                                 Nenhum dado carregado. Suba uma carteira para calcular o consumo por bobina.
                               </td>
                             </tr>
                             ) : (
-                              bomSummary.bobinasAgg.map((bobina) => {
+                              viewSummary.bobinasAgg.map((bobina) => {
                                 const weight = bobina.totalKg || 0;
+                                const displayWeight = weight * viewFactor;
                                 const stock = getEstoquePorBobina(bobina.cod);
-                                const diff = stock - weight;
+                                const diff = stock - displayWeight;
                                 return (
-                                  <tr key={bobina.cod} className="hover:bg-slate-50 transition-colors">
-                                    <td className="p-3 font-mono text-slate-700">{bobina.cod}</td>
-                                    <td className="p-3 text-sm text-slate-700">{bobina.desc}</td>
-                                    <td className="p-3 text-right font-mono">{fmtKg(weight)} kg</td>
+                          <tr key={bobina.cod} className="hover:bg-white/5 transition-colors">
+                                    <td className="p-3 font-mono text-slate-200">{bobina.cod}</td>
+                                    <td className="p-3 text-sm text-slate-200">{bobina.desc}</td>
+                                    <td className="p-3 text-right font-mono">{fmtKg(displayWeight)} {kgLabel}</td>
                                     <td className="p-3 text-right font-mono">{fmtKg(stock)} kg</td>
                                     <td className={`p-3 text-right font-mono ${diff < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
                                       {fmtKg(diff)} kg
@@ -944,61 +905,103 @@ const DemandFocus = () => {
                 )}
                 {viewMode === 'componentes' && (
                   <div className="space-y-4">
-                    <div className="text-sm text-slate-500">
-                      Listei aqui todos os itens pai e os componentes que cada um consome.
-                    </div>
                     {parentItems.length === 0 ? (
-                      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
+                      <div className="rounded-2xl border border-dashed border-white/10 bg-[#0b1220] p-6 text-center text-sm text-slate-400">
                         Nenhum produto com quantidade positiva. Faça o upload da carteira para ativar este painel.
                       </div>
                     ) : (
                       parentItems.map((item) => {
-                        const sortedBobinas = item.bobinas.slice().sort((a, b) => (b.porUnidade || 0) - (a.porUnidade || 0));
                         return (
-                          <details key={item.produto} className="group rounded-2xl border border-slate-200 bg-slate-50">
+                          <details key={item.produto} className="group rounded-2xl border border-white/10 bg-[#0b1220]">
                             <summary className="flex flex-col gap-1 p-4 md:flex-row md:items-center md:justify-between list-none cursor-pointer">
                               <div>
-                                <p className="text-xs uppercase tracking-wide text-slate-400">Produto pai</p>
-                                <p className="text-sm font-semibold text-slate-900">{item.produto} — {item.desc}</p>
-                                <p className="text-xs text-slate-500">{item.categoriaKey}</p>
+                                <p className="text-sm font-semibold text-slate-100">{item.produto} — {item.desc}</p>
+                                <p className="text-xs text-slate-300">{item.categoriaKey}</p>
                               </div>
-                              <div className="text-right text-sm text-slate-500 space-y-1">
-                                <p>{fmtNum(item.qty)} un</p>
-                                <p>{fmtKg(item.totalKg)} kg</p>
+                              <div className="text-right text-sm text-slate-300 space-y-1">
+                                <p className="text-slate-100 font-semibold">{fmtUnits(item.qty)} un</p>
+                                <p className="text-slate-200 font-mono">{fmtKgScaled(item.totalKg)} kg</p>
                               </div>
                             </summary>
-                            <div className="border-t border-slate-200 px-4 pb-4 pt-3">
-                              <div className="overflow-x-auto">
-                                <table className="min-w-full text-left border-collapse">
-                                  <thead>
-                                    <tr className="text-xs uppercase tracking-wider text-slate-400 border-b border-slate-100">
-                                      <th className="p-2 text-left">Bobina</th>
-                                      <th className="p-2 text-left">Descrição</th>
-                                      <th className="p-2 text-right">Kg/un</th>
-                                      <th className="p-2 text-right">Kg total</th>
-                                      <th className="p-2 text-right">Estoque (kg)</th>
-                                      <th className="p-2 text-right">Diferença</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-100">
-                                    {sortedBobinas.map((bobina) => {
-                                      const perUnit = Number(bobina.porUnidade || 0);
-                                      const total = perUnit * item.qty;
-                                      const stock = getEstoquePorBobina(bobina.cod);
-                                      const diff = stock - total;
-                                      return (
-                                        <tr key={`${item.produto}-${bobina.cod ?? bobina.desc}`} className="text-sm text-slate-700">
-                                          <td className="p-2 font-mono">{bobina.cod}</td>
-                                          <td className="p-2">{bobina.desc}</td>
-                                          <td className="p-2 text-right font-mono">{fmtKg(perUnit)} kg</td>
-                                          <td className="p-2 text-right font-mono">{fmtKg(total)} kg</td>
-                                          <td className="p-2 text-right font-mono">{fmtKg(stock)} kg</td>
-                                          <td className={`p-2 text-right font-mono ${diff < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{fmtKg(diff)} kg</td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
+                            <div className="border-t border-white/10 px-4 pb-4 pt-3">
+                              <div className="space-y-3">
+                                {estruturaByParent[item.produto]?.children?.length ? (
+                                  estruturaByParent[item.produto].children.map((child) => (
+                                    <details key={`${item.produto}-${child.code}`} className="rounded-lg border border-white/10 bg-[#0f1729] p-3">
+                                      <summary className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-base list-none cursor-pointer">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs uppercase text-slate-400">{child.tp || '-'}</span>
+                                          <span className="font-mono font-bold text-slate-100">{child.code || '-'}</span>
+                                          <span className="text-sm text-slate-300 truncate">{child.desc || 'Sem descricao'}</span>
+                                        </div>
+                                        <div className="text-sm text-slate-300 flex items-center gap-3">
+                                          <span className="font-semibold text-slate-200">N{child.edge?.nivel ?? '-'}</span>
+                                          <span className="font-mono text-slate-100">
+                                            {fmtUnits((Number(child.edge?.qtdNec || 0) || 0) * (Number(item.qty || 0) || 0))} {child.edge?.um ?? ''}
+                                          </span>
+                                        </div>
+                                      </summary>
+                                      <div className="mt-3">
+                                        {child.mps?.length ? (
+                                          <div className="flex flex-col gap-2">
+                                            {child.mps.map((mp) => (
+                                              <div
+                                                key={`${child.code}-${mp.child}`}
+                                                className="flex items-center justify-between gap-3 rounded-lg bg-[#0b1220] border border-white/10 px-3 py-2 text-sm"
+                                              >
+                                                <div className="min-w-0">
+                                                  <div className="font-mono font-semibold text-slate-100">{mp.child}</div>
+                                                  <div className="text-sm text-slate-300 truncate">
+                                                    {getItemDesc(mp.child) || 'Bobina'}
+                                                  </div>
+                                                </div>
+                                                <div className="text-right text-sm text-slate-200 shrink-0">
+                                                  <div className="font-semibold">N{mp.nivel ?? '-'}</div>
+                                                  <div className="font-mono">
+                                                    {fmtNum(mp.qtdNec ?? 0)} {mp.um ?? ''}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <div className="text-[11px] text-slate-400">Sem bobinas vinculadas</div>
+                                        )}
+                                      </div>
+                                    </details>
+                                  ))
+                                ) : (
+                                  <div className="text-xs text-slate-400">Sem estrutura de itens para este produto.</div>
+                                )}
+
+                                {estruturaByParent[item.produto]?.directMps?.length ? (
+                                  <div className="rounded-lg border border-white/10 bg-[#0f1729] p-3">
+                                    <div className="text-xs uppercase text-slate-300 mb-2">
+                                      Bobinas diretas ({fmtNum(estruturaByParent[item.produto].directMps.length)})
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                      {estruturaByParent[item.produto].directMps.map((mp) => (
+                                        <div
+                                          key={`${item.produto}-mp-${mp.child}`}
+                                          className="flex items-center justify-between gap-3 rounded-lg bg-[#0b1220] border border-white/10 px-3 py-2 text-sm"
+                                        >
+                                          <div className="min-w-0">
+                                            <div className="font-mono font-semibold text-slate-100">{mp.child}</div>
+                                            <div className="text-sm text-slate-300 truncate">
+                                              {getItemDesc(mp.child) || 'Bobina'}
+                                            </div>
+                                          </div>
+                                          <div className="text-right text-sm text-slate-200 shrink-0">
+                                            <div className="font-semibold">N{mp.nivel ?? '-'}</div>
+                                            <div className="font-mono">
+                                              {fmtNum(mp.qtdNec ?? 0)} {mp.um ?? ''}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ) : null}
                               </div>
                             </div>
                           </details>
@@ -1011,29 +1014,29 @@ const DemandFocus = () => {
             </div>
           )}
         </section>
-        <section className="bg-white rounded-3xl border border-slate-200 shadow-lg p-6 space-y-5 text-slate-900">
+        <section className="bg-[#0f1729] rounded-3xl border border-white/10 shadow-[0_25px_60px_-40px_rgba(0,0,0,0.8)] p-5 sm:p-6 space-y-5 text-slate-100">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold">Categorias</h2>
-              <p className="text-xs text-slate-500">Resumo agrupado</p>
+              <p className="text-xs text-slate-300">Resumo agrupado</p>
             </div>
-            <span className="text-xs text-slate-400">{fmtNum(bomSummary.categoriasAgg.length)} agrupamentos</span>
+            <span className="text-xs text-slate-300">{fmtNum(viewSummary.categoriasAgg.length)} agrupamentos</span>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-left border-collapse">
               <thead>
-                <tr className="text-xs uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                <tr className="text-xs uppercase tracking-wider text-slate-300 border-b border-white/10">
                   <th className="p-3">Categoria</th>
                   <th className="p-3 text-right">Consumo (kg)</th>
                   <th className="p-3 text-right">Produtos</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
-                {bomSummary.categoriasAgg.map((category) => (
-                  <tr key={category.categoriaKey} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-3 text-sm text-slate-700">{category.categoriaKey}</td>
-                    <td className="p-3 text-right font-mono">{fmtKg(category.totalKg || 0)} kg</td>
-                    <td className="p-3 text-right">{fmtNum(category.products)}</td>
+              <tbody className="divide-y divide-white/10">
+                {viewSummary.categoriasAgg.map((category) => (
+                  <tr key={category.categoriaKey} className="hover:bg-white/5 transition-colors">
+                    <td className="p-3 text-sm text-slate-100">{category.categoriaKey}</td>
+                    <td className="p-3 text-right font-mono text-slate-100">{fmtKg(category.totalKg || 0)} kg</td>
+                    <td className="p-3 text-right text-slate-200">{fmtNum(category.products)}</td>
                   </tr>
                 ))}
               </tbody>

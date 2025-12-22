@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useStockData } from '../../hooks/useStockData';
+import { useOperationalStatus } from '../../hooks/useOperationalStatus';
 import { StockSummary } from './StockSummary';
 import { StockTabs } from './StockTabs';
 import { EVENT_TYPES } from '../../utils/constants';
@@ -30,6 +31,8 @@ const Dashboard = ({
     finishedStockList,
     totals,
     catalogByCode,
+    rawMotherCoils,
+    rawChildCoils,
   } = useStockData({
     motherCoils,
     childCoils,
@@ -38,6 +41,27 @@ const Dashboard = ({
     motherCatalog,
     productCatalog,
   });
+
+  const [statusParams, setStatusParams] = useState({
+    thresholdDiasSemGiro: 30,
+    thresholdDiasFIFO: 15,
+    demandWindowDias: 30,
+    minWeightDefault: 3000,
+    minCountDefault: 1,
+  });
+
+  const { motherStatusByCode, childStatusByCode, finishedStatusByCode } =
+    useOperationalStatus({
+      motherStockList,
+      childStockList,
+      finishedStockList,
+      rawMotherCoils,
+      rawChildCoils,
+      productionLogs,
+      shippingLogs,
+      cuttingLogs,
+      params: statusParams,
+    });
 
   const normalizeThicknessForExport = (value) => {
     if (value === undefined || value === null || value === '') return null;
@@ -527,7 +551,93 @@ const Dashboard = ({
         eventLogsLoading={eventLogsLoading}
         onViewEventDetails={onViewEventDetails}
         productionLogs={productionLogs}
+        statusByMotherCode={motherStatusByCode}
+        statusByChildCode={childStatusByCode}
+        statusByFinishedCode={finishedStatusByCode}
       />
+
+      <details className="bg-slate-900/30 border border-white/5 rounded-2xl px-4 py-3 text-xs text-gray-400">
+        <summary className="cursor-pointer select-none font-semibold text-gray-300">
+          Configurações do Status Operacional
+        </summary>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs mt-3">
+          <label className="flex flex-col gap-1 text-gray-400">
+            Sem giro (dias)
+            <input
+              type="number"
+              min="1"
+              value={statusParams.thresholdDiasSemGiro}
+              onChange={(e) =>
+                setStatusParams((prev) => ({
+                  ...prev,
+                  thresholdDiasSemGiro: Number(e.target.value) || 0,
+                }))
+              }
+              className="bg-gray-900 text-white border border-gray-700 rounded px-2 py-1"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-gray-400">
+            Janela demanda (dias)
+            <input
+              type="number"
+              min="1"
+              value={statusParams.demandWindowDias}
+              onChange={(e) =>
+                setStatusParams((prev) => ({
+                  ...prev,
+                  demandWindowDias: Number(e.target.value) || 0,
+                }))
+              }
+              className="bg-gray-900 text-white border border-gray-700 rounded px-2 py-1"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-gray-400">
+            FIFO (dias)
+            <input
+              type="number"
+              min="1"
+              value={statusParams.thresholdDiasFIFO}
+              onChange={(e) =>
+                setStatusParams((prev) => ({
+                  ...prev,
+                  thresholdDiasFIFO: Number(e.target.value) || 0,
+                }))
+              }
+              className="bg-gray-900 text-white border border-gray-700 rounded px-2 py-1"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-gray-400">
+            Min kg
+            <input
+              type="number"
+              min="0"
+              value={statusParams.minWeightDefault}
+              onChange={(e) =>
+                setStatusParams((prev) => ({
+                  ...prev,
+                  minWeightDefault: Number(e.target.value) || 0,
+                }))
+              }
+              className="bg-gray-900 text-white border border-gray-700 rounded px-2 py-1"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-gray-400">
+            Min pcs
+            <input
+              type="number"
+              min="0"
+              value={statusParams.minCountDefault}
+              onChange={(e) =>
+                setStatusParams((prev) => ({
+                  ...prev,
+                  minCountDefault: Number(e.target.value) || 0,
+                }))
+              }
+              className="bg-gray-900 text-white border border-gray-700 rounded px-2 py-1"
+            />
+          </label>
+        </div>
+      </details>
     </div>
   );
 };
