@@ -1,5 +1,7 @@
 import { QRCodeSVG } from 'qrcode.react';
 import React, { useEffect, useRef, useState } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import backupData from "./backups/slitter-backup.json";
 import PaginationControls from './components/common/PaginationControls';
 import Dashboard from './components/Dashboard/Dashboard';
@@ -5370,9 +5372,55 @@ const renderB2DynamicReport = () => {
   const safeChild = Array.isArray(childCoils) ? childCoils : [];
   const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
   const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
-  const safeMotherCatalog = Array.isArray(INITIAL_MOTHER_CATALOG)
+  const motherCatalogFallback = Array.isArray(INITIAL_MOTHER_CATALOG)
     ? INITIAL_MOTHER_CATALOG
     : [];
+  const motherCatalogRuntime = Array.isArray(motherCatalog) ? motherCatalog : [];
+  const mergedMotherCatalog = [...motherCatalogFallback, ...motherCatalogRuntime];
+
+  const safeMotherCatalog = mergedMotherCatalog;
+
+  const motherCatalogByCode = safeMotherCatalog.reduce((acc, item) => {
+    const code = String(item?.code || '').trim();
+    if (code) acc[code] = item;
+    return acc;
+  }, {});
+
+  const baseProductCatalog = Array.isArray(INITIAL_PRODUCT_CATALOG)
+    ? INITIAL_PRODUCT_CATALOG
+    : [];
+  const runtimeProductCatalog = Array.isArray(productCatalog) ? productCatalog : [];
+
+  const b2CatalogMap = baseProductCatalog.reduce((acc, item) => {
+    const code = String(item?.b2Code || '').trim();
+    if (!code) return acc;
+    acc[code] = {
+      b2Code: code,
+      b2Name: item?.b2Name || item?.name || '',
+      width: item?.width ?? null,
+      thickness: item?.thickness ?? null,
+      type: item?.type ?? null,
+      motherCode: item?.motherCode || '',
+    };
+    return acc;
+  }, {});
+
+  runtimeProductCatalog.forEach((item) => {
+    const code = String(item?.b2Code || '').trim();
+    if (!code) return;
+    const existing = b2CatalogMap[code] || {};
+    b2CatalogMap[code] = {
+      ...existing,
+      b2Code: code,
+      b2Name: item?.b2Name || item?.name || existing.b2Name || '',
+      width: item?.width ?? existing.width ?? null,
+      thickness: item?.thickness ?? existing.thickness ?? null,
+      type: item?.type ?? existing.type ?? null,
+      motherCode: item?.motherCode || existing.motherCode || '',
+    };
+  });
+
+  const catalogB2List = Object.values(b2CatalogMap);
 
   // --- 2. ENRIQUECER B2 COM INFO DA BOBINA MÃE + CONSUMO ---
   const enrichedData = safeChild.map((b2) => {
@@ -5393,6 +5441,9 @@ const renderB2DynamicReport = () => {
     return {
       ...b2,
       motherMaterial: mother.material,
+      motherDescription: motherCatalogMatch?.description || mother.material,
+      motherWidth: motherCatalogMatch?.width ?? mother.width ?? null,
+      motherThickness: motherCatalogMatch?.thickness ?? mother.thickness ?? null,
       motherEntryDate: mother.entryDate || mother.date,
       consumptionDate: prodLog ? prodLog.date : null,
       productFinal: prodLog
@@ -5405,6 +5456,104 @@ const renderB2DynamicReport = () => {
       type: motherCatalogMatch?.type ?? null,
     };
   });
+
+  const formatThickness = (value) => {
+    if (value === undefined || value === null || value === '') return '-';
+    const cleaned = String(value).replace(',', '.').replace(/[^0-9.]/g, '');
+    if (!cleaned) return '-';
+    let parsed = parseFloat(cleaned);
+    if (!Number.isFinite(parsed) || parsed <= 0) return '-';
+    while (parsed > 5 && parsed > 0.05) parsed /= 10;
+    return parsed.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+
+  const formatWidth = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? String(parsed) : '-';
+  };
+
+  const handleExportB2Pdf = () => {
+    const search = (b2ReportSearch || "").toLowerCase();
+    const filteredCatalog = catalogB2List.filter((item) => {
+      const matchesSearch =
+        item.b2Code?.toLowerCase().includes(search) ||
+        item.b2Name?.toLowerCase().includes(search) ||
+        String(item.motherCode || "").includes(search);
+
+      const matchesThickness =
+        !b2ThicknessFilter ||
+        b2ThicknessFilter === "all" ||
+        String(item.thickness) === String(b2ThicknessFilter);
+
+      const matchesType =
+        !b2TypeFilter ||
+        b2TypeFilter === "all" ||
+        String(item.type) === String(b2TypeFilter);
+
+      return matchesSearch && matchesThickness && matchesType;
+    });
+
+    if (!filteredCatalog.length) {
+      alert('Nenhum registro para exportar.');
+      return;
+    }
+
+    const doc = new jsPDF('l', 'mm', 'a4');
+    doc.setFontSize(14);
+    doc.text('Estrutura B2 - Bobina Mae e Medidas', 14, 16);
+    doc.setFontSize(9);
+    doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 22);
+
+    const rows = filteredCatalog.map((item) => {
+      const mother = motherCatalogByCode[String(item.motherCode || '').trim()];
+      return [
+        item.b2Code || '-',
+        item.b2Name || '-',
+        item.motherCode || '-',
+        mother?.description || '-',
+        formatWidth(mother?.width),
+        formatThickness(mother?.thickness),
+        formatWidth(item.width),
+        formatThickness(item.thickness),
+        item.type || '-',
+      ];
+    });
+
+    autoTable(doc, {
+      startY: 28,
+      head: [[
+        'B2 Codigo',
+        'B2 Descricao',
+        'Mae Codigo',
+        'Mae Descricao',
+        'Mae Largura (mm)',
+        'Mae Espessura (mm)',
+        'B2 Largura (mm)',
+        'B2 Espessura (mm)',
+        'Tipo',
+      ]],
+      body: rows,
+      theme: 'grid',
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [40, 40, 40], textColor: [255, 255, 255] },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 50 },
+        2: { cellWidth: 18 },
+        3: { cellWidth: 50 },
+        4: { cellWidth: 20 },
+        5: { cellWidth: 22 },
+        6: { cellWidth: 20 },
+        7: { cellWidth: 22 },
+        8: { cellWidth: 14 },
+      },
+    });
+
+    doc.save('estrutura_b2.pdf');
+  };
 
   // --- 3. OPÇÕES DE FILTRO (ESPESSURA / TIPO) ---
   const thicknessOptions = Array.from(
@@ -5551,6 +5700,14 @@ const renderB2DynamicReport = () => {
               ))}
             </select>
           </div>
+
+          <Button
+            variant="secondary"
+            onClick={handleExportB2Pdf}
+            className="h-9 text-xs"
+          >
+            <Download size={14} /> PDF Estrutura
+          </Button>
         </div>
       </div>
 
