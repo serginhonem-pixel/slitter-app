@@ -11,7 +11,7 @@ import {
 } from "firebase/firestore";
 
 // 2. Importe as funções de login
-import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from "firebase/auth";
 
 // --- EXPORTAÇÕES ESSENCIAIS PARA O APP.JSX ---
 const isLocalHost = () => {
@@ -44,6 +44,15 @@ export const logoutUser = async () => {
     await signOut(auth);
   } catch (error) {
     console.error("Erro ao sair:", error);
+  }
+};
+
+export const resetPassword = async (email) => {
+  try {
+    await sendPasswordResetEmail(auth, email);
+  } catch (error) {
+    console.error("Erro ao enviar reset de senha:", error);
+    throw error;
   }
 };
 
