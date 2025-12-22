@@ -68,6 +68,26 @@ const Dashboard = ({
     return entry?.description || fallback;
   };
 
+  const b2CatalogByCode = useMemo(() => {
+    return (Array.isArray(productCatalog) ? productCatalog : []).reduce((acc, item) => {
+      if (item?.b2Code) acc[String(item.b2Code)] = item;
+      return acc;
+    }, {});
+  }, [productCatalog]);
+
+  const getB2CatalogEntry = (code) =>
+    b2CatalogByCode?.[String(code)] || b2CatalogByCode?.[Number(code)];
+
+  const getB2Description = (code, fallback) => {
+    const entry = getB2CatalogEntry(code);
+    return entry?.b2Name || entry?.name || fallback;
+  };
+
+  const getB2Thickness = (code, fallback) => {
+    const entry = getB2CatalogEntry(code);
+    return entry?.thickness ?? fallback;
+  };
+
   const getProductWeight = (code, count) => {
     if (!getUnitWeight) return 0;
     const unit = Number(getUnitWeight(code)) || 0;
@@ -448,11 +468,11 @@ const Dashboard = ({
       .map((coil) => ({
         ID: coil.id,
         Codigo_B2: coil.b2Code,
-        Nome_B2: getCatalogDescription(coil.motherCode, coil.b2Name),
+        Nome_B2: getB2Description(coil.b2Code, coil.b2Name),
         Largura: coil.width,
         'Espessura (mm)':
-          normalizeThicknessForExport(getCatalogThickness(coil.motherCode) ?? coil.thickness) ??
-          getCatalogThickness(coil.motherCode) ??
+          normalizeThicknessForExport(getB2Thickness(coil.b2Code, coil.thickness)) ??
+          getB2Thickness(coil.b2Code, coil.thickness) ??
           coil.thickness,
         Peso: coil.weight,
         Bobina_Mae_ID: coil.motherId,
