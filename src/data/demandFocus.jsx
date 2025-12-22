@@ -121,13 +121,32 @@ const ESTRUTURA_EDGES = Array.isArray(estruturaData?.edges) ? estruturaData.edge
 const ESTRUTURA_ITEMS = estruturaData?.items || {};
 const buildEdgeMap = (edges) => {
   const byParent = new Map();
+  const seen = new Map();
   edges.forEach((edge) => {
     const parent = String(edge?.parent ?? '').trim();
     if (!parent) return;
+    const child = String(edge?.child ?? '').trim();
+    const tp = String(edge?.tp ?? '').trim().toUpperCase();
+    const um = String(edge?.um ?? '').trim();
+    const qtdNec = Number(edge?.qtdNec ?? 0) || 0;
+    const qtdBase = Number(edge?.qtdBase ?? 1) || 1;
+    const perdaPct = Number(edge?.perdaPct ?? 0) || 0;
+    const nivel = Number(edge?.nivel ?? 0) || 0;
+    const key = `${parent}|${child}|${tp}|${um}|${qtdNec}|${qtdBase}|${perdaPct}|${nivel}`;
+    if (seen.has(key)) return;
+    seen.set(key, true);
     if (!byParent.has(parent)) byParent.set(parent, []);
     byParent.get(parent).push(edge);
   });
   return byParent;
+};
+
+const getEdgeFactor = (edge) => {
+  const qtdNec = Number(edge?.qtdNec ?? 0) || 0;
+  const qtdBase = Number(edge?.qtdBase ?? 1) || 1;
+  const perdaPct = Number(edge?.perdaPct ?? 0) || 0;
+  if (!qtdNec) return 0;
+  return (qtdNec / qtdBase) * (1 + perdaPct / 100);
 };
 
 const collectMpEdges = (rootCode, edgesByParent) => {
@@ -169,7 +188,7 @@ const aggregateMpEdges = (edges) => {
       return;
     }
     const current = map.get(key);
-    current.qtdNec = Number(current.qtdNec || 0) + Number(edge?.qtdNec || 0);
+    current.qtdNec = Number(current.qtdNec || 0) + getEdgeFactor(edge);
     const currentNivel = Number(current.nivel || 0);
     const nextNivel = Number(edge?.nivel || 0);
     if (nextNivel > currentNivel) current.nivel = nextNivel;
@@ -426,49 +445,69 @@ const DemandFocus = () => {
   );
   const edgesByParent = useMemo(() => buildEdgeMap(ESTRUTURA_EDGES), []);
   const componentesAgrupados = useMemo(() => {
-    const map = new Map();
+    const totals = new Map();
+    const meta = new Map();
+    const memo = new Map();
+
+    const registerMeta = (code, edge) => {
+      if (!meta.has(code)) {
+        meta.set(code, { tpSet: new Set(), umSet: new Set(), nivel: 0 });
+      }
+      const entry = meta.get(code);
+      const tp = String(edge?.tp ?? '').toUpperCase();
+      if (tp) entry.tpSet.add(tp);
+      if (edge?.um) entry.umSet.add(edge.um);
+      const nivel = Number(edge?.nivel || 0) || 0;
+      if (nivel > entry.nivel) entry.nivel = nivel;
+    };
+
+    const buildComponentMap = (code, trail) => {
+      if (memo.has(code)) return memo.get(code);
+      if (trail.has(code)) return new Map();
+      trail.add(code);
+      const result = new Map();
+      const edges = edgesByParent.get(code) || [];
+      edges.forEach((edge) => {
+        const child = String(edge?.child ?? '').trim();
+        const qtdNec = getEdgeFactor(edge);
+        if (!child || !qtdNec) return;
+        registerMeta(child, edge);
+        result.set(child, (result.get(child) || 0) + qtdNec);
+        const childMap = buildComponentMap(child, trail);
+        childMap.forEach((value, key) => {
+          result.set(key, (result.get(key) || 0) + value * qtdNec);
+        });
+      });
+      trail.delete(code);
+      memo.set(code, result);
+      return result;
+    };
+
     parentItems.forEach((item) => {
       const parentCode = String(item.produto ?? '').trim();
       const parentQty = Number(item.qty || 0);
       if (!parentCode || parentQty <= 0) return;
-      const edges = edgesByParent.get(parentCode) || [];
-      edges.forEach((edge) => {
-        const child = String(edge?.child ?? '').trim();
-        if (!child) return;
-        const tp = String(edge?.tp ?? '').toUpperCase();
-        if (!tp) return;
-        const qtdNec = Number(edge?.qtdNec || 0) || 0;
-        const needed = qtdNec * parentQty;
-        if (!map.has(child)) {
-          map.set(child, {
-            code: child,
-            desc: getItemDesc(child),
-            tpSet: new Set(),
-            umSet: new Set(),
-            total: 0,
-            nivel: Number(edge?.nivel || 0) || 0,
-            parents: new Set(),
-          });
-        }
-        const entry = map.get(child);
-        entry.total += needed;
-        if (tp) entry.tpSet.add(tp);
-        if (edge?.um) entry.umSet.add(edge.um);
-        const nivel = Number(edge?.nivel || 0) || 0;
-        if (nivel > entry.nivel) entry.nivel = nivel;
-        entry.parents.add(parentCode);
+      const componentMap = buildComponentMap(parentCode, new Set());
+      componentMap.forEach((factor, code) => {
+        totals.set(code, (totals.get(code) || 0) + factor * parentQty);
+        if (!meta.has(code)) meta.set(code, { tpSet: new Set(), umSet: new Set(), nivel: 0 });
+        meta.get(code).parents = (meta.get(code).parents || 0) + 1;
       });
     });
-    return Array.from(map.values())
-      .map((entry) => ({
-        code: entry.code,
-        desc: entry.desc,
-        tipo: entry.tpSet.size > 1 ? 'MIX' : Array.from(entry.tpSet)[0] || '-',
-        um: entry.umSet.size > 1 ? 'MIX' : Array.from(entry.umSet)[0] || '',
-        total: entry.total,
-        nivel: entry.nivel || '-',
-        parents: entry.parents.size,
-      }))
+
+    return Array.from(totals.entries())
+      .map(([code, total]) => {
+        const info = meta.get(code) || { tpSet: new Set(), umSet: new Set(), nivel: 0, parents: 0 };
+        return {
+          code,
+          desc: getItemDesc(code),
+          tipo: info.tpSet.size > 1 ? 'MIX' : Array.from(info.tpSet)[0] || '-',
+          um: info.umSet.size > 1 ? 'MIX' : Array.from(info.umSet)[0] || '',
+          total,
+          nivel: info.nivel || '-',
+          parents: info.parents || 0,
+        };
+      })
       .sort((a, b) => b.total - a.total);
   }, [parentItems, edgesByParent]);
   const estruturaByParent = useMemo(() => {
@@ -487,12 +526,28 @@ const DemandFocus = () => {
         children: children.map((edge) => {
           const childCode = String(edge?.child ?? '').trim();
           const childMps = aggregateMpEdges(collectMpEdges(childCode, edgesByParent));
+          const childEdges = edgesByParent.get(childCode) || [];
+          const subItems = childEdges
+            .filter((childEdge) => {
+              const tp = String(childEdge?.tp ?? '').toUpperCase();
+              return tp === 'PA' || tp === 'PI';
+            })
+            .map((childEdge) => {
+              const subCode = String(childEdge?.child ?? '').trim();
+              return {
+                edge: childEdge,
+                code: subCode,
+                desc: getItemDesc(subCode),
+                tp: String(childEdge?.tp ?? '').toUpperCase(),
+              };
+            });
           return {
             edge,
             code: childCode,
             desc: getItemDesc(childCode),
             tp: String(edge?.tp ?? '').toUpperCase(),
             mps: childMps,
+            subItems,
           };
         }),
         directMps: aggregateMpEdges(directMps),
@@ -827,6 +882,7 @@ const DemandFocus = () => {
                               <th className="py-3 pl-3 pr-2 text-left">Código</th>
                               <th className="py-3 px-2 text-left">Descrição</th>
                               <th className="py-3 px-2 text-left">Tipo</th>
+                              <th className="py-3 px-2 text-right">Nível</th>
                               <th className="py-3 px-2 text-right">Qtd</th>
                               <th className="py-3 px-2 text-left">UM</th>
                               <th className="py-3 pr-3 pl-2 text-right">Pais</th>
@@ -838,6 +894,7 @@ const DemandFocus = () => {
                                 <td className="py-3 pl-3 pr-2 font-mono font-semibold text-slate-100">{comp.code}</td>
                                 <td className="py-3 px-2 text-slate-300">{comp.desc || 'Sem descrição'}</td>
                                 <td className="py-3 px-2 text-slate-300">{comp.tipo}</td>
+                                <td className="py-3 px-2 text-right text-slate-300">N{comp.nivel}</td>
                                 <td className="py-3 px-2 text-right font-mono font-semibold text-slate-100">{fmtUnits(comp.total)}</td>
                                 <td className="py-3 px-2 text-slate-300">{comp.um || '-'}</td>
                                 <td className="py-3 pr-3 pl-2 text-right text-slate-300">{fmtNum(comp.parents)}</td>
@@ -937,11 +994,73 @@ const DemandFocus = () => {
                                         <div className="text-sm text-slate-300 flex items-center gap-3">
                                           <span className="font-semibold text-slate-200">N{child.edge?.nivel ?? '-'}</span>
                                           <span className="font-mono text-slate-100">
-                                            {fmtUnits((Number(child.edge?.qtdNec || 0) || 0) * (Number(item.qty || 0) || 0))} {child.edge?.um ?? ''}
+                                            {fmtUnits(getEdgeFactor(child.edge) * (Number(item.qty || 0) || 0))} {child.edge?.um ?? ''}
                                           </span>
                                         </div>
                                       </summary>
                                       <div className="mt-3">
+                                        {child.subItems?.length ? (
+                                          <div className="mb-3">
+                                            <div className="text-xs uppercase text-slate-300 mb-2">
+                                              Subitens (PA/PI)
+                                            </div>
+                                            <div className="flex flex-col gap-2">
+                                              {child.subItems.map((sub) => {
+                                                const childQty = getEdgeFactor(child.edge) * (Number(item.qty || 0) || 0);
+                                                const subQty = getEdgeFactor(sub.edge) * childQty;
+                                                const subEdges = edgesByParent.get(sub.code) || [];
+                                                const subChildren = subEdges
+                                                  .filter((subEdge) => {
+                                                    const tp = String(subEdge?.tp ?? '').toUpperCase();
+                                                    return tp === 'PA' || tp === 'PI';
+                                                  })
+                                                  .map((subEdge) => ({
+                                                    edge: subEdge,
+                                                    code: String(subEdge?.child ?? '').trim(),
+                                                    desc: getItemDesc(subEdge?.child),
+                                                    tp: String(subEdge?.tp ?? '').toUpperCase(),
+                                                  }))
+                                                  .filter((subChild) => subChild.code);
+                                                return (
+                                                  <div
+                                                    key={`${child.code}-${sub.code}`}
+                                                    className="rounded-lg bg-[#0b1220] border border-white/10 px-3 py-2 text-sm"
+                                                  >
+                                                    <div className="flex items-center justify-between gap-3">
+                                                      <div className="min-w-0">
+                                                        <div className="font-mono font-semibold text-slate-100">{sub.code || '-'}</div>
+                                                        <div className="text-sm text-slate-300 truncate">
+                                                          {sub.desc || 'Sem descrição'}
+                                                        </div>
+                                                      </div>
+                                                      <div className="text-right text-sm text-slate-200 shrink-0">
+                                                        <div className="font-semibold">N{sub.edge?.nivel ?? '-'}</div>
+                                                        <div className="font-mono">
+                                                          {fmtUnits(subQty)} {sub.edge?.um ?? ''}
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                    {subChildren.length > 0 && (
+                                                      <div className="mt-2 border-t border-white/10 pt-2 space-y-1 text-xs text-slate-300">
+                                                  {subChildren.map((subChild) => {
+                                                    const subChildQty = getEdgeFactor(subChild.edge) * subQty;
+                                                    return (
+                                                    <div key={`${sub.code}-${subChild.code}`} className="flex items-center justify-between gap-2">
+                                                      <span className="font-mono text-slate-200">{subChild.code}</span>
+                                                      <span className="truncate">{subChild.desc || 'Sem descrição'}</span>
+                                                      <span className="text-slate-400">N{subChild.edge?.nivel ?? '-'} {subChild.tp || '-'}</span>
+                                                      <span className="font-mono text-slate-300">{fmtUnits(subChildQty)} {subChild.edge?.um ?? ''}</span>
+                                                    </div>
+                                                    );
+                                                  })}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          </div>
+                                        ) : null}
                                         {child.mps?.length ? (
                                           <div className="flex flex-col gap-2">
                                             {child.mps.map((mp) => (
