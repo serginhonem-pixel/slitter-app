@@ -146,7 +146,10 @@ const getEdgeFactor = (edge) => {
   const qtdBase = Number(edge?.qtdBase ?? 1) || 1;
   const perdaPct = Number(edge?.perdaPct ?? 0) || 0;
   if (!qtdNec) return 0;
-  return (qtdNec / qtdBase) * (1 + perdaPct / 100);
+  const parentCode = String(edge?.parent ?? '').trim();
+  const baseEstrut = Number(ESTRUTURA_ITEMS?.[parentCode]?.baseEstrut ?? 0) || 0;
+  const baseFactor = baseEstrut > 0 ? baseEstrut : 1;
+  return (qtdNec / qtdBase) * (1 + perdaPct / 100) / baseFactor;
 };
 const parseEdgeDate = (value) => {
   if (!value) return null;
@@ -229,6 +232,19 @@ const aggregateEdgesByCode = (items) => {
   });
   return Array.from(map.values());
 };
+const sortByLevelAndCode = (items) => {
+  return items
+    .slice()
+    .sort((a, b) => {
+      const aNivel = Number(a?.edge?.nivel ?? a?.nivel ?? 0);
+      const bNivel = Number(b?.edge?.nivel ?? b?.nivel ?? 0);
+      if (aNivel !== bNivel) return aNivel - bNivel;
+      const aCode = String(a?.code ?? a?.child ?? '');
+      const bCode = String(b?.code ?? b?.child ?? '');
+      return aCode.localeCompare(bCode, 'pt-BR');
+    });
+};
+
 
 const collectMpEdges = (rootCode, edgesByParent) => {
   const root = String(rootCode ?? '').trim();
@@ -727,14 +743,16 @@ const DemandFocus = () => {
           };
         })
         .filter((child) => child.code);
-      const childrenAgg = aggregateEdgesByCode(children);
+      const childrenAgg = sortByLevelAndCode(aggregateEdgesByCode(children));
       const directMps = edges.filter((edge) => String(edge?.tp ?? '').toUpperCase() === 'MP');
       result[parentCode] = {
         children: childrenAgg.map((child) => {
           const childCode = String(child.code ?? '').trim();
           const edge = child.edge;
-          const childMps = aggregateMpEdges(collectMpEdges(childCode, edgesByParent));
           const childEdges = edgesByParent.get(childCode) || [];
+          const childMps = aggregateMpEdges(
+            childEdges.filter((childEdge) => String(childEdge?.tp ?? '').toUpperCase() === 'MP'),
+          );
           const subItems = childEdges
             .filter((childEdge) => {
               const tp = String(childEdge?.tp ?? '').toUpperCase();
@@ -750,7 +768,7 @@ const DemandFocus = () => {
               };
             })
             .filter((subItem) => subItem.code);
-          const subItemsAgg = aggregateEdgesByCode(subItems);
+          const subItemsAgg = sortByLevelAndCode(aggregateEdgesByCode(subItems));
           return {
             edge,
             code: childCode,
@@ -1394,9 +1412,10 @@ const DemandFocus = () => {
                                                     tp: String(subEdge?.tp ?? '').toUpperCase(),
                                                   }))
                                                   .filter((subChild) => subChild.code);
-                                                const subChildrenAgg = aggregateEdgesByCode(subChildren);
-                                                const subMpsAgg = aggregateEdgesByCode(subMps);
-                                                const hasSubChildren = subChildrenAgg.length > 0 || subMpsAgg.length > 0;
+                                                const subChildrenAgg = sortByLevelAndCode(aggregateEdgesByCode(subChildren));
+                                                const subMpsAgg = sortByLevelAndCode(aggregateEdgesByCode(subMps));
+                                                const hasSubChildren = subChildrenAgg.length > 0;
+                                                const hasSubMps = subMpsAgg.length > 0;
                                                 const subHeader = (
                                                   <div className="flex items-center justify-between gap-3">
                                                     <div className="min-w-0">
@@ -1434,7 +1453,7 @@ const DemandFocus = () => {
                                                             })}
                                                           </div>
                                                         )}
-                                                        {subMpsAgg.length > 0 && (
+                                                        {hasSubMps && (
                                                           <div className="mt-2 space-y-1">
                                                             <div className="text-[10px] uppercase tracking-wider text-slate-400">Bobinas (MP)</div>
                                                             {subMpsAgg.map((subMp, subMpIndex) => {
@@ -1454,6 +1473,27 @@ const DemandFocus = () => {
                                                     </details>
                                                   );
                                                 }
+                                                if (hasSubMps) {
+                                                  return (
+                                                    <div key={`${child.code}-${sub.code}-${subIndex}`} className="rounded-lg bg-[#0b1220] border border-white/10 px-3 py-2 text-sm">
+                                                      {subHeader}
+                                                      <div className="mt-2 border-t border-white/10 pt-2 space-y-1 text-xs text-slate-300">
+                                                        <div className="text-[10px] uppercase tracking-wider text-slate-400">Bobinas (MP)</div>
+                                                        {subMpsAgg.map((subMp, subMpIndex) => {
+                                                          const subMpQty = (subMp.factorSum ?? getEdgeFactor(subMp.edge)) * subQty;
+                                                          return (
+                                                            <div key={`${sub.code}-${subMp.code}-${subMpIndex}`} className="flex items-center justify-between gap-2">
+                                                              <span className="font-mono text-slate-200">{subMp.code}</span>
+                                                              <span className="truncate">{subMp.desc || 'Sem descricao'}</span>
+                                                              <span className="text-slate-400">N{subMp.edge?.nivel ?? '-'} MP</span>
+                                                              <span className="font-mono text-slate-300">{fmtUnits(subMpQty)} {subMp.edge?.um ?? ''}</span>
+                                                            </div>
+                                                          );
+                                                        })}
+                                                      </div>
+                                                    </div>
+                                                  );
+                                                }
                                                 return (
                                                   <div key={`${child.code}-${sub.code}-${subIndex}`} className="rounded-lg bg-[#0b1220] border border-white/10 px-3 py-2 text-sm">
                                                     {subHeader}
@@ -1465,7 +1505,7 @@ const DemandFocus = () => {
                                         ) : null}
                                         {child.mps?.length ? (
                                           <div className="flex flex-col gap-2">
-                                            {child.mps.map((mp) => (
+                                            {sortByLevelAndCode(child.mps).map((mp) => (
                                               <div
                                                 key={`${child.code}-${mp.child}`}
                                                 className="flex items-center justify-between gap-3 rounded-lg bg-[#0b1220] border border-white/10 px-3 py-2 text-sm"

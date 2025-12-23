@@ -1,127 +1,10 @@
 {
-  "meta": {
-    "source_file": "carrinhos.xlsx",
-    "filters": {
-      "tp_in": [
-        "MP",
-        "PA",
-        "PI"
-      ]
-    },
-    "generated_at": "2025-12-22T16:39:55"
-  },
-  "roots": [
-    "00107",
-    "00107E",
-    "00107RF",
-    "00109",
-    "00109E",
-    "00111",
-    "00111E",
-    "00111EP",
-    "00111F",
-    "00112",
-    "00112E",
-    "00112EP",
-    "00120",
-    "00120A",
-    "00121",
-    "00121E",
-    "00123",
-    "00123E",
-    "00123RF",
-    "00124",
-    "00124E",
-    "00126",
-    "00126E",
-    "00126RF",
-    "00136",
-    "00137",
-    "00138",
-    "00138E",
-    "00139",
-    "00139E",
-    "00139EV",
-    "00140",
-    "00140E",
-    "00140EV",
-    "00140F",
-    "00140RF",
-    "00141",
-    "00141E",
-    "00147",
-    "00147E",
-    "00147EH",
-    "00147EV",
-    "00147F",
-    "00147L",
-    "00147TE",
-    "00148",
-    "00148E",
-    "00148L",
-    "00150",
-    "00150E",
-    "00150F",
-    "00150RF",
-    "00152",
-    "00152E",
-    "00154",
-    "00154E",
-    "00154F",
-    "00154RF",
-    "00156",
-    "00156E",
-    "00162",
-    "00162E",
-    "00162F",
-    "00162RF",
-    "00164",
-    "00164E",
-    "00166",
-    "00166E",
-    "00166F",
-    "00166RF",
-    "00168",
-    "00168E",
-    "00170",
-    "00170E",
-    "00170RF",
-    "00172",
-    "00172E",
-    "00176",
-    "00176F",
-    "00360E",
-    "00360TE",
-    "00361E",
-    "00363E",
-    "00365",
-    "00365E",
-    "00365F",
-    "00365RF",
-    "00366",
-    "00366E",
-    "00381",
-    "00381E",
-    "00385",
-    "00385E",
-    "00385EH",
-    "00385EV",
-    "00386",
-    "00386E",
-    "00386EH",
-    "00387",
-    "00387BF",
-    "00387E",
-    "00387TE",
-    "00388",
-    "00388BF",
-    "00400"
-  ],
   "items": {
     "00107": {
       "cod": "00107",
       "desc": "CARRINHO METAL GALVANIZADO PC 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02499": {
       "cod": "02499",
@@ -286,7 +169,8 @@
     "00107E": {
       "cod": "00107E",
       "desc": "CARRINHO METAL GALVANIZADO PC 3 E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02583A": {
       "cod": "02583A",
@@ -301,7 +185,8 @@
     "00107RF": {
       "cod": "00107RF",
       "desc": "CARRINHO METAL GALVANIZADO PM FORCE",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02420": {
       "cod": "02420",
@@ -321,7 +206,8 @@
     "00109": {
       "cod": "00109",
       "desc": "CARRINHO METAL GALVANIZADO P. MACICO",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02503": {
       "cod": "02503",
@@ -336,7 +222,8 @@
     "00109E": {
       "cod": "00109E",
       "desc": "CARRINHO METAL GALVANIZADO P. MACICO E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02585A": {
       "cod": "02585A",
@@ -351,7 +238,8 @@
     "00111": {
       "cod": "00111",
       "desc": "CARRINHO CONSTRUTOR CINZA P. CAMARA 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02519": {
       "cod": "02519",
@@ -376,12 +264,14 @@
     "00111E": {
       "cod": "00111E",
       "desc": "CARRINHO CONSTRUTOR CINZA P. CAMARA 3 E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00111EP": {
       "cod": "00111EP",
       "desc": "CARRINHO METAL CONSTRUTOR PC 3 CNZ EP",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02592": {
       "cod": "02592",
@@ -391,7 +281,8 @@
     "00111F": {
       "cod": "00111F",
       "desc": "CARRINHO METAL CONSTRUTOR PC 3 CNZ FUZIL",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02519F": {
       "cod": "02519F",
@@ -411,22 +302,26 @@
     "00112": {
       "cod": "00112",
       "desc": "CARRINHO CONSTRUTOR CINZA P. MACICO",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00112E": {
       "cod": "00112E",
       "desc": "CARRINHO CONSTRUTOR CINZA P. MACICO E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00112EP": {
       "cod": "00112EP",
       "desc": "CARRINHO METAL CONSTR P. MACICO CNZ EP",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00120": {
       "cod": "00120",
       "desc": "CARRINHO METAL GALV PRATICO PC 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02485": {
       "cod": "02485",
@@ -461,7 +356,8 @@
     "00120A": {
       "cod": "00120A",
       "desc": "CARRINHO PRATICO LARANJA P. CAMARA 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02667": {
       "cod": "02667",
@@ -486,7 +382,8 @@
     "00121": {
       "cod": "00121",
       "desc": "CARRINHO PLASTICO VERMELHO P. MACICO",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02560": {
       "cod": "02560",
@@ -506,7 +403,8 @@
     "00121E": {
       "cod": "00121E",
       "desc": "CARRINHO PLASTICO VERMELHO P. MACICO E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02588": {
       "cod": "02588",
@@ -516,12 +414,14 @@
     "00123": {
       "cod": "00123",
       "desc": "CARRINHO PLASTICO VERMELHO P. CAMARA 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00123E": {
       "cod": "00123E",
       "desc": "CARRINHO PLASTICO VERMELHO P. CAMARA 3 E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02586": {
       "cod": "02586",
@@ -531,12 +431,14 @@
     "00123RF": {
       "cod": "00123RF",
       "desc": "CAR GALV CCB PLAST PM FORCE VERM",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00124": {
       "cod": "00124",
       "desc": "CARRINHO PLASTICO VERDE P. MACICO",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "10422": {
       "cod": "10422",
@@ -546,27 +448,32 @@
     "00124E": {
       "cod": "00124E",
       "desc": "CARRINHO PLASTICO VERDE P. MACICO E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00126": {
       "cod": "00126",
       "desc": "CARRINHO PLASTICO VERDE P. CAMARA 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00126E": {
       "cod": "00126E",
       "desc": "CARRINHO PLASTICO VERDE P. CAMARA 3 E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00126RF": {
       "cod": "00126RF",
       "desc": "CAR GALV CCB PLAST PM FORCE VERD",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00136": {
       "cod": "00136",
       "desc": "CARRINHO PLASTICO JUMBO AZUL PC 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02526": {
       "cod": "02526",
@@ -611,7 +518,8 @@
     "00137": {
       "cod": "00137",
       "desc": "CARRINHO PLASTICO JUMBO AZUL PC 3,50",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02527": {
       "cod": "02527",
@@ -636,7 +544,8 @@
     "00138": {
       "cod": "00138",
       "desc": "CARRINHO PLASTICO LARANJA P. MACICO",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "11311": {
       "cod": "11311",
@@ -646,22 +555,26 @@
     "00138E": {
       "cod": "00138E",
       "desc": "CARRINHO PLASTICO LARANJA P. MACICO E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00139": {
       "cod": "00139",
       "desc": "CARRINHO PLASTICO LARANJA P. CAMARA 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00139E": {
       "cod": "00139E",
       "desc": "CARRINHO PLASTICO LARANJA P. CAMARA 3 E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00139EV": {
       "cod": "00139EV",
       "desc": "CARRINHO PLASTICO LARANJA P. CAM 3 E VOX",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "11311V": {
       "cod": "11311V",
@@ -671,17 +584,20 @@
     "00140": {
       "cod": "00140",
       "desc": "CARRINHO POP GALVANIZADO P.CAMARA 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00140E": {
       "cod": "00140E",
       "desc": "CARRINHO POP GALVANIZADO P. CAMARA 3 E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00140EV": {
       "cod": "00140EV",
       "desc": "CARRINHO POP GALVANIZADO P. CAMARA 3 E VOXX",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02583AV": {
       "cod": "02583AV",
@@ -691,7 +607,8 @@
     "00140F": {
       "cod": "00140F",
       "desc": "CARRINHO METAL POP GALV PC 3 FUZIL",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02485F": {
       "cod": "02485F",
@@ -706,22 +623,26 @@
     "00140RF": {
       "cod": "00140RF",
       "desc": "CARRINHO METAL POP GALV PM FORCE",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00141": {
       "cod": "00141",
       "desc": "CARRINHO POP GALVANIZADO P. MACICO",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00141E": {
       "cod": "00141E",
       "desc": "CARRINHO POP GALVANIZADO P.MACICO E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00147": {
       "cod": "00147",
       "desc": "CARRINHO CONSTRUTOR GALVANIZADO PC 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02665": {
       "cod": "02665",
@@ -736,12 +657,14 @@
     "00147E": {
       "cod": "00147E",
       "desc": "CARRINHO CONSTRUTOR GALVANIZADO PC 3 E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00147EH": {
       "cod": "00147EH",
       "desc": "CARRINHO METAL CONSTR GALV PC 3 E THOR",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02583AH": {
       "cod": "02583AH",
@@ -756,12 +679,14 @@
     "00147EV": {
       "cod": "00147EV",
       "desc": "CARRINHO CONSTRUTOR GALVANIZADO PC 3 E VOXX",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00147F": {
       "cod": "00147F",
       "desc": "CARRINHO METAL CONSTR GALV PC 3 FUZIL",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02665F": {
       "cod": "02665F",
@@ -771,7 +696,8 @@
     "00147L": {
       "cod": "00147L",
       "desc": "CARRINHO METAL CONSTR GALV PC 3 LOJA REI",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02665L": {
       "cod": "02665L",
@@ -781,7 +707,8 @@
     "00147TE": {
       "cod": "00147TE",
       "desc": "CARRINHO METAL CONSTR GALV PC 3 FERFAT E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02665T": {
       "cod": "02665T",
@@ -791,22 +718,26 @@
     "00148": {
       "cod": "00148",
       "desc": "CARRINHO CONSTRUTOR GALVANIZADO PM",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00148E": {
       "cod": "00148E",
       "desc": "CARRINHO CONSTRUTOR GALVANIZADO PM E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00148L": {
       "cod": "00148L",
       "desc": "CARRINHO METAL CONSTR GALV P. MAC L.REI",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00150": {
       "cod": "00150",
       "desc": "CARRINHO PLUS AZUL P. CAMARA 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02574": {
       "cod": "02574",
@@ -836,7 +767,8 @@
     "00150E": {
       "cod": "00150E",
       "desc": "CARRINHO PLUS AZUL P. CAMARA 3 E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02583": {
       "cod": "02583",
@@ -846,7 +778,8 @@
     "00150F": {
       "cod": "00150F",
       "desc": "CARRINHO METAL PLUS PC 3 AZ FUZIL",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02574F": {
       "cod": "02574F",
@@ -856,17 +789,20 @@
     "00150RF": {
       "cod": "00150RF",
       "desc": "CARRINHO METAL PLUS PM FORCE AZ",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00152": {
       "cod": "00152",
       "desc": "CARRINHO PLUS AZUL P. MACICO",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00152E": {
       "cod": "00152E",
       "desc": "CARRINHO PLUS AZUL P. MACICO E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02585": {
       "cod": "02585",
@@ -876,7 +812,8 @@
     "00154": {
       "cod": "00154",
       "desc": "CARRINHO SUPER LARANJA P. CAMARA 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02575": {
       "cod": "02575",
@@ -896,12 +833,14 @@
     "00154E": {
       "cod": "00154E",
       "desc": "CARRINHO SUPER LARANJA P. CAMARA 3 E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00154F": {
       "cod": "00154F",
       "desc": "CARRINHO METAL SUPER PC 3 LRJ FUZIL",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02575F": {
       "cod": "02575F",
@@ -916,22 +855,26 @@
     "00154RF": {
       "cod": "00154RF",
       "desc": "CARRINHO SUPER LARANJA P. FORCE",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00156": {
       "cod": "00156",
       "desc": "CARRINHO SUPER LARANJA P. MACICO",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00156E": {
       "cod": "00156E",
       "desc": "CARRINHO SUPER LARANJA P. MACICO E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00162": {
       "cod": "00162",
       "desc": "CARRINHO MASTER AZUL P. CAMARA 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02577": {
       "cod": "02577",
@@ -946,12 +889,14 @@
     "00162E": {
       "cod": "00162E",
       "desc": "CARRINHO MASTER AZUL P. CAMARA 3 E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00162F": {
       "cod": "00162F",
       "desc": "CARRINHO METAL MASTER PC 3 AZ FUZIL",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02577F": {
       "cod": "02577F",
@@ -961,22 +906,26 @@
     "00162RF": {
       "cod": "00162RF",
       "desc": "CARRINHO MASTER AZUL P. FORCE",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00164": {
       "cod": "00164",
       "desc": "CARRINHO MASTER AZUL P. MACICO",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00164E": {
       "cod": "00164E",
       "desc": "CARRINHO MASTER AZUL P. MACICO E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00166": {
       "cod": "00166",
       "desc": "CARRINHO POP CINZA P. CAMARA 3  .",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02578": {
       "cod": "02578",
@@ -991,12 +940,14 @@
     "00166E": {
       "cod": "00166E",
       "desc": "CARRINHO POP CINZA P.CAMARA 3 E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00166F": {
       "cod": "00166F",
       "desc": "CARRINHO METAL POP PC 3 CNZ FUZIL",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02578F": {
       "cod": "02578F",
@@ -1006,22 +957,26 @@
     "00166RF": {
       "cod": "00166RF",
       "desc": "CARRINHO METAL POP PM FORCE CNZ",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00168": {
       "cod": "00168",
       "desc": "CARRINHO POP CINZA P. MACICO",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00168E": {
       "cod": "00168E",
       "desc": "CARRINHO POP CINZA P. MACICO E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00170": {
       "cod": "00170",
       "desc": "CARRINHO POP VERMELHO P.CAMARA 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02579": {
       "cod": "02579",
@@ -1036,27 +991,32 @@
     "00170E": {
       "cod": "00170E",
       "desc": "CARRINHO POP VERMELHO P.CAMARA 3 E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00170RF": {
       "cod": "00170RF",
       "desc": "CARRINHO METAL POP PM FORCE VERM",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00172": {
       "cod": "00172",
       "desc": "CARRINHO POP VERMELHO P.MACICO",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00172E": {
       "cod": "00172E",
       "desc": "CARRINHO POP VERMELHO P. MACICO E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00176": {
       "cod": "00176",
       "desc": "CARRINHO MASTER TRUCK AZUL P. CAMARA 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02604": {
       "cod": "02604",
@@ -1126,7 +1086,8 @@
     "00176F": {
       "cod": "00176F",
       "desc": "CARRINHO METAL MASTER TRUCK PC3 AZ FUZIL",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02604F": {
       "cod": "02604F",
@@ -1136,12 +1097,14 @@
     "00360E": {
       "cod": "00360E",
       "desc": "CARRINHO METAL POP 90 PC 3 E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00360TE": {
       "cod": "00360TE",
       "desc": "CARRINHO METAL POP 90 PC3 CNZ FERFATTO E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02578T": {
       "cod": "02578T",
@@ -1151,17 +1114,20 @@
     "00361E": {
       "cod": "00361E",
       "desc": "CARRINHO METAL POP 90 P. MACICO E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00363E": {
       "cod": "00363E",
       "desc": "CARRINHO METAL POP 90 PC 3 VERM E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00365": {
       "cod": "00365",
       "desc": "CARRINHO 5.0 AZUL P. CAMARA 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02661": {
       "cod": "02661",
@@ -1181,12 +1147,14 @@
     "00365E": {
       "cod": "00365E",
       "desc": "CARRINHO 5.0 AZUL P. CAMARA 3 E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00365F": {
       "cod": "00365F",
       "desc": "CARRINHO METAL 5.0 PC 3 AZ FUZIL",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02661F": {
       "cod": "02661F",
@@ -1196,22 +1164,26 @@
     "00365RF": {
       "cod": "00365RF",
       "desc": "CARRINHO METAL 5.0 PM FORCE AZ",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00366": {
       "cod": "00366",
       "desc": "CARRINHO 5.0 AZUL P. MACICO",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00366E": {
       "cod": "00366E",
       "desc": "CARRINHO 5.0 AZUL P. MACICO E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00381": {
       "cod": "00381",
       "desc": "CARRINHO ECOPLUS AMARELO P. FORCE",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02662": {
       "cod": "02662",
@@ -1226,7 +1198,8 @@
     "00381E": {
       "cod": "00381E",
       "desc": "CARRINHO ECOPLUS AMARELO P. FORCE E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02583I": {
       "cod": "02583I",
@@ -1236,7 +1209,8 @@
     "00385": {
       "cod": "00385",
       "desc": "CARRINHO CONSTRUTOR VERMELHO PC 3",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "02666": {
       "cod": "02666",
@@ -1246,12 +1220,14 @@
     "00385E": {
       "cod": "00385E",
       "desc": "CARRINHO CONSTRUTOR VERMELHO PC 3 E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00385EH": {
       "cod": "00385EH",
       "desc": "CARRINHO METAL CONSTR PC 3 VRML THOR E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02666H": {
       "cod": "02666H",
@@ -1261,7 +1237,8 @@
     "00385EV": {
       "cod": "00385EV",
       "desc": "CARRINHO METAL CONSTR PC 3 VRML VOX E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02666V": {
       "cod": "02666V",
@@ -1271,37 +1248,44 @@
     "00386": {
       "cod": "00386",
       "desc": "CARRINHO CONSTRUTOR VERMELHO PM",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00386E": {
       "cod": "00386E",
       "desc": "CARRINHO CONSTRUTOR VERMELHO PM E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00386EH": {
       "cod": "00386EH",
       "desc": "CARRINHO CONSTRUTOR VERMELHO PM E THOR",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00387": {
       "cod": "00387",
       "desc": "CARRINHO METAL CONSTRUTOR PC 3 LRJ",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00387BF": {
       "cod": "00387BF",
       "desc": "CARRINHO METAL CONSTRUTOR PC 3 LRJ BARRA FORTE",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00387E": {
       "cod": "00387E",
       "desc": "CARRINHO CONSTR LARANJA P. CAMARA 3 E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "00387TE": {
       "cod": "00387TE",
       "desc": "CARRINHO CONSTR LARANJA P. CAMARA 3 FERFATO E",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 1.0
     },
     "02583TE": {
       "cod": "02583TE",
@@ -1316,17 +1300,20 @@
     "00388": {
       "cod": "00388",
       "desc": "CARRINHO METAL CONSTR P. MACICO LRJ",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00388BF": {
       "cod": "00388BF",
       "desc": "CARRINHO METAL CONSTR P. MACICO LRJ BARRA FORTE",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     },
     "00400": {
       "cod": "00400",
       "desc": "CARRINHO P/ PULVERIZADOR",
-      "tp": "PA"
+      "tp": "PA",
+      "baseEstrut": 5.0
     }
   },
   "edges": [
@@ -1347,7 +1334,7 @@
       "child": "81052",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -1407,7 +1394,7 @@
       "child": "81024",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -1419,7 +1406,7 @@
       "child": "02544",
       "tp": "PA",
       "nivel": 4,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -1443,7 +1430,7 @@
       "child": "81004",
       "tp": "PI",
       "nivel": 4,
-      "qtdNec": 10.0,
+      "qtdNec": 2.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -1539,7 +1526,7 @@
       "child": "01914",
       "tp": "PI",
       "nivel": 4,
-      "qtdNec": 0.603015,
+      "qtdNec": 0.120603,
       "um": "KG",
       "perdaPct": 0.5,
       "qtdBase": 1.0,
@@ -1719,7 +1706,7 @@
       "child": "01911",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "KG",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -1911,7 +1898,7 @@
       "child": "81024",
       "tp": "PI",
       "nivel": 4,
-      "qtdNec": 2.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -1923,7 +1910,7 @@
       "child": "02544",
       "tp": "PA",
       "nivel": 5,
-      "qtdNec": 2.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -1947,7 +1934,7 @@
       "child": "81004",
       "tp": "PI",
       "nivel": 5,
-      "qtdNec": 4.0,
+      "qtdNec": 2.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -2019,7 +2006,7 @@
       "child": "02544",
       "tp": "PA",
       "nivel": 4,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -2031,7 +2018,7 @@
       "child": "81004",
       "tp": "PI",
       "nivel": 4,
-      "qtdNec": 10.0,
+      "qtdNec": 2.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -2115,7 +2102,7 @@
       "child": "81181",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -2391,7 +2378,7 @@
       "child": "81053",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -2967,7 +2954,7 @@
       "child": "81627",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -3111,7 +3098,7 @@
       "child": "81053",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -4107,7 +4094,7 @@
       "child": "81931",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -4119,7 +4106,7 @@
       "child": "01912",
       "tp": "PI",
       "nivel": 4,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "KG",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -5043,7 +5030,7 @@
       "child": "81667",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -5631,7 +5618,7 @@
       "child": "81058",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -6303,7 +6290,7 @@
       "child": "81055",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -6735,7 +6722,7 @@
       "child": "81054",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -6855,7 +6842,7 @@
       "child": "81054",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -7059,7 +7046,7 @@
       "child": "81626",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -7383,7 +7370,7 @@
       "child": "81626",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -8295,7 +8282,7 @@
       "child": "81823",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -8619,7 +8606,7 @@
       "child": "81058",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
@@ -8871,7 +8858,7 @@
       "child": "81053",
       "tp": "PI",
       "nivel": 3,
-      "qtdNec": 5.0,
+      "qtdNec": 1.0,
       "um": "PC",
       "perdaPct": 0.0,
       "qtdBase": 1.0,
