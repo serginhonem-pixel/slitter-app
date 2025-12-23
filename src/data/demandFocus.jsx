@@ -148,6 +148,87 @@ const getEdgeFactor = (edge) => {
   if (!qtdNec) return 0;
   return (qtdNec / qtdBase) * (1 + perdaPct / 100);
 };
+const parseEdgeDate = (value) => {
+  if (!value) return null;
+  const dt = new Date(value);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+};
+
+const isEdgeActive = (edge, now) => {
+  const ini = parseEdgeDate(edge?.iniValid);
+  const fim = parseEdgeDate(edge?.fimValid);
+  if (ini && now < ini) return false;
+  if (fim && now > fim) return false;
+  return true;
+};
+
+const shouldReplaceEdge = (currentEdge, nextEdge, now) => {
+  const nextValid = isEdgeActive(nextEdge, now);
+  const curValid = isEdgeActive(currentEdge, now);
+  if (nextValid && !curValid) return true;
+  if (!nextValid && curValid) return false;
+  const nextIni = parseEdgeDate(nextEdge?.iniValid);
+  const curIni = parseEdgeDate(currentEdge?.iniValid);
+  const nextTime = nextIni ? nextIni.getTime() : -1;
+  const curTime = curIni ? curIni.getTime() : -1;
+  if (nextTime != curTime) return nextTime > curTime;
+  const nextNivel = Number(nextEdge?.nivel || 0);
+  const curNivel = Number(currentEdge?.nivel || 0);
+  return nextNivel > curNivel;
+};
+
+
+const aggregateEdgesByCode = (items) => {
+  const map = new Map();
+  const now = new Date();
+  items.forEach((item) => {
+    const code = String(item?.code ?? '').trim();
+    if (!code) return;
+    const nextFactor = getEdgeFactor(item.edge);
+    if (!map.has(code)) {
+      map.set(code, { ...item, factorSum: nextFactor });
+      return;
+    }
+    const current = map.get(code);
+    if (shouldReplaceEdge(current.edge, item.edge, now)) {
+      current.edge = item.edge;
+      current.desc = current.desc || item.desc;
+      current.tp = current.tp || item.tp;
+      current.factorSum = nextFactor;
+      return;
+    }
+    const curIni = parseEdgeDate(current.edge?.iniValid);
+    const nextIni = parseEdgeDate(item.edge?.iniValid);
+    const curFim = parseEdgeDate(current.edge?.fimValid);
+    const nextFim = parseEdgeDate(item.edge?.fimValid);
+    const curTime = curIni ? curIni.getTime() : -1;
+    const nextTime = nextIni ? nextIni.getTime() : -1;
+    const curFimTime = curFim ? curFim.getTime() : -1;
+    const nextFimTime = nextFim ? nextFim.getTime() : -1;
+    const curNivel = Number(current.edge?.nivel || 0);
+    const nextNivel = Number(item.edge?.nivel || 0);
+    if (curTime == nextTime && curFimTime == nextFimTime && curNivel == nextNivel) {
+      const tp = String(item.tp ?? item.edge?.tp ?? current.tp ?? current.edge?.tp ?? '').toUpperCase();
+      const curFactor = Number(current.factorSum || getEdgeFactor(current.edge));
+      if (tp === 'MP') {
+        if (nextFactor > 0 && (curFactor <= 0 || nextFactor < curFactor)) {
+          current.edge = item.edge;
+          current.desc = current.desc || item.desc;
+          current.tp = current.tp || item.tp;
+          current.factorSum = nextFactor;
+        }
+      } else if (tp === 'PA' || tp === 'PI') {
+        if (nextFactor > curFactor) {
+          current.edge = item.edge;
+          current.desc = current.desc || item.desc;
+          current.tp = current.tp || item.tp;
+          current.factorSum = nextFactor;
+        }
+      }
+    }
+  });
+  return Array.from(map.values());
+};
 
 const collectMpEdges = (rootCode, edgesByParent) => {
   const root = String(rootCode ?? '').trim();
@@ -161,15 +242,31 @@ const collectMpEdges = (rootCode, edgesByParent) => {
     if (visited.has(code)) continue;
     visited.add(code);
     const edges = edgesByParent.get(code) || [];
-    edges.forEach((edge) => {
-      const child = String(edge?.child ?? '').trim();
+    const groupedEdges = aggregateEdgesByCode(
+      edges
+        .map((edge) => {
+          const child = String(edge?.child ?? '').trim();
+          if (!child) return null;
+          return {
+            edge,
+            code: child,
+            desc: getItemDesc(child),
+            tp: String(edge?.tp ?? '').toUpperCase(),
+          };
+        })
+        .filter(Boolean),
+    );
+    groupedEdges.forEach((item) => {
+      const child = item.code;
+      const tp = String(item.tp ?? item.edge?.tp ?? '').toUpperCase();
       if (!child) return;
-      const tp = String(edge?.tp ?? '').trim().toUpperCase();
       if (tp === 'MP') {
-        result.push(edge);
+        result.push(item.edge);
         return;
       }
       if (tp === 'PA' || tp === 'PI') {
+        const um = String(item.edge?.um ?? '').toUpperCase();
+        if (um === 'KG') return;
         stack.push(child);
       }
     });
@@ -179,19 +276,32 @@ const collectMpEdges = (rootCode, edgesByParent) => {
 
 const aggregateMpEdges = (edges) => {
   const map = new Map();
+  const now = new Date();
   edges.forEach((edge) => {
     const child = String(edge?.child ?? '').trim();
     if (!child) return;
-    const key = child;
-    if (!map.has(key)) {
-      map.set(key, { ...edge });
+    const nextFactor = getEdgeFactor(edge);
+    if (!map.has(child)) {
+      map.set(child, { ...edge, qtdNec: nextFactor });
       return;
     }
-    const current = map.get(key);
-    current.qtdNec = Number(current.qtdNec || 0) + getEdgeFactor(edge);
-    const currentNivel = Number(current.nivel || 0);
+    const current = map.get(child);
+    if (shouldReplaceEdge(current, edge, now)) {
+      map.set(child, { ...edge, qtdNec: nextFactor });
+      return;
+    }
+    const curIni = parseEdgeDate(current?.iniValid);
+    const nextIni = parseEdgeDate(edge?.iniValid);
+    const curTime = curIni ? curIni.getTime() : -1;
+    const nextTime = nextIni ? nextIni.getTime() : -1;
+    const curNivel = Number(current?.nivel || 0);
     const nextNivel = Number(edge?.nivel || 0);
-    if (nextNivel > currentNivel) current.nivel = nextNivel;
+    if (curTime == nextTime && curNivel == nextNivel) {
+      const curFactor = Number(current?.qtdNec || 0);
+      if (nextFactor > 0 && (curFactor <= 0 || nextFactor < curFactor)) {
+        map.set(child, { ...edge, qtdNec: nextFactor });
+      }
+    }
   });
   return Array.from(map.values());
 };
@@ -218,6 +328,8 @@ const DemandFocus = () => {
   const [diasUteis, setDiasUteis] = useState(20);
   const [filtroProgresso, setFiltroProgresso] = useState('todos'); // todos | pendentes | concluídos
   const [filtroEstoqueFaltante, setFiltroEstoqueFaltante] = useState(false);
+  const [bobinaSearch, setBobinaSearch] = useState('');
+  const [nivelFiltro, setNivelFiltro] = useState('todos');
   const applySugestaoItem = (produto, extra) => {
     const inc = Math.max(0, Math.round(extra || 0));
     if (!inc) return;
@@ -393,12 +505,28 @@ const DemandFocus = () => {
   const isPmp = planMode === 'pmp';
   const viewFactor = 1;
   const viewSummary = isPmp ? pmpSummary : bomSummary;
+  const bobinasTotals = useMemo(() => {
+    const list = Array.isArray(viewSummary.bobinasAgg) ? viewSummary.bobinasAgg : [];
+    let totalConsumo = 0;
+    let totalEstoque = 0;
+    list.forEach((bobina) => {
+      const weight = Number(bobina?.totalKg || 0) * viewFactor;
+      totalConsumo += weight;
+      totalEstoque += getEstoquePorBobina(bobina?.cod);
+    });
+    return { totalConsumo, totalEstoque };
+  }, [viewSummary.bobinasAgg, viewFactor, motherStock.byCode]);
   const fmtUnits = (value) => {
     const scaled = Number(value || 0) * viewFactor;
     const rounded = isPmp ? Math.ceil(scaled) : Math.round(scaled);
     return fmtNum(rounded);
   };
   const fmtKgScaled = (value) => fmtKg(Number(value || 0) * viewFactor);
+  const fmtQtyByUm = (value, um) => {
+    const unit = String(um || '').trim().toUpperCase();
+    if (unit === 'KG') return fmtKg(Number(value || 0) * viewFactor);
+    return fmtUnits(value);
+  };
   const unitLabel = 'un';
   const kgLabel = 'kg';
   const produtosVisiveis = useMemo(() => {
@@ -443,7 +571,22 @@ const DemandFocus = () => {
     () => viewSummary.selected.slice().sort((a, b) => b.totalKg - a.totalKg),
     [viewSummary.selected],
   );
+
   const edgesByParent = useMemo(() => buildEdgeMap(ESTRUTURA_EDGES), []);
+  const parentItemsFiltrados = useMemo(() => {
+    const term = String(bobinaSearch || '').trim().toLowerCase();
+    if (!term) return parentItems;
+    return parentItems.filter((item) => {
+      const code = String(item.produto ?? '').trim();
+      if (!code) return false;
+      const mpEdges = aggregateMpEdges(collectMpEdges(code, edgesByParent));
+      return mpEdges.some((mp) => {
+        const mpCode = String(mp?.child ?? '').trim();
+        const mpDesc = getItemDesc(mpCode).toLowerCase();
+        return mpCode.toLowerCase().includes(term) || mpDesc.includes(term);
+      });
+    });
+  }, [parentItems, edgesByParent, bobinaSearch]);
   const componentesAgrupados = useMemo(() => {
     const totals = new Map();
     const meta = new Map();
@@ -467,12 +610,28 @@ const DemandFocus = () => {
       trail.add(code);
       const result = new Map();
       const edges = edgesByParent.get(code) || [];
-      edges.forEach((edge) => {
-        const child = String(edge?.child ?? '').trim();
-        const qtdNec = getEdgeFactor(edge);
+      const groupedEdges = aggregateEdgesByCode(
+        edges
+          .map((edge) => {
+            const child = String(edge?.child ?? '').trim();
+            if (!child) return null;
+            return {
+              edge,
+              code: child,
+              desc: getItemDesc(child),
+              tp: String(edge?.tp ?? '').toUpperCase(),
+            };
+          })
+          .filter(Boolean),
+      );
+      groupedEdges.forEach((item) => {
+        const child = item.code;
+        const qtdNec = item.factorSum ?? getEdgeFactor(item.edge);
         if (!child || !qtdNec) return;
-        registerMeta(child, edge);
+        registerMeta(child, item.edge);
         result.set(child, (result.get(child) || 0) + qtdNec);
+        const um = String(item.edge?.um ?? '').toUpperCase();
+        if (um === 'KG') return;
         const childMap = buildComponentMap(child, trail);
         childMap.forEach((value, key) => {
           result.set(key, (result.get(key) || 0) + value * qtdNec);
@@ -510,6 +669,42 @@ const DemandFocus = () => {
       })
       .sort((a, b) => b.total - a.total);
   }, [parentItems, edgesByParent]);
+
+  const nivelOptions = useMemo(() => {
+    const set = new Set();
+    componentesAgrupados.forEach((comp) => {
+      const nivel = comp.nivel;
+      if (nivel === '-' || nivel == null) return;
+      set.add(String(nivel));
+    });
+    return ['todos', ...Array.from(set).sort((a, b) => Number(a) - Number(b))];
+  }, [componentesAgrupados]);
+
+  const bobinasTotalByCode = useMemo(() => {
+    const map = new Map();
+    const list = Array.isArray(viewSummary.bobinasAgg) ? viewSummary.bobinasAgg : [];
+    list.forEach((bobina) => {
+      const cod = String(bobina?.cod ?? '').trim();
+      if (!cod) return;
+      map.set(cod, Number(bobina?.totalKg || 0));
+    });
+    return map;
+  }, [viewSummary.bobinasAgg]);
+
+  const componentesAjustados = useMemo(() => {
+    if (bobinasTotalByCode.size === 0) return componentesAgrupados;
+    return componentesAgrupados.map((comp) => {
+      if (comp.tipo !== 'MP') return comp;
+      if (!bobinasTotalByCode.has(comp.code)) return comp;
+      return { ...comp, total: bobinasTotalByCode.get(comp.code) };
+    });
+  }, [componentesAgrupados, bobinasTotalByCode]);
+
+  const componentesFiltrados = useMemo(() => {
+    if (nivelFiltro === 'todos') return componentesAjustados;
+    return componentesAjustados.filter((comp) => String(comp.nivel) === String(nivelFiltro));
+  }, [componentesAjustados, nivelFiltro]);
+
   const estruturaByParent = useMemo(() => {
     if (!edgesByParent || edgesByParent.size === 0) return {};
     const result = {};
@@ -517,14 +712,27 @@ const DemandFocus = () => {
       const parentCode = String(item.produto ?? '').trim();
       if (!parentCode) return;
       const edges = edgesByParent.get(parentCode) || [];
-      const children = edges.filter((edge) => {
-        const tp = String(edge?.tp ?? '').toUpperCase();
-        return tp === 'PA' || tp === 'PI';
-      });
+      const children = edges
+        .filter((edge) => {
+          const tp = String(edge?.tp ?? '').toUpperCase();
+          return tp === 'PA' || tp === 'PI';
+        })
+        .map((edge) => {
+          const childCode = String(edge?.child ?? '').trim();
+          return {
+            edge,
+            code: childCode,
+            desc: getItemDesc(childCode),
+            tp: String(edge?.tp ?? '').toUpperCase(),
+          };
+        })
+        .filter((child) => child.code);
+      const childrenAgg = aggregateEdgesByCode(children);
       const directMps = edges.filter((edge) => String(edge?.tp ?? '').toUpperCase() === 'MP');
       result[parentCode] = {
-        children: children.map((edge) => {
-          const childCode = String(edge?.child ?? '').trim();
+        children: childrenAgg.map((child) => {
+          const childCode = String(child.code ?? '').trim();
+          const edge = child.edge;
           const childMps = aggregateMpEdges(collectMpEdges(childCode, edgesByParent));
           const childEdges = edgesByParent.get(childCode) || [];
           const subItems = childEdges
@@ -540,14 +748,17 @@ const DemandFocus = () => {
                 desc: getItemDesc(subCode),
                 tp: String(childEdge?.tp ?? '').toUpperCase(),
               };
-            });
+            })
+            .filter((subItem) => subItem.code);
+          const subItemsAgg = aggregateEdgesByCode(subItems);
           return {
             edge,
             code: childCode,
-            desc: getItemDesc(childCode),
-            tp: String(edge?.tp ?? '').toUpperCase(),
+            desc: child.desc || getItemDesc(childCode),
+            tp: child.tp || String(edge?.tp ?? '').toUpperCase(),
             mps: childMps,
-            subItems,
+            subItems: subItemsAgg,
+            factorSum: child.factorSum,
           };
         }),
         directMps: aggregateMpEdges(directMps),
@@ -555,6 +766,107 @@ const DemandFocus = () => {
     });
     return result;
   }, [parentItems, edgesByParent]);
+
+  const levelTotalsByParent = useMemo(() => {
+    if (!edgesByParent || edgesByParent.size === 0) return {};
+    const cache = new Map();
+    const compute = (rootCode) => {
+      if (cache.has(rootCode)) return cache.get(rootCode);
+      const totals = new Map();
+      const stack = [[rootCode, 1]];
+      while (stack.length > 0) {
+        const [code, factor] = stack.pop();
+        const edges = edgesByParent.get(code) || [];
+        const grouped = aggregateEdgesByCode(
+          edges
+            .map((edge) => {
+              const child = String(edge?.child ?? '').trim();
+              if (!child) return null;
+              return {
+                edge,
+                code: child,
+                desc: getItemDesc(child),
+                tp: String(edge?.tp ?? '').toUpperCase(),
+              };
+            })
+            .filter(Boolean),
+        );
+        grouped.forEach((item) => {
+          const child = item.code;
+          const edge = item.edge;
+          const qtd = (item.factorSum ?? getEdgeFactor(edge)) * factor;
+          if (!child || !qtd) return;
+          const um = String(edge?.um ?? '').toUpperCase();
+          const nivel = edge?.nivel;
+          if (um === 'PC' && nivel != null) {
+            const key = Number(nivel) || nivel;
+            totals.set(key, (totals.get(key) || 0) + qtd);
+          }
+          const tp = String(item.tp ?? edge?.tp ?? '').toUpperCase();
+          if (tp === 'PA' || tp === 'PI') {
+            const childUm = String(edge?.um ?? '').toUpperCase();
+            if (childUm !== 'KG') {
+              stack.push([child, qtd]);
+            }
+          }
+        });
+      }
+      cache.set(rootCode, totals);
+      return totals;
+    };
+    const result = {};
+    parentItems.forEach((item) => {
+      const code = String(item.produto ?? '').trim();
+      if (!code) return;
+      const totals = compute(code);
+      const qty = Number(item.qty || 0);
+      const rows = Array.from(totals.entries())
+        .map(([nivel, factor]) => ({ nivel, total: factor * qty }))
+        .sort((a, b) => Number(a.nivel) - Number(b.nivel));
+      result[code] = rows;
+    });
+    return result;
+  }, [parentItems, edgesByParent]);
+
+
+  const handleExportComponentesExcel = () => {
+    if (!componentesAjustados.length) return;
+    const wb = XLSX.utils.book_new();
+    const parentRows = parentItems.map((item) => ({
+      Produto: item.produto,
+      Descricao: item.desc || '',
+      Categoria: item.categoriaKey || '',
+      Quantidade: Number(item.qty || 0),
+      TotalKg: Number(item.totalKg || 0),
+    }));
+    if (parentRows.length) {
+      const wsPais = XLSX.utils.json_to_sheet(parentRows);
+      XLSX.utils.book_append_sheet(wb, wsPais, 'ProdutosPai');
+    }
+    const grouped = new Map();
+    componentesAjustados.forEach((comp) => {
+      const rawNivel = comp.nivel;
+      const nivelKey = rawNivel === '-' || rawNivel == null ? 'SemNivel' : `N${rawNivel}`;
+      if (!grouped.has(nivelKey)) grouped.set(nivelKey, []);
+      grouped.get(nivelKey).push(comp);
+    });
+    grouped.forEach((list, key) => {
+      const rows = list.map((comp) => ({
+        Codigo: comp.code,
+        Descricao: comp.desc || '',
+        Tipo: comp.tipo || '',
+        Nivel: comp.nivel === '-' ? '' : comp.nivel,
+        Qtd: Number(comp.total || 0),
+        UM: comp.um || '',
+        Pais: Number(comp.parents || 0),
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const sheetName = key.length > 31 ? key.slice(0, 31) : key;
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+    const stamp = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `componentes_niveis_${stamp}.xlsx`);
+  };
 
   const handleUpload = async (file) => {
     if (!file) return;
@@ -868,9 +1180,32 @@ const DemandFocus = () => {
                         <h3 className="text-lg font-semibold text-slate-100">Componentes (por código)</h3>
                         <p className="text-xs text-slate-300">Agrupa todos os componentes dos itens pai selecionados.</p>
                       </div>
-                      <div className="text-xs text-slate-400">{fmtNum(componentesAgrupados.length)} itens</div>
+                      <div className="flex items-center gap-3 text-xs text-slate-300">
+                        <label className="text-slate-400" htmlFor="nivel-filtro">Nivel</label>
+                        <select
+                          id="nivel-filtro"
+                          value={nivelFiltro}
+                          onChange={(event) => setNivelFiltro(event.target.value)}
+                          className="rounded-lg border border-white/10 bg-[#0b1220] px-2 py-1 text-xs text-slate-200"
+                        >
+                          {nivelOptions.map((nivel) => (
+                            <option key={nivel} value={nivel}>
+                              {nivel == 'todos' ? 'Todos' : `N${nivel}`}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={handleExportComponentesExcel}
+                          className="rounded-lg border border-white/10 bg-[#101a33] px-3 py-1 text-xs text-slate-200 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={!componentesAjustados.length}
+                        >
+                          Exportar Excel
+                        </button>
+                        <span className="text-slate-400">{fmtNum(componentesFiltrados.length)} itens</span>
+                      </div>
                     </div>
-                    {componentesAgrupados.length === 0 ? (
+                    {componentesFiltrados.length === 0 ? (
                       <div className="rounded-2xl border border-dashed border-white/10 bg-[#0b1220] p-6 text-center text-sm text-slate-300">
                         Nenhum componente encontrado para a carteira atual.
                       </div>
@@ -889,10 +1224,10 @@ const DemandFocus = () => {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-white/10">
-                            {componentesAgrupados.slice(0, 300).map((comp) => (
+                            {componentesFiltrados.slice(0, 300).map((comp) => (
                               <tr key={comp.code} className="hover:bg-white/5">
                                 <td className="py-3 pl-3 pr-2 font-mono font-semibold text-slate-100">{comp.code}</td>
-                                <td className="py-3 px-2 text-slate-300">{comp.desc || 'Sem descrição'}</td>
+                                <td className="py-3 px-2 text-slate-300">{comp.desc || 'Sem descri????o'}</td>
                                 <td className="py-3 px-2 text-slate-300">{comp.tipo}</td>
                                 <td className="py-3 px-2 text-right text-slate-300">N{comp.nivel}</td>
                                 <td className="py-3 px-2 text-right font-mono font-semibold text-slate-100">{fmtUnits(comp.total)}</td>
@@ -914,8 +1249,8 @@ const DemandFocus = () => {
                         <p className="text-xs text-slate-300">Consumo por código</p>
                       </div>
                       <div className="text-right text-xs text-slate-400 space-y-1">
-                        <p>{fmtKgScaled(viewSummary.totalKg)} {kgLabel} totais</p>
-                        <p>{fmtKg(motherStock.totalKg)} kg em estoque</p>
+                        <p>{fmtKg(bobinasTotals.totalConsumo)} {kgLabel} totais</p>
+                        <p>{fmtKg(bobinasTotals.totalEstoque)} kg em estoque</p>
                       </div>
                     </div>
                     <div className="overflow-x-auto">
@@ -964,10 +1299,32 @@ const DemandFocus = () => {
                   <div className="space-y-4">
                     {parentItems.length === 0 ? (
                       <div className="rounded-2xl border border-dashed border-white/10 bg-[#0b1220] p-6 text-center text-sm text-slate-400">
-                        Nenhum produto com quantidade positiva. Faça o upload da carteira para ativar este painel.
+                        Nenhum produto com quantidade positiva. Faca o upload da carteira para ativar este painel.
                       </div>
                     ) : (
-                      parentItems.map((item) => {
+                      <div className="space-y-4">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                          <div>
+                            <h3 className="text-lg font-semibold text-slate-100">Itens & Componentes</h3>
+                            <p className="text-xs text-slate-300">Itens pai com seus componentes e bobinas.</p>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-slate-300">
+                            <input
+                              type="text"
+                              value={bobinaSearch}
+                              onChange={(event) => setBobinaSearch(event.target.value)}
+                              placeholder="Buscar bobina (codigo ou descricao)"
+                              className="w-64 rounded-lg border border-white/10 bg-[#0b1220] px-3 py-2 text-xs text-slate-200 placeholder:text-slate-500"
+                            />
+                            <span className="text-slate-400">{fmtNum(parentItemsFiltrados.length)} itens</span>
+                          </div>
+                        </div>
+                        {parentItemsFiltrados.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-white/10 bg-[#0b1220] p-6 text-center text-sm text-slate-400">
+                            Nenhum item encontrado para essa bobina.
+                          </div>
+                        ) : (
+                          parentItemsFiltrados.map((item) => {
                         return (
                           <details key={item.produto} className="group rounded-2xl border border-white/10 bg-[#0b1220]">
                             <summary className="flex flex-col gap-1 p-4 md:flex-row md:items-center md:justify-between list-none cursor-pointer">
@@ -978,37 +1335,44 @@ const DemandFocus = () => {
                               <div className="text-right text-sm text-slate-300 space-y-1">
                                 <p className="text-slate-100 font-semibold">{fmtUnits(item.qty)} un</p>
                                 <p className="text-slate-200 font-mono">{fmtKgScaled(item.totalKg)} kg</p>
+                                {levelTotalsByParent[item.produto]?.length ? (
+                                  <div className="flex flex-wrap justify-end gap-2 text-[10px] text-slate-400">
+                                    {levelTotalsByParent[item.produto].map((row) => (
+                                      <span key={`${item.produto}-nivel-${row.nivel}`}>N{row.nivel}: {fmtUnits(row.total)} pc</span>
+                                    ))}
+                                  </div>
+                                ) : null}
                               </div>
                             </summary>
                             <div className="border-t border-white/10 px-4 pb-4 pt-3">
                               <div className="space-y-3">
                                 {estruturaByParent[item.produto]?.children?.length ? (
-                                  estruturaByParent[item.produto].children.map((child) => (
+                                  estruturaByParent[item.produto].children.map((child) => {
+                                    const childQty = (child.factorSum ?? getEdgeFactor(child.edge)) * (Number(item.qty || 0) || 0);
+                                    return (
                                     <details key={`${item.produto}-${child.code}`} className="rounded-lg border border-white/10 bg-[#0f1729] p-3">
                                       <summary className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-base list-none cursor-pointer">
                                         <div className="flex items-center gap-2">
                                           <span className="text-xs uppercase text-slate-400">{child.tp || '-'}</span>
                                           <span className="font-mono font-bold text-slate-100">{child.code || '-'}</span>
-                                          <span className="text-sm text-slate-300 truncate">{child.desc || 'Sem descricao'}</span>
+                                          <span className="text-sm text-slate-300 truncate">{child.desc || 'Sem descri????o'}</span>
                                         </div>
                                         <div className="text-sm text-slate-300 flex items-center gap-3">
                                           <span className="font-semibold text-slate-200">N{child.edge?.nivel ?? '-'}</span>
                                           <span className="font-mono text-slate-100">
-                                            {fmtUnits(getEdgeFactor(child.edge) * (Number(item.qty || 0) || 0))} {child.edge?.um ?? ''}
+                                            {fmtUnits((child.factorSum ?? getEdgeFactor(child.edge)) * (Number(item.qty || 0) || 0))} {child.edge?.um ?? ''}
                                           </span>
                                         </div>
                                       </summary>
                                       <div className="mt-3">
                                         {child.subItems?.length ? (
                                           <div className="mb-3">
-                                            <div className="text-xs uppercase text-slate-300 mb-2">
-                                              Subitens (PA/PI)
-                                            </div>
                                             <div className="flex flex-col gap-2">
-                                              {child.subItems.map((sub) => {
-                                                const childQty = getEdgeFactor(child.edge) * (Number(item.qty || 0) || 0);
+                                              {child.subItems.map((sub, subIndex) => {
+                                                const childQty = (child.factorSum ?? getEdgeFactor(child.edge)) * (Number(item.qty || 0) || 0);
                                                 const subQty = getEdgeFactor(sub.edge) * childQty;
-                                                const subEdges = edgesByParent.get(sub.code) || [];
+                                                const subCanExpand = String(sub.edge?.um ?? '').toUpperCase() !== 'KG';
+                                                const subEdges = subCanExpand ? (edgesByParent.get(sub.code) || []) : [];
                                                 const subChildren = subEdges
                                                   .filter((subEdge) => {
                                                     const tp = String(subEdge?.tp ?? '').toUpperCase();
@@ -1021,40 +1385,78 @@ const DemandFocus = () => {
                                                     tp: String(subEdge?.tp ?? '').toUpperCase(),
                                                   }))
                                                   .filter((subChild) => subChild.code);
-                                                return (
-                                                  <div
-                                                    key={`${child.code}-${sub.code}`}
-                                                    className="rounded-lg bg-[#0b1220] border border-white/10 px-3 py-2 text-sm"
-                                                  >
-                                                    <div className="flex items-center justify-between gap-3">
-                                                      <div className="min-w-0">
-                                                        <div className="font-mono font-semibold text-slate-100">{sub.code || '-'}</div>
-                                                        <div className="text-sm text-slate-300 truncate">
-                                                          {sub.desc || 'Sem descrição'}
-                                                        </div>
-                                                      </div>
-                                                      <div className="text-right text-sm text-slate-200 shrink-0">
-                                                        <div className="font-semibold">N{sub.edge?.nivel ?? '-'}</div>
-                                                        <div className="font-mono">
-                                                          {fmtUnits(subQty)} {sub.edge?.um ?? ''}
-                                                        </div>
+                                                const subMps = subEdges
+                                                  .filter((subEdge) => String(subEdge?.tp ?? '').toUpperCase() === 'MP')
+                                                  .map((subEdge) => ({
+                                                    edge: subEdge,
+                                                    code: String(subEdge?.child ?? '').trim(),
+                                                    desc: getItemDesc(subEdge?.child),
+                                                    tp: String(subEdge?.tp ?? '').toUpperCase(),
+                                                  }))
+                                                  .filter((subChild) => subChild.code);
+                                                const subChildrenAgg = aggregateEdgesByCode(subChildren);
+                                                const subMpsAgg = aggregateEdgesByCode(subMps);
+                                                const hasSubChildren = subChildrenAgg.length > 0 || subMpsAgg.length > 0;
+                                                const subHeader = (
+                                                  <div className="flex items-center justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                      <div className="font-mono font-semibold text-slate-100">{sub.code || '-'}</div>
+                                                      <div className="text-sm text-slate-300 truncate">
+                                                        {sub.desc || 'Sem descricao'}
                                                       </div>
                                                     </div>
-                                                    {subChildren.length > 0 && (
+                                                    <div className="text-right text-sm text-slate-200 shrink-0">
+                                                      <div className="font-semibold">N{sub.edge?.nivel ?? '-'}</div>
+                                                      <div className="font-mono">
+                                                        {fmtUnits(subQty)} {sub.edge?.um ?? ''}
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                );
+                                                if (hasSubChildren) {
+                                                  return (
+                                                    <details key={`${child.code}-${sub.code}-${subIndex}`} className="rounded-lg bg-[#0b1220] border border-white/10 px-3 py-2 text-sm">
+                                                      <summary className="list-none cursor-pointer">{subHeader}</summary>
                                                       <div className="mt-2 border-t border-white/10 pt-2 space-y-1 text-xs text-slate-300">
-                                                  {subChildren.map((subChild) => {
-                                                    const subChildQty = getEdgeFactor(subChild.edge) * subQty;
-                                                    return (
-                                                    <div key={`${sub.code}-${subChild.code}`} className="flex items-center justify-between gap-2">
-                                                      <span className="font-mono text-slate-200">{subChild.code}</span>
-                                                      <span className="truncate">{subChild.desc || 'Sem descrição'}</span>
-                                                      <span className="text-slate-400">N{subChild.edge?.nivel ?? '-'} {subChild.tp || '-'}</span>
-                                                      <span className="font-mono text-slate-300">{fmtUnits(subChildQty)} {subChild.edge?.um ?? ''}</span>
-                                                    </div>
-                                                    );
-                                                  })}
+                                                        {subChildrenAgg.length > 0 && (
+                                                          <div className="space-y-1">
+                                                            <div className="text-[10px] uppercase tracking-wider text-slate-400">Subitens (PA/PI)</div>
+                                                            {subChildrenAgg.map((subChild, subChildIndex) => {
+                                                              const subChildQty = (subChild.factorSum ?? getEdgeFactor(subChild.edge)) * subQty;
+                                                              return (
+                                                                <div key={`${sub.code}-${subChild.code}-${subChildIndex}`} className="flex items-center justify-between gap-2">
+                                                                  <span className="font-mono text-slate-200">{subChild.code}</span>
+                                                                  <span className="truncate">{subChild.desc || 'Sem descricao'}</span>
+                                                                  <span className="text-slate-400">N{subChild.edge?.nivel ?? '-'} {subChild.tp || '-'}</span>
+                                                                  <span className="font-mono text-slate-300">{fmtUnits(subChildQty)} {subChild.edge?.um ?? ''}</span>
+                                                                </div>
+                                                              );
+                                                            })}
+                                                          </div>
+                                                        )}
+                                                        {subMpsAgg.length > 0 && (
+                                                          <div className="mt-2 space-y-1">
+                                                            <div className="text-[10px] uppercase tracking-wider text-slate-400">Bobinas (MP)</div>
+                                                            {subMpsAgg.map((subMp, subMpIndex) => {
+                                                              const subMpQty = (subMp.factorSum ?? getEdgeFactor(subMp.edge)) * subQty;
+                                                              return (
+                                                                <div key={`${sub.code}-${subMp.code}-${subMpIndex}`} className="flex items-center justify-between gap-2">
+                                                                  <span className="font-mono text-slate-200">{subMp.code}</span>
+                                                                  <span className="truncate">{subMp.desc || 'Sem descricao'}</span>
+                                                                  <span className="text-slate-400">N{subMp.edge?.nivel ?? '-'} MP</span>
+                                                                  <span className="font-mono text-slate-300">{fmtUnits(subMpQty)} {subMp.edge?.um ?? ''}</span>
+                                                                </div>
+                                                              );
+                                                            })}
+                                                          </div>
+                                                        )}
                                                       </div>
-                                                    )}
+                                                    </details>
+                                                  );
+                                                }
+                                                return (
+                                                  <div key={`${child.code}-${sub.code}-${subIndex}`} className="rounded-lg bg-[#0b1220] border border-white/10 px-3 py-2 text-sm">
+                                                    {subHeader}
                                                   </div>
                                                 );
                                               })}
@@ -1077,7 +1479,7 @@ const DemandFocus = () => {
                                                 <div className="text-right text-sm text-slate-200 shrink-0">
                                                   <div className="font-semibold">N{mp.nivel ?? '-'}</div>
                                                   <div className="font-mono">
-                                                    {fmtNum(mp.qtdNec ?? 0)} {mp.um ?? ''}
+                                                    {fmtQtyByUm((Number(mp.qtdNec || 0) * (child.factorSum ?? getEdgeFactor(child.edge)) * (Number(item.qty || 0) || 0)), mp.um)} {mp.um ?? ''}
                                                   </div>
                                                 </div>
                                               </div>
@@ -1088,7 +1490,8 @@ const DemandFocus = () => {
                                         )}
                                       </div>
                                     </details>
-                                  ))
+                                  );
+                                })
                                 ) : (
                                   <div className="text-xs text-slate-400">Sem estrutura de itens para este produto.</div>
                                 )}
@@ -1113,7 +1516,7 @@ const DemandFocus = () => {
                                           <div className="text-right text-sm text-slate-200 shrink-0">
                                             <div className="font-semibold">N{mp.nivel ?? '-'}</div>
                                             <div className="font-mono">
-                                              {fmtNum(mp.qtdNec ?? 0)} {mp.um ?? ''}
+                                              {fmtQtyByUm((Number(mp.qtdNec || 0) * (Number(item.qty || 0) || 0)), mp.um)} {mp.um ?? ''}
                                             </div>
                                           </div>
                                         </div>
@@ -1124,8 +1527,10 @@ const DemandFocus = () => {
                               </div>
                             </div>
                           </details>
-                        );
-                      })
+                              );
+                            })
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
@@ -1170,3 +1575,4 @@ const fmtNum = (value) => Number(value || 0).toLocaleString('pt-BR');
 const fmtKg = (value) => Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 export default DemandFocus;
+
