@@ -7,7 +7,7 @@ export const INITIAL_PRODUCT_CATALOG = [
   { code: '00671D', name: 'PERFIL UE 100X40X17X2,65', b2Code: '85521D', b2Name: 'BOB 2 PERFIL UE 100X40X17X2,65', width: 167, thickness: '2,65', type: 'BQ', motherCode: '10020' },
   { code: '00672A', name: 'PERFIL UE 100X50X17X1,80', b2Code: '85522A', b2Name: 'BOB 2 PERFIL UE 100X50X17X1,80', width: 211, thickness: '1,80', type: 'BQ', motherCode: '10262' },
   { code: '00672K', name: 'PERFIL UE 100X50X17X1,95 GALV', b2Code: '85522K', b2Name: 'BOB 2 PERFIL UE 100X50X17X1,95 GALV', width: 210, thickness: '1,95', type: 'BZ', motherCode: '10419' },
-  { code: '00672B', name: 'PERFIL UE 100X50X17X2,00', b2Code: '85522B', b2Name: 'BOB 2 PERFIL UE 100X50X17X2,00', width: 210, thickness: '2,00', type: 'BQ', motherCode: '10646' },
+  { code: '00672B', name: 'PERFIL UE 100X50X17X2,00', b2Code: '85522B', b2Name: 'BOB 2 PERFIL UE 100X50X17X2,00', width: 210, thickness: '2,00', type: 'BQ', motherCode: '10863' },
   { code: '00672C', name: 'PERFIL UE 100X50X17X2,25', b2Code: '85522C', b2Name: 'BOB 2 PERFIL UE 100X50X17X2,25', width: 210, thickness: '2,25', type: 'BQ', motherCode: '10022' },
   { code: '00672L', name: 'PERFIL UE 100X50X17X2,30 GALV', b2Code: '85522L', b2Name: 'BOB 2 PERFIL UE 100X50X17X2,30 GALV', width: 210, thickness: '2,30', type: 'BZ', motherCode: '11320' },
   { code: '00672D', name: 'PERFIL UE 100X50X17X2,65', b2Code: '85522D', b2Name: 'BOB 2 PERFIL UE 100X50X17X2,65', width: 207, thickness: '2,65', type: 'BQ', motherCode: '10020' },
