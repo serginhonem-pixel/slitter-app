@@ -57,6 +57,7 @@ import ProductHistoryModal from './components/modals/ProductHistoryModal';
 import RawMaterialRequirement from "./components/modals/RawMaterialRequirement";
 import DemandFocus from "./data/demandFocus.jsx";
 import { PESO_UNITARIO_PA } from './data/peso_unitario_pa';
+import { ESTOQUE_PERFIL_CONSOLIDADO } from './data/estoque_perfil_consolidado';
 import { useEventLogs } from './hooks/useEventLogs';
 
 
@@ -119,7 +120,7 @@ const ReportTabs = ({ viewMode, setViewMode }) => (
           : 'bg-gray-800 text-gray-400 hover:text-white'
       }`}
     >
-      Resumo Produção
+    Estoque PA
     </button>
   </div>
 );
@@ -834,6 +835,180 @@ const ProductDetailsModal = ({ data, onClose }) => {
   );
 };
 
+const ProductionSuggestionModal = ({
+  items,
+  onClose,
+  onExportExcel,
+  onExportPdf,
+  filter,
+  onFilterChange,
+}) => {
+  const safeItems = Array.isArray(items) ? items : [];
+  const filteredItems = safeItems.filter((item) => {
+    if (!filter || filter === 'ALL') return true;
+    const daily = Number(item.dailyKg) || 0;
+    const daysCoverage =
+      daily > 0 ? (Number(item.stockWeight) || 0) / daily : 0;
+    if (filter === 'SEM_DEMANDA') return daily <= 0;
+    if (filter === '2M_PLUS') return daysCoverage >= 60;
+    if (filter === '30_59') return daysCoverage >= 30 && daysCoverage < 60;
+    if (filter === 'LT_30') return daysCoverage > 0 && daysCoverage < 30;
+    return true;
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-[90] flex items-center justify-center p-4">
+      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-5xl shadow-2xl flex flex-col max-h-[85vh]">
+        <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-900 rounded-t-xl">
+          <div>
+            <h3 className="text-white font-bold text-lg">Sugestoes de Producao</h3>
+            <p className="text-sm text-gray-400">
+              Estoque atual, meta e saldo de Bobina 2
+            </p>
+            <div className="mt-3">
+              <select
+                value={filter}
+                onChange={(e) => onFilterChange(e.target.value)}
+                className="bg-gray-800 text-xs text-white border border-gray-600 rounded px-2 py-1"
+              >
+                <option value="ALL">Todos</option>
+                <option value="2M_PLUS">2M+</option>
+                <option value="30_59">30-59d</option>
+                <option value="LT_30">&lt;30d</option>
+                <option value="SEM_DEMANDA">Sem demanda</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={onExportPdf}
+              className="h-8 bg-gray-700 text-white hover:bg-gray-600"
+            >
+              <FileText size={14} /> PDF
+            </Button>
+            <Button
+              onClick={onExportExcel}
+              className="h-8 bg-emerald-600 text-white hover:bg-emerald-500"
+            >
+              <Download size={14} /> Excel
+            </Button>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-white"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 overflow-y-auto custom-scrollbar-dark flex-1">
+          <table className="w-full text-sm text-left text-gray-300">
+            <thead className="bg-gray-800 text-gray-400 sticky top-0 shadow-md text-xs uppercase">
+              <tr>
+                <th className="p-3">Codigo</th>
+                <th className="p-3">Descricao</th>
+                <th className="p-3 text-right">Saldo (kg)</th>
+                <th className="p-3 text-right">Max (kg)</th>
+                <th className="p-3 text-right text-emerald-400">Sugestao (kg)</th>
+                <th className="p-3 text-right">Sugestao (pcs)</th>
+                <th className="p-3">B2</th>
+                <th className="p-3 text-right">Saldo B2 (kg)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700">
+              {filteredItems.map((item, idx) => {
+                const b2Short = item.b2Code || '';
+                const b2Label = b2Short ? `${b2Short} - ${item.b2Name || ''}` : '-';
+                const b2Weight = Number(item.b2StockWeight || 0);
+                const suggestionKg = Number(item.suggestionKg || 0);
+                const isShort = suggestionKg > 0 && b2Weight > 0 && b2Weight < suggestionKg;
+                const b2Color = isShort ? 'text-red-400' : 'text-emerald-400';
+                const daily = Number(item.dailyKg) || 0;
+                const daysCoverage =
+                  daily > 0 ? (Number(item.stockWeight) || 0) / daily : 0;
+                const coverageLabel =
+                  daily <= 0
+                    ? 'SEM DEMANDA'
+                    : daysCoverage >= 60
+                      ? '2M+'
+                      : daysCoverage >= 30
+                        ? '30-59d'
+                        : '<30d';
+                const coverageClass =
+                  daily <= 0
+                    ? 'text-gray-400 bg-gray-700/40 border-gray-600/40'
+                    : daysCoverage >= 60
+                      ? 'text-emerald-400 bg-emerald-900/30 border-emerald-700/40'
+                      : daysCoverage >= 30
+                        ? 'text-amber-300 bg-amber-900/30 border-amber-700/40'
+                        : 'text-red-400 bg-red-900/30 border-red-700/40';
+
+                return (
+                <tr key={`${item.code}-${idx}`} className="hover:bg-gray-700/40">
+                  <td className="p-3 font-mono text-xs text-white">{item.code}</td>
+                  <td className="p-3 text-gray-300">
+                    <div>{item.name}</div>
+                    <div className="mt-1">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wide ${coverageClass}`}
+                      >
+                        {coverageLabel}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="p-3 text-right font-mono">
+                    {Number(item.stockWeight || 0).toLocaleString('pt-BR', {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                    })}
+                  </td>
+                  <td className="p-3 text-right font-mono">
+                    {Number(item.maxKg || 0).toLocaleString('pt-BR', {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    })}
+                  </td>
+                  <td className="p-3 text-right font-mono text-emerald-400">
+                    {Number(item.suggestionKg || 0).toLocaleString('pt-BR', {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                    })}
+                  </td>
+                  <td className="p-3 text-right font-mono">
+                    {Number(item.suggestionPcs || 0).toLocaleString('pt-BR')}
+                  </td>
+                  <td className="p-3 text-gray-300">
+                    {b2Label}
+                  </td>
+                  <td className={`p-3 text-right font-mono ${b2Color}`}>
+                    {b2Weight.toLocaleString('pt-BR', {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                    })}
+                  </td>
+                </tr>
+              );})}
+              {safeItems.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="p-6 text-center text-gray-500">
+                    Nenhuma sugestao para exibir.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="p-3 border-t border-gray-700 bg-gray-900 flex justify-end">
+          <Button variant="secondary" onClick={onClose}>
+            Fechar
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
 
 // --- MODAL DE DETALHES DO ESTOQUE (COM DESCRIÇÃO) ---
@@ -1359,6 +1534,9 @@ export default function App() {
   const [reportEndDate, setReportEndDate] = useState(new Date().toISOString().split('T')[0]);   // Hoje
   const [reportSearch, setReportSearch] = useState('');
   const [viewingProdDetails, setViewingProdDetails] = useState(null); // <--- ADICIONE ESSA LINHA
+  const [expandedProdSummaryCode, setExpandedProdSummaryCode] = useState(null);
+  const [showProdSuggestionModal, setShowProdSuggestionModal] = useState(false);
+  const [prodSuggestionFilter, setProdSuggestionFilter] = useState('ALL');
 // ... outros states
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [selectedGroupData, setSelectedGroupData] = useState(null);
@@ -4260,6 +4438,7 @@ const handleGlobalDetail = (group) => {
     ? dedupeProductionLogs(productionLogs)
     : [];
   const safeShipping = Array.isArray(shippingLogs) ? shippingLogs : [];
+  const safeChild = Array.isArray(childCoils) ? childCoils : [];
 
   // =================================================================================
   // 2. EXTRATO MP (KARDEX)
@@ -4620,69 +4799,209 @@ safeCutting.forEach((c) => {
 
 
   // =================================================================================
-  // 4. RESUMO PRODUÇÃO
+  // 4. RESUMO ESTOQUE PA (ESTOQUE + EXPEDICAO NO PERIODO)
   // =================================================================================
-  const prodByProductMap = {};
+  const productCatalogByCode = (productCatalog || []).reduce((acc, item) => {
+    const code = normalizeCode(item?.code);
+    if (code) acc[code] = item;
+    return acc;
+  }, {});
 
-    safeProd.forEach((lot) => {
-      if (!lot.date) return;
-      const d = toISODate(lot.date);
-      if (d < reportStartDate || d > reportEndDate) return;
+  const estoquePerfilByCode = (ESTOQUE_PERFIL_CONSOLIDADO || []).reduce(
+    (acc, item) => {
+      const code = normalizeCode(item?.code);
+      if (code) acc[code] = item;
+      return acc;
+    },
+    {}
+  );
 
-      if (reportSearch) {
-        const term = reportSearch.toLowerCase();
-        const text = (
-          String(lot.productCode) + String(lot.productName)
-        ).toLowerCase();
-        if (!text.includes(term)) return;
+  const b2StockByCode = safeChild.reduce((acc, item) => {
+    if (item?.status !== 'stock') return acc;
+    const code = normalizeCode(item?.b2Code);
+    if (!code) return acc;
+    if (!acc[code]) acc[code] = { weight: 0, count: 0 };
+    const weight = Number(item?.remainingWeight ?? item?.weight) || 0;
+    acc[code].weight += weight;
+    acc[code].count += 1;
+    return acc;
+  }, {});
+
+  const productSummaryMap = {};
+
+  const ensureProductSummary = (code, name) => {
+    const safeCode = normalizeCode(code) || 'S/ COD';
+    if (!productSummaryMap[safeCode]) {
+      productSummaryMap[safeCode] = {
+        code: safeCode,
+        name: name || productCatalogByCode[safeCode]?.name || '-',
+        producedQty: 0,
+        producedWeight: 0,
+        shippedQtyTotal: 0,
+        shippedWeightTotal: 0,
+        periodShippedQty: 0,
+        periodShippedWeight: 0,
+        producedItems: [],
+        shippedItems: [],
+        stockItems: [],
+      };
+    } else if (name && productSummaryMap[safeCode].name === '-') {
+      productSummaryMap[safeCode].name = name;
+    }
+    return productSummaryMap[safeCode];
+  };
+
+  safeProd.forEach((lot) => {
+    const code = normalizeCode(lot?.productCode) || 'S/ COD';
+    const name = lot?.productName || productCatalogByCode[code]?.name || '-';
+    const pieces = safeNum(lot?.pieces);
+    const unitWeight = getUnitWeight(code);
+    const weight = unitWeight * pieces;
+
+    const product = ensureProductSummary(code, name);
+    product.producedQty += pieces;
+    product.producedWeight += weight;
+    product.producedItems.push({
+      id: lot?.batchId || lot?.lotId || lot?.id || '-',
+      date: lot?.date || '-',
+      motherCode: lot?.motherCode || lot?.motherCoilCode || '-',
+      pieces,
+      unitWeight,
+      weight,
+      timestamp: lot?.timestamp ?? getTimestamp(lot?.date),
+    });
+  });
+
+  safeShipping.forEach((log) => {
+    const code = normalizeCode(log?.productCode) || 'S/ COD';
+    const name = log?.productName || productCatalogByCode[code]?.name || '-';
+    const qty = safeNum(log?.quantity);
+    const unitWeight = getUnitWeight(code);
+    const weight = unitWeight * qty;
+
+    const product = ensureProductSummary(code, name);
+    product.shippedQtyTotal += qty;
+    product.shippedWeightTotal += weight;
+
+    if (log?.date) {
+      const d = toISODate(log.date);
+      if (d >= reportStartDate && d <= reportEndDate) {
+        product.periodShippedQty += qty;
+        product.periodShippedWeight += weight;
+        product.shippedItems.push({
+          id: log?.id || '',
+          date: log?.date || '-',
+          destination: log?.destination || '-',
+          quantity: qty,
+          weight,
+          timestamp: getTimestamp(log?.date),
+        });
+      }
+    }
+  });
+
+  Object.values(productSummaryMap).forEach((product) => {
+    const produced = Array.isArray(product.producedItems)
+      ? [...product.producedItems]
+      : [];
+    produced.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+    let remainingToShip = Number(product.shippedQtyTotal) || 0;
+    const stockItems = [];
+
+    produced.forEach((batch) => {
+      const batchPieces = Number(batch.pieces) || 0;
+      if (batchPieces <= 0) return;
+
+      if (remainingToShip >= batchPieces) {
+        remainingToShip -= batchPieces;
+        return;
       }
 
-      const code = lot.productCode || 'S/ COD';
+      const remainingPieces = Math.max(0, batchPieces - remainingToShip);
+      remainingToShip = 0;
 
-      if (!prodByProductMap[code]) {
-        prodByProductMap[code] = {
-          code,
-          name: lot.productName,
-          totalQty: 0,
-          totalWeight: 0,
-          totalScrap: 0,
-          items: [],          // usado pelo modal
-        };
+      if (remainingPieces > 0) {
+        stockItems.push({
+          id: batch.id,
+          date: batch.date,
+          origin: batch.motherCode || '-',
+          quantity: remainingPieces,
+          weight: remainingPieces * (Number(batch.unitWeight) || 0),
+          status: 'ESTOQUE',
+          destination: '-',
+          timestamp: batch.timestamp || 0,
+        });
       }
-
-      const pieces = safeNum(lot.pieces);
-      const scrap = safeNum(lot.scrap);
-
-      // 👇 peso unitário vindo do mapa
-      const unitWeight = getUnitWeight(code);      // kg por peça (ou por unidade que você definiu)
-      const weight = unitWeight * pieces;          // peso total desse lançamento
-
-      // acumula totais
-      prodByProductMap[code].totalQty += pieces;
-      prodByProductMap[code].totalWeight += weight;
-      prodByProductMap[code].totalScrap += scrap;
-
-      // alimenta itens para o modal
-      prodByProductMap[code].items.push({
-        date: lot.date,
-        id: lot.batchId || lot.lotId || lot.id || '-',
-        packCount: safeNum(lot.packCount) || safeNum(lot.packs) || 0,
-        motherCode: lot.motherCode || lot.motherCoilCode || '',
-        pieces,
-        unitWeight,          // 👈 guarda o peso unitário
-        weight,              // 👈 peso total (qtd * unitário)
-        timestamp:
-          lot.timestamp ??
-          new Date(d + 'T12:00:00').getTime(),
-      });
     });
 
-const prodSummaryList = Object.values(prodByProductMap).sort((a, b) =>
-  String(a.name).localeCompare(String(b.name))
-);
+    product.stockItems = stockItems;
+  });
+
+  const prodSummaryList = Object.values(productSummaryMap)
+    .map((item) => {
+      const stockQty = Math.max(0, item.producedQty - item.shippedQtyTotal);
+      const stockWeight = Math.max(0, item.producedWeight - item.shippedWeightTotal);
+      const plan = estoquePerfilByCode[normalizeCode(item.code)];
+      const catalog = productCatalogByCode[normalizeCode(item.code)];
+      const b2Code = catalog?.b2Code || '';
+      const b2Name = catalog?.b2Name || '';
+      const b2Stock = b2Code ? b2StockByCode[normalizeCode(b2Code)] : null;
+      const dailyKg = Number(plan?.dailyKg) || 0;
+      const rawMaxKg = Number(plan?.maxKg) || 0;
+      const maxKg = rawMaxKg > 0 && dailyKg > 0
+        ? Math.min(rawMaxKg, dailyKg * 60)
+        : rawMaxKg;
+      const suggestionKg = maxKg > 0 ? Math.max(0, maxKg - stockWeight) : 0;
+      const unitWeight = getUnitWeight(item.code);
+      const suggestionPcs =
+        suggestionKg > 0 && unitWeight > 0
+          ? Math.ceil(suggestionKg / unitWeight)
+          : 0;
+      return {
+        ...item,
+        stockQty,
+        stockWeight,
+        dailyKg,
+        maxKg,
+        suggestionKg,
+        suggestionPcs,
+        b2Code,
+        b2Name,
+        b2StockWeight: b2Stock?.weight || 0,
+        b2StockCount: b2Stock?.count || 0,
+      };
+    })
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+  const filteredProdSummaryList = prodSummaryList.filter((item) => {
+    if (!reportSearch) return true;
+    const term = reportSearch.toLowerCase();
+    return (
+      String(item.code).toLowerCase().includes(term) ||
+      String(item.name || '').toLowerCase().includes(term)
+    );
+  });
+
+  const totalStockQty = filteredProdSummaryList.reduce(
+    (acc, item) => acc + (Number(item.stockQty) || 0),
+    0
+  );
+  const totalStockWeight = filteredProdSummaryList.reduce(
+    (acc, item) => acc + (Number(item.stockWeight) || 0),
+    0
+  );
+  const totalPeriodShippedQty = filteredProdSummaryList.reduce(
+    (acc, item) => acc + (Number(item.periodShippedQty) || 0),
+    0
+  );
+  const totalPeriodShippedWeight = filteredProdSummaryList.reduce(
+    (acc, item) => acc + (Number(item.periodShippedWeight) || 0),
+    0
+  );
 
 
-  // =================================================================================
+// =================================================================================
   // 5. RENDERIZAÇÃO
   // =================================================================================
   return (
@@ -4858,91 +5177,496 @@ const prodSummaryList = Object.values(prodByProductMap).sort((a, b) =>
         </Card>
       )}
 
-      {/* ABA 3: RESUMO PRODUÇÃO */}
+      {/* ABA 3: ESTOQUE PA */}
       {reportViewMode === 'PROD_SUMMARY' && (
-  <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-t-4 border-purple-600">
-    <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700 p-4 bg-purple-900/10 -mt-6 -mx-6">
-      <div>
-        <h3 className="font-bold text-xl text-purple-100">
-          Resumo Produção
-        </h3>
-        <p className="text-sm text-purple-300/70">Por Produto</p>
-      </div>
-      <Button
-        onClick={() => {
-          const safeList = Array.isArray(prodSummaryList)
-            ? prodSummaryList
-            : [];
+        <div className="flex-1 flex flex-col min-h-0 gap-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Card className="bg-emerald-900/20 border-emerald-500/30 py-3 px-4">
+              <span className="text-xs text-emerald-400 font-bold uppercase">
+                Saldo em Estoque
+              </span>
+              <div className="text-2xl font-bold text-white">
+                {totalStockWeight.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}{' '}
+                <span className="text-sm font-normal text-gray-400">kg</span>
+              </div>
+            </Card>
+            <Card className="bg-gray-700/20 border-gray-600/30 py-3 px-4">
+              <span className="text-xs text-gray-400 font-bold uppercase">
+                Total Baixado (Filtrado)
+              </span>
+              <div className="text-2xl font-bold text-emerald-400">
+                {totalPeriodShippedWeight.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}{' '}
+                <span className="text-sm font-normal text-gray-500">kg</span>
+              </div>
+            </Card>
+          </div>
 
-          const data = safeList.map((i) => ({
-            Produto: i.name ?? '',
-            Código: i.code ?? '',
-            Qtd: Number(i.totalQty) || 0,
-            Peso: Number(i.totalWeight) || 0,
-            Sucata: Number(i.totalScrap) || 0,
-          }));
+          <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-t-4 border-purple-600">
+            <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-700 p-4 bg-purple-900/10 -mt-6 -mx-6">
+              <div>
+                <h3 className="font-bold text-xl text-purple-100">Estoque PA</h3>
+                <p className="text-sm text-purple-300/70">
+                  Saldo atual e baixado no periodo
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setShowProdSuggestionModal(true)}
+                  className="h-9 bg-emerald-600 text-white"
+                >
+                  Sugestoes
+                </Button>
+                <Button
+                  onClick={() => {
+                    const safeList = Array.isArray(filteredProdSummaryList)
+                      ? filteredProdSummaryList
+                      : [];
 
-          exportToCSV(data, `resumo_producao`);
-        }}
-        className="h-9 bg-purple-600 text-white"
-      >
-        <Download size={14} /> Excel
-      </Button>
-    </div>
+                    const data = safeList.map((i) => ({
+                      Produto: i.name ?? '',
+                      Codigo: i.code ?? '',
+                      'Saldo (pcs)': Number(i.stockQty) || 0,
+                      'Peso Estoque (kg)': Number(i.stockWeight) || 0,
+                      'Baixado (pcs)': Number(i.periodShippedQty) || 0,
+                      'Peso Baixado (kg)': Number(i.periodShippedWeight) || 0,
+                      'Demanda (kg/dia)': Number(i.dailyKg) || 0,
+                      'Estoque Max (kg)': Number(i.maxKg) || 0,
+                      'Sugestao (kg)': Number(i.suggestionKg) || 0,
+                      'Sugestao (pcs)': Number(i.suggestionPcs) || 0,
+                      'B2 Codigo': i.b2Code ?? '',
+                      'B2 Descricao': i.b2Name ?? '',
+                      'Saldo B2 (kg)': Number(i.b2StockWeight) || 0,
+                    }));
 
-    <div className="flex-1 overflow-auto custom-scrollbar-dark px-4 pb-4">
-      <table className="w-full text-sm text-left text-gray-300">
-        <thead className="bg-gray-800 text-gray-400 sticky top-0">
-          <tr>
-            <th className="p-3">Produto</th>
-            <th className="p-3">Código</th>
-            <th className="p-3 text-right text-emerald-400">Qtd</th>
-            <th className="p-3 text-right text-blue-400">Peso</th>
-            <th className="p-3 text-right text-red-400">Sucata</th>
-            <th className="p-3 text-center">Ação</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-700">
-          {(Array.isArray(prodSummaryList) ? prodSummaryList : []).map(
-            (row, idx) => {
-              const qty = Number(row.totalQty) || 0;
-              const weight = Number(row.totalWeight) || 0;
-              const scrap = Number(row.totalScrap) || 0;
+                    exportToExcelXml(
+                      [{ name: 'Estoque PA', rows: data }],
+                      'estoque_pa'
+                    );
+                  }}
+                  className="h-9 bg-purple-600 text-white"
+                >
+                  <Download size={14} /> Excel
+                </Button>
+              </div>
+            </div>
 
-              return (
-                <tr key={idx} className="hover:bg-gray-700/50">
-                  <td className="p-3 font-bold text-white text-sm">
-                    {row.name ?? '-'}
-                  </td>
-                  <td className="p-3 text-gray-400 text-xs font-mono">
-                    {row.code ?? '-'}
-                  </td>
-                  <td className="p-3 text-right text-emerald-400 font-bold text-lg">
-                    {qty}
-                  </td>
-                  <td className="p-3 text-right text-blue-400 font-mono">
-                    {weight.toFixed(1)} kg
-                  </td>
-                  <td className="p-3 text-right text-red-400 font-mono">
-                    {scrap.toFixed(1)} kg
-                  </td>
-                  <td className="p-3 text-center">
-                    <button
-                      onClick={() => setViewingProdDetails(row)}
-                      className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs transition-colors flex items-center gap-2 mx-auto"
-                    >
-                      <Eye size={14} /> Detalhes
-                    </button>
-                  </td>
-                </tr>
-              );
-            }
-          )}
-        </tbody>
-      </table>
-    </div>
-  </Card>
-)}
+            <div className="flex-1 overflow-auto custom-scrollbar-dark px-4 pb-4">
+              <table className="w-full text-sm text-left text-gray-300">
+                <thead className="bg-gray-800 text-gray-400 sticky top-0 z-10 uppercase text-xs">
+                  <tr>
+                    <th className="p-4">Codigo</th>
+                    <th className="p-4">Descricao</th>
+                    <th className="p-4 text-center">Pcs</th>
+                    <th className="p-4 text-right text-emerald-400">Peso Estoque</th>
+                    <th className="p-4 text-right text-gray-500">Peso Baixado</th>
+                    <th className="p-4 text-center">Ver</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {(Array.isArray(filteredProdSummaryList)
+                    ? filteredProdSummaryList
+                    : []
+                  ).map((row, idx) => {
+                    const stockQty = Number(row.stockQty) || 0;
+                    const stockWeight = Number(row.stockWeight) || 0;
+                    const periodWeight = Number(row.periodShippedWeight) || 0;
+                    const isExpanded = expandedProdSummaryCode === row.code;
+                    const dailyKg = Number(row.dailyKg) || 0;
+                    const maxKg = Number(row.maxKg) || 0;
+                    const daysCoverage =
+                      dailyKg > 0 ? (Number(row.stockWeight) || 0) / dailyKg : 0;
+                    const coverageLabel =
+                      dailyKg <= 0
+                        ? 'SEM DEMANDA'
+                        : daysCoverage >= 60
+                          ? '2M+'
+                          : daysCoverage >= 30
+                            ? '30-59d'
+                            : '<30d';
+                    const coverageClass =
+                      dailyKg <= 0
+                        ? 'text-gray-400 bg-gray-700/40 border-gray-600/40'
+                        : daysCoverage >= 60
+                          ? 'text-emerald-400 bg-emerald-900/30 border-emerald-700/40'
+                          : daysCoverage >= 30
+                            ? 'text-amber-300 bg-amber-900/30 border-amber-700/40'
+                            : 'text-red-400 bg-red-900/30 border-red-700/40';
+                    const suggestionKg = Number(row.suggestionKg) || 0;
+                    const shippedDetails = Array.isArray(row.shippedItems)
+                      ? row.shippedItems.map((item) => ({
+                          ...item,
+                          origin: '-',
+                          status: 'BAIXADO',
+                        }))
+                      : [];
+                    const stockDetails = Array.isArray(row.stockItems)
+                      ? row.stockItems
+                      : [];
+                    const details = [...stockDetails, ...shippedDetails].sort(
+                      (a, b) => {
+                        const statusA = a.status === 'ESTOQUE' ? 0 : 1;
+                        const statusB = b.status === 'ESTOQUE' ? 0 : 1;
+                        if (statusA !== statusB) return statusA - statusB;
+                        return (b.timestamp || 0) - (a.timestamp || 0);
+                      }
+                    );
+
+                    return (
+                      <React.Fragment key={idx}>
+                        <tr
+                          className={`hover:bg-gray-700/50 cursor-pointer transition-colors ${
+                            isExpanded ? 'bg-purple-900/20 border-l-4 border-purple-500' : ''
+                          }`}
+                          onClick={() =>
+                            setExpandedProdSummaryCode(isExpanded ? null : row.code)
+                          }
+                        >
+                          <td className="p-4 font-bold text-white font-mono text-base">
+                            {row.code ?? '-'}
+                          </td>
+                          <td className="p-4 text-gray-300 font-medium">
+                            <div className="text-gray-300 font-medium">
+                              {row.name ?? '-'}
+                            </div>
+                            <div className="text-[10px] text-gray-500">
+                              {dailyKg > 0
+                                ? `Demanda: ${dailyKg.toLocaleString('pt-BR', {
+                                    maximumFractionDigits: 1,
+                                  })} kg/dia`
+                                : 'Demanda: -'}
+                              {' · '}
+                              {maxKg > 0
+                                ? `Max: ${maxKg.toLocaleString('pt-BR', {
+                                    maximumFractionDigits: 0,
+                                  })} kg`
+                                : 'Max: -'}
+                              {' · '}
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wide ${coverageClass}`}
+                              >
+                                {coverageLabel}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="p-4 text-center">
+                            <span className="bg-gray-800 px-2 py-1 rounded text-xs font-bold border border-gray-600">
+                              {stockQty.toLocaleString('pt-BR')}
+                            </span>
+                          </td>
+                          <td className="p-4 text-right font-bold text-emerald-400 text-lg">
+                            {stockWeight > 0
+                              ? stockWeight.toLocaleString('pt-BR', {
+                                  minimumFractionDigits: 1,
+                                  maximumFractionDigits: 1,
+                                })
+                              : '-'}
+                          </td>
+                          <td className="p-4 text-right text-gray-500 font-mono">
+                            {periodWeight > 0
+                              ? periodWeight.toLocaleString('pt-BR', {
+                                  minimumFractionDigits: 1,
+                                  maximumFractionDigits: 1,
+                                })
+                              : '-'}
+                          </td>
+                          <td className="p-4 text-center text-purple-300">
+                            {isExpanded ? (
+                              <ChevronRight className="rotate-90 transition-transform" />
+                            ) : (
+                              <ChevronRight className="transition-transform" />
+                            )}
+                          </td>
+                        </tr>
+
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={6} className="bg-gray-900/50 p-0">
+                              <div className="p-4 border-t border-purple-900/50 animate-fade-in">
+                                {details.length === 0 ? (
+                                  <div className="text-center text-gray-500 text-sm py-4">
+                                    Nenhum baixado no periodo.
+                                  </div>
+                                ) : (
+                                  <table className="w-full text-xs text-left text-gray-400">
+                                    <thead className="text-purple-300 border-b border-gray-700">
+                                      <tr>
+                                        <th className="pb-2">Data</th>
+                                        <th className="pb-2">Origem (MP)</th>
+                                        <th className="pb-2">ID Lote</th>
+                                        <th className="pb-2 text-right">Qtd</th>
+                                        <th className="pb-2 text-right">Peso</th>
+                                        <th className="pb-2 text-center">Status</th>
+                                        <th className="pb-2">Destino / Consumo</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-800">
+                                      {details.map((item, detailIdx) => {
+                                        const statusLabel = item.status || 'BAIXADO';
+                                        const statusColor =
+                                          statusLabel === 'ESTOQUE'
+                                            ? 'text-emerald-400'
+                                            : 'text-gray-500';
+                                        const qty = Number(item.quantity || 0);
+                                        return (
+                                          <tr
+                                            key={`${row.code}-${detailIdx}`}
+                                            className={`hover:bg-gray-800/50 ${
+                                              statusLabel === 'ESTOQUE'
+                                                ? 'bg-emerald-900/10'
+                                                : ''
+                                            }`}
+                                          >
+                                            <td className="py-2">{item.date}</td>
+                                            <td className="py-2">
+                                              <span className="text-gray-300">
+                                                {item.origin || '-'}
+                                              </span>
+                                            </td>
+                                            <td className="py-2 font-mono text-xs text-indigo-200">
+                                              {item.id || '-'}
+                                            </td>
+                                            <td className="py-2 text-right font-bold text-white">
+                                              {qty > 0 ? qty.toLocaleString('pt-BR') : '-'}
+                                            </td>
+                                            <td className="py-2 text-right font-bold text-emerald-300">
+                                              {Number(item.weight || 0).toLocaleString('pt-BR', {
+                                                minimumFractionDigits: 1,
+                                                maximumFractionDigits: 1,
+                                              })}{' '}
+                                              kg
+                                            </td>
+                                            <td className="py-2 text-center">
+                                              <span className={`font-bold ${statusColor}`}>
+                                                {statusLabel}
+                                              </span>
+                                            </td>
+                                            <td className="py-2">
+                                              <span className="text-gray-300">
+                                                {item.destination || '-'}
+                                              </span>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+
+                  {filteredProdSummaryList.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-gray-500">
+                        Nenhum registro encontrado para os filtros atuais.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {showProdSuggestionModal && (
+        <ProductionSuggestionModal
+          items={filteredProdSummaryList}
+          onClose={() => setShowProdSuggestionModal(false)}
+          filter={prodSuggestionFilter}
+          onFilterChange={setProdSuggestionFilter}
+          onExportExcel={() => {
+            const safeList = Array.isArray(filteredProdSummaryList)
+              ? filteredProdSummaryList
+              : [];
+            const sortedList = [...safeList].sort((a, b) => {
+              const dailyA = Number(a.dailyKg) || 0;
+              const dailyB = Number(b.dailyKg) || 0;
+              const daysA = dailyA > 0 ? (Number(a.stockWeight) || 0) / dailyA : 0;
+              const daysB = dailyB > 0 ? (Number(b.stockWeight) || 0) / dailyB : 0;
+              return daysB - daysA;
+            });
+
+            const totalStockWeight = safeList.reduce(
+              (acc, item) => acc + (Number(item.stockWeight) || 0),
+              0
+            );
+            const totalB2Weight = safeList.reduce(
+              (acc, item) => acc + (Number(item.b2StockWeight) || 0),
+              0
+            );
+            const totalDailyKg = safeList.reduce(
+              (acc, item) => acc + (Number(item.dailyKg) || 0),
+              0
+            );
+            const daysCoverage =
+              totalDailyKg > 0 ? totalStockWeight / totalDailyKg : 0;
+
+            const summaryRows = [
+              { Indicador: 'Saldo Atual (kg)', Valor: totalStockWeight },
+              { Indicador: 'Saldo B2 (kg)', Valor: totalB2Weight },
+              { Indicador: 'Demanda Total (kg/dia)', Valor: totalDailyKg },
+              { Indicador: 'Dias em Estoque', Valor: daysCoverage },
+            ];
+
+            const data = sortedList.map((i) => ({
+              Produto: i.name ?? '',
+              Codigo: i.code ?? '',
+              'Saldo (kg)': Number(i.stockWeight) || 0,
+              'Max (kg)': Number(i.maxKg) || 0,
+              'Sugestao (kg)': Number(i.suggestionKg) || 0,
+              'Sugestao (pcs)': Number(i.suggestionPcs) || 0,
+              'Demanda (kg/dia)': Number(i.dailyKg) || 0,
+              'B2 Codigo': i.b2Code ?? '',
+              'B2 Descricao': i.b2Name ?? '',
+              'Saldo B2 (kg)': Number(i.b2StockWeight) || 0,
+              'Dias Estoque': (() => {
+                const daily = Number(i.dailyKg) || 0;
+                return daily > 0 ? Number(i.stockWeight || 0) / daily : 0;
+              })(),
+            }));
+
+            exportToExcelXml(
+              [
+                { name: 'Resumo', rows: summaryRows },
+                { name: 'Sugestoes PA', rows: data },
+              ],
+              'sugestoes_producao'
+            );
+          }}
+          onExportPdf={() => {
+            const safeList = Array.isArray(filteredProdSummaryList)
+              ? filteredProdSummaryList
+              : [];
+            if (!safeList.length) return;
+            const sortedList = [...safeList].sort((a, b) => {
+              const dailyA = Number(a.dailyKg) || 0;
+              const dailyB = Number(b.dailyKg) || 0;
+              const daysA = dailyA > 0 ? (Number(a.stockWeight) || 0) / dailyA : 0;
+              const daysB = dailyB > 0 ? (Number(b.stockWeight) || 0) / dailyB : 0;
+              return daysB - daysA;
+            });
+
+            const totalStockWeight = safeList.reduce(
+              (acc, item) => acc + (Number(item.stockWeight) || 0),
+              0
+            );
+            const totalB2Weight = safeList.reduce(
+              (acc, item) => acc + (Number(item.b2StockWeight) || 0),
+              0
+            );
+            const totalDailyKg = safeList.reduce(
+              (acc, item) => acc + (Number(item.dailyKg) || 0),
+              0
+            );
+            const daysCoverage =
+              totalDailyKg > 0 ? totalStockWeight / totalDailyKg : 0;
+
+            const doc = new jsPDF('l', 'mm', 'a4');
+            doc.setFontSize(14);
+            doc.text('Sugestoes de Producao', 14, 16);
+            doc.setFontSize(9);
+            doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 22);
+
+            autoTable(doc, {
+              startY: 28,
+              head: [['Indicador', 'Valor']],
+              body: [
+                [
+                  'Saldo Atual (kg)',
+                  totalStockWeight.toLocaleString('pt-BR', {
+                    maximumFractionDigits: 1,
+                  }),
+                ],
+                [
+                  'Saldo B2 (kg)',
+                  totalB2Weight.toLocaleString('pt-BR', {
+                    maximumFractionDigits: 1,
+                  }),
+                ],
+                [
+                  'Demanda Total (kg/dia)',
+                  totalDailyKg.toLocaleString('pt-BR', {
+                    maximumFractionDigits: 1,
+                  }),
+                ],
+                [
+                  'Dias em Estoque',
+                  daysCoverage.toLocaleString('pt-BR', {
+                    maximumFractionDigits: 1,
+                  }),
+                ],
+              ],
+              theme: 'grid',
+              styles: { fontSize: 8 },
+              headStyles: { fillColor: [40, 40, 40], textColor: [255, 255, 255] },
+            });
+
+            const rows = sortedList.map((i) => {
+              const daily = Number(i.dailyKg) || 0;
+              const days = daily > 0 ? Number(i.stockWeight || 0) / daily : 0;
+              const coverageLabel =
+                daily <= 0
+                  ? 'SEM DEMANDA'
+                  : days >= 60
+                    ? '2M+'
+                    : days >= 30
+                      ? '30-59d'
+                      : '<30d';
+              return [
+                i.code ?? '',
+                i.name ?? '',
+                Number(i.stockWeight || 0).toLocaleString('pt-BR', {
+                  maximumFractionDigits: 1,
+                }),
+                daily.toLocaleString('pt-BR', { maximumFractionDigits: 1 }),
+                Number(i.maxKg || 0).toLocaleString('pt-BR', {
+                  maximumFractionDigits: 0,
+                }),
+                Number(i.suggestionKg || 0).toLocaleString('pt-BR', {
+                  maximumFractionDigits: 1,
+                }),
+                Number(i.suggestionPcs || 0).toLocaleString('pt-BR'),
+                i.b2Code ?? '',
+                Number(i.b2StockWeight || 0).toLocaleString('pt-BR', {
+                  maximumFractionDigits: 1,
+                }),
+                days.toLocaleString('pt-BR', { maximumFractionDigits: 1 }),
+                coverageLabel,
+              ];
+            });
+
+            autoTable(doc, {
+              startY: doc.lastAutoTable?.finalY
+                ? doc.lastAutoTable.finalY + 6
+                : 40,
+              head: [[
+                'Codigo',
+                'Descricao',
+                'Saldo (kg)',
+                'Demanda (kg/dia)',
+                'Max (kg)',
+                'Sugestao (kg)',
+                'Sugestao (pcs)',
+                'B2',
+                'Saldo B2 (kg)',
+                'Dias Estoque',
+                'Cobertura',
+              ]],
+              body: rows,
+              theme: 'grid',
+              styles: { fontSize: 7 },
+              headStyles: { fillColor: [40, 40, 40], textColor: [255, 255, 255] },
+            });
+
+            doc.save('sugestoes_producao.pdf');
+          }}
+        />
+      )}
 
     </div>
   );
