@@ -34,6 +34,12 @@ const formatPcs = (pcs) => {
   return `${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} pçs`;
 };
 
+const toNumber = (value) => {
+  if (value == null || value === '') return 0;
+  const parsed = Number(String(value).replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const getUnitWeight = (code) => {
   const c = String(code || '').trim();
   return Number(PESO_UNITARIO_PA[c]) || 0;
@@ -86,7 +92,12 @@ const IndicatorsDashboard = ({
   const safeShipping = Array.isArray(shippingLogs) ? shippingLogs : [];
   const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
 
-  const totalRecords = safeMother.length + safeChild.length + safeProd.length;
+  const totalRecords =
+    safeMother.length +
+    safeChild.length +
+    safeProd.length +
+    safeCutting.length +
+    safeShipping.length;
   // --- B2 em estoque ---
   const b2Stock = safeChild.filter(
     (c) => String(c.status || '').toLowerCase() === 'stock'
@@ -117,6 +128,14 @@ const IndicatorsDashboard = ({
       dateStr = dateStr.slice(0, 10);
     }
 
+    if (dateStr.includes(' ')) {
+      dateStr = dateStr.split(' ')[0].replace(',', '');
+    }
+
+    if (dateStr.includes(',')) {
+      dateStr = dateStr.split(',')[0];
+    }
+
     if (dateStr.includes('-')) {
       const [y, m, d] = dateStr.split('-');
       if (y && y.length === 4 && m && d) {
@@ -134,6 +153,14 @@ const IndicatorsDashboard = ({
     return null;
   };
 
+  const getDateFromItem = (item, fields) => {
+    for (const field of fields) {
+      const normalized = normalizeDateBR(item?.[field]);
+      if (normalized) return normalized;
+    }
+    return null;
+  };
+
   const getLastNDays = (days) => {
     const dates = [];
     const base = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -148,13 +175,13 @@ const IndicatorsDashboard = ({
     return dates;
   };
 
-  const groupByDate = (list, dateField, valueField) => {
+  const groupByDate = (list, dateFields, getValue) => {
     const map = {};
+    const fields = Array.isArray(dateFields) ? dateFields : [dateFields];
     list.forEach((item) => {
-      const d = normalizeDateBR(item[dateField]);
+      const d = getDateFromItem(item, fields);
       if (!d) return;
-      const rawVal = item[valueField];
-      const val = Number(rawVal) || 0;
+      const val = typeof getValue === 'function' ? getValue(item) : 0;
       map[d] = (map[d] || 0) + val;
     });
     return map;
@@ -226,8 +253,17 @@ const IndicatorsDashboard = ({
   );
 
   // ---------- FLUXO DE AÇO ----------
-  const entryMap = groupByDate(filteredMotherForFlow, 'entryDate', 'weight');
-  const cutMap = groupByDate(safeCutting, 'date', 'inputWeight');
+  const entryMap = groupByDate(
+    filteredMotherForFlow,
+    ['entryDate', 'date', 'createdAt'],
+    (item) =>
+      toNumber(item.weight ?? item.originalWeight ?? item.remainingWeight ?? 0)
+  );
+  const cutMap = groupByDate(
+    safeCutting,
+    ['date', 'createdAt', 'timestamp'],
+    (item) => toNumber(item.inputWeight ?? item.totalWeight ?? item.weight ?? 0)
+  );
 
   let saldoAcumulado = 0;
   const flowData = dateLabels.map((dateBR) => {
@@ -337,6 +373,9 @@ const IndicatorsDashboard = ({
   const consumoMedioDiario =
     windowDays > 0 ? consumoTotalJanela / windowDays : 0;
 
+  const entradaTotalJanela = flowData.reduce((acc, curr) => acc + curr.entrada, 0);
+  const saldoPeriodoKg = entradaTotalJanela - consumoTotalJanela;
+
   const estoqueTotalT = formatKgToT(estoqueTotalKgReal).replace('t', '');
 
   const coberturaEstoqueDiasNum =
@@ -354,11 +393,75 @@ const IndicatorsDashboard = ({
 
 const totalB2T = formatKgToT(totalB2KgReal).replace('t', '');
 
+  const b2AvgAgeDays = (() => {
+    if (b2Stock.length === 0) return null;
+    let totalDays = 0;
+    let count = 0;
+    b2Stock.forEach((item) => {
+      const norm = normalizeDateBR(item.createdAt);
+      if (!norm) return;
+      const [d, m, y] = norm.split('/');
+      const createdDate = new Date(Number(y), Number(m) - 1, Number(d));
+      if (isNaN(createdDate.getTime())) return;
+      totalDays += Math.max(0, Math.ceil((now - createdDate) / MS_PER_DAY));
+      count += 1;
+    });
+    if (!count) return null;
+    return totalDays / count;
+  })();
+
   // Produção e Expedição (window)
   const prodTotalT = formatKgToT(totalProdWeightKgWindow).replace('t', '');
   const expedicaoTotalT = formatKgToT(totalShippingWeightKgWindow).replace('t', '');
 
-const windowOptions = [15, 30, 60];
+  const paStockMap = {};
+  safeProd.forEach((log) => {
+    const code = String(log.productCode || '').trim();
+    if (!code) return;
+    paStockMap[code] = (paStockMap[code] || 0) + toNumber(log.pieces);
+  });
+  safeShipping.forEach((log) => {
+    const code = String(log.productCode || '').trim();
+    if (!code) return;
+    paStockMap[code] = (paStockMap[code] || 0) - toNumber(log.quantity);
+  });
+  const paStockItems = Object.keys(paStockMap).map((code) => {
+    const pieces = Math.max(0, paStockMap[code] || 0);
+    const unit = getUnitWeight(code);
+    return { code, pieces, weight: pieces * unit };
+  });
+  const totalPaPieces = paStockItems.reduce((acc, item) => acc + item.pieces, 0);
+  const totalPaWeightKg = paStockItems.reduce(
+    (acc, item) => acc + item.weight,
+    0
+  );
+  const paShippingPerDay =
+    windowDays > 0 ? totalShippingWeightKgWindow / windowDays : 0;
+  const coberturaPaDiasNum =
+    paShippingPerDay > 0 ? totalPaWeightKg / paShippingPerDay : null;
+  const coberturaPaDias =
+    coberturaPaDiasNum != null ? coberturaPaDiasNum.toFixed(1) : 'N/A';
+
+  const buildTopProducts = (list, qtyField) => {
+    const map = {};
+    list.forEach((item) => {
+      const code = String(item.productCode || 'S/ COD').trim();
+      const qty = toNumber(item[qtyField]);
+      const unit = getUnitWeight(code);
+      const weight = unit * qty;
+      if (!map[code]) map[code] = { code, weight: 0, qty: 0 };
+      map[code].weight += weight;
+      map[code].qty += qty;
+    });
+    return Object.values(map)
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 5);
+  };
+
+  const topProdData = buildTopProducts(filteredProdWindow, 'pieces');
+  const topShipData = buildTopProducts(filteredShippingWindow, 'quantity');
+
+  const windowOptions = [15, 30, 60];
 
 
 
@@ -467,7 +570,16 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
         subText={`Total de ${formatKg(estoqueTotalKgReal)}`}
       />
       <KpiCard
-        title="Consumo Médio"
+        title={`Consumo Total (${windowDays}d)`}
+        value={formatKgToT(consumoTotalJanela).replace('t', '')}
+        unit="t"
+        color="text-red-400"
+        subText={`Media: ${consumoMedioDiario.toLocaleString('pt-BR', {
+          maximumFractionDigits: 0,
+        })} kg/dia`}
+      />
+      <KpiCard
+        title="Consumo Medio"
         value={consumoMedioDiario.toLocaleString('pt-BR', {
           maximumFractionDigits: 0,
         })}
@@ -488,34 +600,57 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
                 ? 'text-yellow-400'
                 : 'text-red-400'
         }
-        subText="Estoque / consumo médio da janela"
+        subText="Estoque / consumo medio da janela"
       />
-      {/* <KpiCard
-        title="MP > 90 dias"
-        value={percentualMais90}
-        unit="%"
-        color={
-          percentualMais90 > 5
-            ? 'text-red-400'
-            : percentualMais90 > 1
-              ? 'text-yellow-400'
-              : 'text-green-400'
-        }
-        subText={`Peso: ${formatKgToT(pesoMais90)}`}
-      /> */}
       <KpiCard
-        title={`Produção PA (${windowDays}d)`}
+        title={`Entrada MP (${windowDays}d)`}
+        value={formatKgToT(entradaTotalJanela).replace('t', '')}
+        unit="t"
+        color="text-cyan-400"
+        subText={`Saldo: ${formatKgToT(saldoPeriodoKg).replace('t', '')}t`}
+      />
+      <KpiCard
+        title="Saldo do Periodo"
+        value={formatKgToT(saldoPeriodoKg).replace('t', '')}
+        unit="t"
+        color={saldoPeriodoKg >= 0 ? 'text-emerald-400' : 'text-amber-400'}
+        subText={`Entrada - consumo (${windowDays}d)`}
+      />
+      <KpiCard
+        title={`Producao PA (${windowDays}d)`}
         value={prodTotalT}
         unit="t"
         color="text-emerald-400"
         subText={`Qtd: ${formatPcs(totalProdPiecesWindow)}`}
       />
       <KpiCard
-        title={`Expedição PA (${windowDays}d)`}
+        title={`Expedicao PA (${windowDays}d)`}
         value={expedicaoTotalT}
         unit="t"
         color="text-amber-400"
         subText={`Qtd: ${formatPcs(totalShippingPiecesWindow)}`}
+      />
+      <KpiCard
+        title="Estoque PA"
+        value={formatKgToT(totalPaWeightKg).replace('t', '')}
+        unit="t"
+        color="text-emerald-300"
+        subText={`Qtd: ${formatPcs(totalPaPieces)}`}
+      />
+      <KpiCard
+        title="Cobertura PA"
+        value={coberturaPaDias}
+        unit="dias"
+        color={
+          coberturaPaDiasNum == null
+            ? 'text-gray-400'
+            : coberturaPaDiasNum > 30
+              ? 'text-green-400'
+              : coberturaPaDiasNum > 15
+                ? 'text-yellow-400'
+                : 'text-red-400'
+        }
+        subText="Estoque / expedicao media"
       />
       <KpiCard
         title="B2 em estoque"
@@ -524,10 +659,16 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
         color="text-purple-400"
         subText={`Total de ${totalB2Count} bobinas`}
       />
+      <KpiCard
+        title="Tempo medio B2"
+        value={b2AvgAgeDays != null ? b2AvgAgeDays.toFixed(1) : 'N/A'}
+        unit="dias"
+        color={b2AvgAgeDays == null ? 'text-gray-400' : 'text-indigo-300'}
+        subText="Baseado nas bobinas em estoque"
+      />
     </div>
 
-      {/* Fluxo de Aço */}
-      {/* Fluxo de Aço */}
+      {/* Fluxo de Aco */}
 <div className="bg-gradient-to-b from-slate-900 to-slate-800/90 border border-slate-700/60 rounded-2xl px-5 py-4 shadow-xl shadow-black/40 h-[430px] flex flex-col">
   <div className="flex items-center justify-between mb-3">
     <div>
@@ -850,6 +991,125 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
   </div>
 </div>
 
+      </div>
+
+      {/* Top Produtos */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-slate-900/90 border border-slate-700/60 rounded-2xl px-4 py-4 shadow-lg shadow-black/40 h-[320px] flex flex-col">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="font-semibold text-gray-100 text-sm flex items-center gap-2">
+              <span className="inline-block w-1.5 h-5 rounded-full bg-emerald-500" />
+              Top 5 Produtos - Producao ({windowDays}d)
+            </h3>
+            <span className="text-[10px] text-gray-400">Peso total em kg</span>
+          </div>
+          <div className="flex-1 w-full min-h-0">
+            {topProdData.length === 0 ? (
+              <span className="text-gray-500 text-xs">Sem dados no periodo.</span>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={topProdData}
+                  layout="vertical"
+                  margin={{ left: 20, right: 10, top: 5, bottom: 5 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#1f2933"
+                    horizontal={false}
+                  />
+                  <XAxis
+                    type="number"
+                    stroke="#9ca3af"
+                    tickFormatter={(val) => formatKgToT(val)}
+                  />
+                  <YAxis
+                    dataKey="code"
+                    type="category"
+                    stroke="#e5e7eb"
+                    width={70}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <Tooltip
+                    cursor={{ fill: '#ffffff08' }}
+                    contentStyle={{
+                      backgroundColor: '#020617',
+                      borderColor: '#1f2937',
+                      fontSize: 11,
+                    }}
+                    formatter={(value) => [formatKg(value), 'Peso']}
+                  />
+                  <Bar dataKey="weight" radius={[0, 6, 6, 0]} barSize={18}>
+                    {topProdData.map((entry, index) => (
+                      <Cell
+                        key={`cell-top-prod-${index}`}
+                        fill={PIE_COLORS[index % PIE_COLORS.length]}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-slate-900/90 border border-slate-700/60 rounded-2xl px-4 py-4 shadow-lg shadow-black/40 h-[320px] flex flex-col">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="font-semibold text-gray-100 text-sm flex items-center gap-2">
+              <span className="inline-block w-1.5 h-5 rounded-full bg-amber-500" />
+              Top 5 Produtos - Expedicao ({windowDays}d)
+            </h3>
+            <span className="text-[10px] text-gray-400">Peso total em kg</span>
+          </div>
+          <div className="flex-1 w-full min-h-0">
+            {topShipData.length === 0 ? (
+              <span className="text-gray-500 text-xs">Sem dados no periodo.</span>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={topShipData}
+                  layout="vertical"
+                  margin={{ left: 20, right: 10, top: 5, bottom: 5 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#1f2933"
+                    horizontal={false}
+                  />
+                  <XAxis
+                    type="number"
+                    stroke="#9ca3af"
+                    tickFormatter={(val) => formatKgToT(val)}
+                  />
+                  <YAxis
+                    dataKey="code"
+                    type="category"
+                    stroke="#e5e7eb"
+                    width={70}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <Tooltip
+                    cursor={{ fill: '#ffffff08' }}
+                    contentStyle={{
+                      backgroundColor: '#020617',
+                      borderColor: '#1f2937',
+                      fontSize: 11,
+                    }}
+                    formatter={(value) => [formatKg(value), 'Peso']}
+                  />
+                  <Bar dataKey="weight" radius={[0, 6, 6, 0]} barSize={18}>
+                    {topShipData.map((entry, index) => (
+                      <Cell
+                        key={`cell-top-ship-${index}`}
+                        fill={PIE_COLORS[index % PIE_COLORS.length]}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

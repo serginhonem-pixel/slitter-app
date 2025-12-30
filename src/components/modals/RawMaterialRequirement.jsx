@@ -132,6 +132,7 @@ const RawMaterialRequirement = ({
     const simOrder = {
       id: `SIM-${Date.now()}`,
       groupId: selectedGroup.groupId,
+      groupKey: selectedGroup.groupId,
       eta: mpOrderDate,
       weightKg: Number(mpOrderQty) || 0,
       status: "simulacao",
@@ -193,6 +194,11 @@ const RawMaterialRequirement = ({
 
     fetchOrders();
   }, []);
+
+  useEffect(() => {
+    setMpOrderQty("");
+    setMpOrderDate("");
+  }, [selectedMpCode]);
 
   useEffect(() => {
     const fetchInoxOrders = async () => {
@@ -596,6 +602,13 @@ const RawMaterialRequirement = ({
 
   const selectedGroup =
     filteredGroups.find((g) => g.groupId === selectedMpCode) || null;
+  const simOrdersForSelectedGroup = selectedMpCode
+    ? mpOrders.filter(
+        (o) =>
+          (o.status || "previsto").toLowerCase() === "simulacao" &&
+          (o.groupKey || o.groupId) === selectedMpCode
+      )
+    : [];
 
   // ---------- SIMULAÇÃO (MODO MANUAL - BOBINAS) ----------
   let scenarioDaily = 0;
@@ -2143,13 +2156,11 @@ const RawMaterialRequirement = ({
                 <p className="text-sm text-gray-500 mt-3">
                   Entrada apenas para simulação local. Para pedidos reais, clique em "Gestão de compras".
                 </p>
-                {mpOrders.some((o) => (o.status || "previsto").toLowerCase() === "simulacao") && (
+                {simOrdersForSelectedGroup.length > 0 && (
                   <div className="mt-3 bg-gray-900/80 border border-gray-700 rounded-lg p-3 text-sm text-gray-300">
                     <p className="font-semibold text-white mb-2">Pedidos simulados para o gráfico</p>
                     <div className="flex flex-wrap gap-2">
-                      {mpOrders
-                        .filter((o) => (o.status || "previsto").toLowerCase() === "simulacao")
-                        .map((o) => (
+                      {simOrdersForSelectedGroup.map((o) => (
                           <span
                             key={o.id}
                             className="text-[11px] bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-200 inline-flex items-center gap-2"
