@@ -37,6 +37,7 @@ import {
   Scissors,
   ScrollText,
   Search,
+  Shield,
   Trash2,
   TrendingUp,
   Truck,
@@ -68,7 +69,7 @@ import { useEventLogs } from './hooks/useEventLogs';
 import { INITIAL_INOX_BLANK_PRODUCTS } from "./data/inoxCatalog";
 import { INITIAL_MOTHER_CATALOG } from './data/motherCatalog';
 import { INITIAL_PRODUCT_CATALOG } from './data/productCatalog';
-import { ITEMS_PER_PAGE, EVENT_TYPES } from './utils/constants';
+import { ITEMS_PER_PAGE, EVENT_TYPES, EVENT_TYPE_LABELS } from './utils/constants';
 
 const ENABLE_BACKUP_BUTTON = import.meta.env.DEV; // só aparece em dev (localhost)
 
@@ -1493,6 +1494,47 @@ export default function App() {
   const [catalogSearch, setCatalogSearch] = useState('');
   const [newProduct, setNewProduct] = useState({ code: '', name: '', b2Code: '', b2Name: '', width: '', thickness: '', type: '' });
   const [showAddProductForm, setShowAddProductForm] = useState(false);
+  const [adminCreateType, setAdminCreateType] = useState('mother');
+  const [adminMotherFilter, setAdminMotherFilter] = useState('');
+  const [adminB2Filter, setAdminB2Filter] = useState('');
+  const [adminPaFilter, setAdminPaFilter] = useState('');
+  const [adminMotherForm, setAdminMotherForm] = useState({
+    code: '',
+    weight: '',
+    width: '',
+    thickness: '',
+    material: '',
+    type: '',
+    nf: '',
+    quantity: '1',
+    entryDate: new Date().toISOString().split('T')[0],
+  });
+  const [adminB2Form, setAdminB2Form] = useState({
+    b2Code: '',
+    b2Name: '',
+    weight: '',
+    width: '',
+    thickness: '',
+    type: '',
+    quantity: '1',
+    entryDate: new Date().toISOString().split('T')[0],
+  });
+  const [adminProductForm, setAdminProductForm] = useState({
+    code: '',
+    name: '',
+    b2Code: '',
+    b2Name: '',
+    width: '',
+    thickness: '',
+    type: '',
+    motherCode: '',
+  });
+  const [adminPaForm, setAdminPaForm] = useState({
+    productCode: '',
+    productName: '',
+    pieces: '',
+    entryDate: new Date().toISOString().split('T')[0],
+  });
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [itemsToPrint, setItemsToPrint] = useState([]); 
   const [printType, setPrintType] = useState('coil'); 
@@ -1547,6 +1589,8 @@ export default function App() {
 
   const USE_LOCAL_JSON = isLocalHost();
   // true no npm run dev, false no build/Vercel
+  const ADMIN_EMAIL = 'pcp@metalosa.com.br';
+  const isAdminUser = user?.email?.toLowerCase() === ADMIN_EMAIL;
 
   const {
     eventLogs,
@@ -1729,6 +1773,12 @@ export default function App() {
 
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'admin' && !isAdminUser) {
+      setActiveTab('dashboard');
+    }
+  }, [activeTab, isAdminUser]);
 
     // CARREGAR DADOS (Firebase com fallback no localStorage)
     
@@ -2208,6 +2258,332 @@ export default function App() {
         }
       } catch (reloadError) {
         console.error("Erro ao recarregar dados após falha de exclusão de B2", reloadError);
+      }
+    }
+  };
+
+  const deleteAdminMovement = async (collectionName, id) => {
+    if (!id) return;
+    if (!window.confirm("Tem certeza? Isso apagar\u00e1 a movimenta\u00e7\u00e3o permanentemente.")) {
+      return;
+    }
+
+    const setters = {
+      cuttingLogs: setCuttingLogs,
+      productionLogs: setProductionLogs,
+      shippingLogs: setShippingLogs,
+    };
+
+    const setter = setters[collectionName];
+    if (setter) {
+      setter((prev) => prev.filter((item) => item.id !== id));
+    }
+
+    if (USE_LOCAL_JSON) {
+      alert("Modo local: exclus\u00e3o aplicada apenas na tela.");
+      return;
+    }
+
+    try {
+      await deleteFromDb(collectionName, id);
+    } catch (error) {
+      console.error(`Erro ao excluir movimenta\u00e7\u00e3o em ${collectionName}`, error);
+      alert("N\u00e3o consegui excluir no servidor. Vou tentar recarregar os dados.");
+      try {
+        const refreshed = await loadFromDb(collectionName);
+        if (Array.isArray(refreshed) && setter) {
+          setter(refreshed);
+        }
+      } catch (reloadError) {
+        console.error("Erro ao recarregar dados ap\u00f3s falha de exclus\u00e3o", reloadError);
+      }
+    }
+  };
+
+  const addAdminMotherCoil = async () => {
+    const qty = Math.max(1, parseInt(adminMotherForm.quantity || '1', 10));
+    const weight = parseFloat(String(adminMotherForm.weight || '').replace(',', '.'));
+    if (!adminMotherForm.code || !weight) {
+      return alert('Preencha c\u00f3digo e peso.');
+    }
+
+    const formattedDate = adminMotherForm.entryDate && adminMotherForm.entryDate.includes('-')
+      ? (() => {
+          const [y, m, d] = adminMotherForm.entryDate.split('-');
+          return `${d}/${m}/${y}`;
+        })()
+      : new Date().toLocaleDateString();
+
+    const basePayload = {
+      code: adminMotherForm.code,
+      nf: adminMotherForm.nf || '',
+      weight,
+      originalWeight: weight,
+      remainingWeight: weight,
+      width: parseFloat(String(adminMotherForm.width || '').replace(',', '.')) || 1200,
+      thickness: adminMotherForm.thickness || '',
+      material: adminMotherForm.material || `BOBINA ${adminMotherForm.code}`,
+      type: adminMotherForm.type || '',
+      status: 'stock',
+      date: formattedDate,
+    };
+
+    const tempItems = Array.from({ length: qty }).map((_, idx) => ({
+      id: `TEMP-ADMIN-MOTHER-${Date.now()}-${idx}`,
+      ...basePayload,
+    }));
+
+    setMotherCoils((prev) => dedupeById([...prev, ...tempItems]));
+
+    if (USE_LOCAL_JSON) {
+      alert('Modo local: itens criados apenas na tela.');
+      return;
+    }
+
+    try {
+      const savedItems = [];
+      for (const item of tempItems) {
+        const { id: tempId, ...payload } = item;
+        const saved = await saveToDb('motherCoils', payload);
+        savedItems.push(saved);
+      }
+
+      setMotherCoils((prev) => {
+        const others = prev.filter((c) => !tempItems.some((t) => t.id === c.id));
+        return dedupeById([...others, ...savedItems]);
+      });
+
+      setAdminMotherForm({
+        code: '',
+        weight: '',
+        width: '',
+        thickness: '',
+        material: '',
+        type: '',
+        nf: '',
+        quantity: '1',
+        entryDate: new Date().toISOString().split('T')[0],
+      });
+
+      alert('Bobina m\u00e3e criada no Firebase.');
+    } catch (error) {
+      console.error('Erro ao salvar bobina m\u00e3e (admin)', error);
+      alert('Erro ao salvar no Firebase. Vou manter apenas localmente.');
+    }
+  };
+
+  const addAdminChildCoil = async () => {
+    const qty = Math.max(1, parseInt(adminB2Form.quantity || '1', 10));
+    const weight = parseFloat(String(adminB2Form.weight || '').replace(',', '.'));
+    if (!adminB2Form.b2Code || !adminB2Form.b2Name || !weight) {
+      return alert('Preencha c\u00f3digo, descri\u00e7\u00e3o e peso.');
+    }
+
+    const formattedDate = adminB2Form.entryDate && adminB2Form.entryDate.includes('-')
+      ? (() => {
+          const [y, m, d] = adminB2Form.entryDate.split('-');
+          return `${d}/${m}/${y}`;
+        })()
+      : new Date().toLocaleDateString();
+
+    const basePayload = {
+      motherId: null,
+      motherCode: adminB2Form.motherCode || 'ADMIN',
+      nf: adminB2Form.nf || '',
+      b2Code: adminB2Form.b2Code,
+      b2Name: adminB2Form.b2Name,
+      width: parseFloat(String(adminB2Form.width || '').replace(',', '.')) || 0,
+      thickness: adminB2Form.thickness || '-',
+      type: adminB2Form.type || 'ND',
+      weight,
+      initialWeight: weight,
+      status: 'stock',
+      createdAt: formattedDate,
+      origin: 'ADMIN',
+      source: 'admin_manual',
+    };
+
+    const tempItems = Array.from({ length: qty }).map((_, idx) => ({
+      id: `TEMP-ADMIN-B2-${Date.now()}-${idx}`,
+      ...basePayload,
+    }));
+
+    setChildCoils((prev) => dedupeById([...prev, ...tempItems]));
+
+    if (USE_LOCAL_JSON) {
+      alert('Modo local: itens criados apenas na tela.');
+      return;
+    }
+
+    try {
+      const savedItems = [];
+      for (const item of tempItems) {
+        const { id: tempId, ...payload } = item;
+        const saved = await saveToDb('childCoils', payload);
+        savedItems.push(saved);
+      }
+
+      setChildCoils((prev) => {
+        const others = prev.filter((c) => !tempItems.some((t) => t.id === c.id));
+        return dedupeById([...others, ...savedItems]);
+      });
+
+      setAdminB2Form({
+        b2Code: '',
+        b2Name: '',
+        weight: '',
+        width: '',
+        thickness: '',
+        type: '',
+        quantity: '1',
+        entryDate: new Date().toISOString().split('T')[0],
+      });
+
+      alert('Bobina B2 criada no Firebase.');
+    } catch (error) {
+      console.error('Erro ao salvar bobina B2 (admin)', error);
+      alert('Erro ao salvar no Firebase. Vou manter apenas localmente.');
+    }
+  };
+
+  const addAdminProductCatalog = async () => {
+    if (!adminProductForm.code || !adminProductForm.name) {
+      return alert('Preencha c\u00f3digo e descri\u00e7\u00e3o.');
+    }
+
+    const payload = {
+      code: adminProductForm.code,
+      name: adminProductForm.name,
+      b2Code: adminProductForm.b2Code || '',
+      b2Name: adminProductForm.b2Name || '',
+      width: parseFloat(String(adminProductForm.width || '').replace(',', '.')) || 0,
+      thickness: adminProductForm.thickness || '',
+      type: adminProductForm.type || '',
+      motherCode: adminProductForm.motherCode || '',
+    };
+
+    const tempItem = { id: `TEMP-ADMIN-PROD-${Date.now()}`, ...payload };
+    setProductCatalog((prev) => dedupeById([...prev, tempItem]));
+
+    if (USE_LOCAL_JSON) {
+      alert('Modo local: produto criado apenas na tela.');
+      return;
+    }
+
+    try {
+      const { id: tempId, ...data } = tempItem;
+      const saved = await saveToDb('productCatalog', data);
+
+      setProductCatalog((prev) => {
+        const others = prev.filter((p) => p.id !== tempItem.id);
+        return dedupeById([...others, saved]);
+      });
+
+      setAdminProductForm({
+        code: '',
+        name: '',
+        b2Code: '',
+        b2Name: '',
+        width: '',
+        thickness: '',
+        type: '',
+        motherCode: '',
+      });
+
+      alert('Produto criado no Firebase.');
+    } catch (error) {
+      console.error('Erro ao salvar produto (admin)', error);
+      alert('Erro ao salvar no Firebase. Vou manter apenas localmente.');
+    }
+  };
+
+  const addAdminPaStock = async () => {
+    const pieces = parseInt(adminPaForm.pieces || '0', 10);
+    if (!adminPaForm.productCode || !pieces) {
+      return alert('Preencha c\u00f3digo e quantidade.');
+    }
+
+    const prodInfo = productCatalog.find((p) => p.code === adminPaForm.productCode);
+    const productName = adminPaForm.productName || prodInfo?.name || adminPaForm.productCode;
+    const formattedDate = adminPaForm.entryDate && adminPaForm.entryDate.includes('-')
+      ? (() => {
+          const [y, m, d] = adminPaForm.entryDate.split('-');
+          return `${d}/${m}/${y}`;
+        })()
+      : new Date().toLocaleDateString();
+
+    const timestamp = new Date().toISOString();
+    const tempLog = {
+      id: `TEMP-ADMIN-PA-${Date.now()}`,
+      productCode: adminPaForm.productCode,
+      productName,
+      pieces,
+      date: formattedDate,
+      timestamp,
+      origin: 'ADMIN',
+    };
+
+    setProductionLogs((prev) => [tempLog, ...prev]);
+
+    if (USE_LOCAL_JSON) {
+      alert('Modo local: estoque criado apenas na tela.');
+      return;
+    }
+
+    try {
+      const { id: tempId, ...payload } = tempLog;
+      const saved = await saveToDb('productionLogs', payload);
+
+      setProductionLogs((prev) =>
+        prev.map((log) => (log.id === tempLog.id ? saved : log))
+      );
+
+      setAdminPaForm({
+        productCode: '',
+        productName: '',
+        pieces: '',
+        entryDate: new Date().toISOString().split('T')[0],
+      });
+
+      alert('Estoque de PA criado no Firebase.');
+    } catch (error) {
+      console.error('Erro ao salvar estoque de PA (admin)', error);
+      alert('Erro ao salvar no Firebase. Vou manter apenas localmente.');
+    }
+  };
+
+  const deleteAdminProductionByCode = async (productCode) => {
+    if (!productCode) return;
+    if (!window.confirm(`Tem certeza? Isso apagar\u00e1 todas as produ\u00e7\u00f5es de ${productCode}.`)) {
+      return;
+    }
+
+    const toRemove = productionLogs.filter((log) => log.productCode === productCode);
+    if (toRemove.length === 0) return;
+
+    setProductionLogs((prev) => prev.filter((log) => log.productCode !== productCode));
+
+    if (USE_LOCAL_JSON) {
+      alert('Modo local: exclus\u00e3o aplicada apenas na tela.');
+      return;
+    }
+
+    try {
+      for (const log of toRemove) {
+        if (log.id) {
+          await deleteFromDb('productionLogs', log.id);
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao apagar produ\u00e7\u00f5es (admin)', error);
+      alert('N\u00e3o consegui excluir no servidor. Vou tentar recarregar os dados.');
+      try {
+        const refreshed = await loadFromDb('productionLogs');
+        if (Array.isArray(refreshed)) {
+          setProductionLogs(refreshed);
+        }
+      } catch (reloadError) {
+        console.error('Erro ao recarregar produ\u00e7\u00f5es ap\u00f3s falha', reloadError);
       }
     }
   };
@@ -5739,6 +6115,726 @@ safeCutting.forEach((c) => {
     }, 500);
   };
 
+  const renderAdmin = () => {
+    if (!isAdminUser) {
+      return (
+        <Card>
+          <p className="text-sm text-gray-400">Sem acesso.</p>
+        </Card>
+      );
+    }
+
+    const parseDate = (value) => {
+      if (!value) return null;
+      if (typeof value === 'string' && value.includes('/')) {
+        const [day, month, year] = value.split('/');
+        const parsed = new Date(`${year}-${month}-${day}`);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+      }
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+
+    const formatDate = (value) => {
+      const parsed = parseDate(value);
+      if (!parsed) return value || '-';
+      return parsed.toLocaleDateString('pt-BR');
+    };
+
+    const normalizeSearch = (value) => String(value || '').toLowerCase();
+    const motherStock = (motherCoils || []).filter((coil) => coil.status === 'stock');
+    const childStock = (childCoils || []).filter((coil) => coil.status === 'stock');
+    const motherFiltered = motherStock.filter((coil) => {
+      const search = normalizeSearch(adminMotherFilter);
+      if (!search) return true;
+      const haystack = `${coil.code || ''} ${coil.material || ''} ${coil.nf || ''} ${coil.width || ''}`;
+      return normalizeSearch(haystack).includes(search);
+    });
+    const childFiltered = childStock.filter((coil) => {
+      const search = normalizeSearch(adminB2Filter);
+      if (!search) return true;
+      const haystack = `${coil.b2Code || ''} ${coil.b2Name || ''} ${coil.width || ''} ${coil.origin || ''}`;
+      return normalizeSearch(haystack).includes(search);
+    });
+
+    const productNameByCode = (productCatalog || []).reduce((acc, item) => {
+      if (item?.code) acc[String(item.code)] = item.name || item.description || '';
+      return acc;
+    }, {});
+
+    const finishedStock = Object.values(getFinishedStock() || {}).map((item) => ({
+      ...item,
+      name: item.name || productNameByCode[String(item.code)] || '',
+    }));
+    const finishedFiltered = finishedStock.filter((item) => {
+      const search = normalizeSearch(adminPaFilter);
+      if (!search) return true;
+      const haystack = `${item.code || ''} ${item.name || ''}`;
+      return normalizeSearch(haystack).includes(search);
+    });
+
+    const movements = [
+      ...(cuttingLogs || []).map((log) => ({
+        id: log.id,
+        collection: 'cuttingLogs',
+        type: 'Corte',
+        date: log.timestamp || log.date,
+        desc: `MP ${log.motherCode || '-'} -> B2 ${log.b2Code || '-'}`,
+        qty: log.outputCount ?? log.quantity ?? '-',
+        weight: log.inputWeight ?? log.weight ?? '-',
+      })),
+      ...(productionLogs || []).map((log) => ({
+        id: log.id,
+        collection: 'productionLogs',
+        type: 'Produção',
+        date: log.timestamp || log.date,
+        desc: `${log.productCode || '-'} - ${log.productName || ''}`,
+        qty: log.pieces ?? log.quantity ?? '-',
+        weight: log.weight ?? '-',
+      })),
+      ...(shippingLogs || []).map((log) => ({
+        id: log.id,
+        collection: 'shippingLogs',
+        type: 'Expedição',
+        date: log.timestamp || log.date,
+        desc: `${log.productCode || '-'} - ${log.productName || ''}`,
+        qty: log.quantity ?? '-',
+        weight: log.weight ?? '-',
+      })),
+    ].sort((a, b) => {
+      const dateA = parseDate(a.date)?.getTime() || 0;
+      const dateB = parseDate(b.date)?.getTime() || 0;
+      return dateB - dateA;
+    });
+
+    const eventTypeOrder = [
+      EVENT_TYPES.MP_ENTRY,
+      EVENT_TYPES.B2_ENTRY_NF,
+      EVENT_TYPES.B2_CUT,
+      EVENT_TYPES.PA_PRODUCTION,
+      EVENT_TYPES.PA_SHIPPING,
+      EVENT_TYPES.STOCK_ADJUSTMENT,
+    ];
+
+    const eventTypeColors = {
+      [EVENT_TYPES.MP_ENTRY]: 'bg-blue-500/15 text-blue-200 border-blue-500/20',
+      [EVENT_TYPES.B2_ENTRY_NF]: 'bg-indigo-500/15 text-indigo-200 border-indigo-500/20',
+      [EVENT_TYPES.B2_CUT]: 'bg-purple-500/15 text-purple-200 border-purple-500/20',
+      [EVENT_TYPES.PA_PRODUCTION]: 'bg-emerald-500/15 text-emerald-200 border-emerald-500/20',
+      [EVENT_TYPES.PA_SHIPPING]: 'bg-red-500/15 text-red-200 border-red-500/20',
+      [EVENT_TYPES.STOCK_ADJUSTMENT]: 'bg-yellow-500/15 text-yellow-200 border-yellow-500/20',
+    };
+
+    const adminEvents = Array.isArray(eventLogs) ? eventLogs : [];
+    const now = Date.now();
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const last7Events = adminEvents.filter((event) => {
+      const ts = new Date(event.timestamp || event.createdAt || event.date || 0).getTime();
+      return ts && now - ts <= sevenDaysMs;
+    });
+
+    const countByType = eventTypeOrder.reduce((acc, type) => {
+      acc[type] = 0;
+      return acc;
+    }, {});
+    const countByType7d = eventTypeOrder.reduce((acc, type) => {
+      acc[type] = 0;
+      return acc;
+    }, {});
+
+    adminEvents.forEach((event) => {
+      if (countByType[event.eventType] !== undefined) {
+        countByType[event.eventType] += 1;
+      }
+    });
+
+    last7Events.forEach((event) => {
+      if (countByType7d[event.eventType] !== undefined) {
+        countByType7d[event.eventType] += 1;
+      }
+    });
+
+    const userMap = {};
+    adminEvents.forEach((event) => {
+      const email =
+        event?.details?.userEmail ||
+        event?.userEmail ||
+        event?.userId ||
+        'Sem usuário';
+      if (!userMap[email]) {
+        userMap[email] = {
+          user: email,
+          total: 0,
+          byType: {},
+        };
+      }
+      userMap[email].total += 1;
+      userMap[email].byType[event.eventType] =
+        (userMap[email].byType[event.eventType] || 0) + 1;
+    });
+
+    const usersSummary = Object.values(userMap).sort((a, b) => b.total - a.total);
+
+    return (
+      <div className="space-y-6">
+        <Card>
+          <h3 className="text-lg font-bold text-white mb-4">Cadastro rápido</h3>
+          <div className="flex flex-wrap gap-2 mb-4">
+            <Button
+              variant={adminCreateType === 'mother' ? 'primary' : 'secondary'}
+              onClick={() => setAdminCreateType('mother')}
+              className="text-xs"
+            >
+              Bobina Mãe
+            </Button>
+            <Button
+              variant={adminCreateType === 'b2' ? 'primary' : 'secondary'}
+              onClick={() => setAdminCreateType('b2')}
+              className="text-xs"
+            >
+              Bobina B2
+            </Button>
+            <Button
+              variant={adminCreateType === 'product' ? 'primary' : 'secondary'}
+              onClick={() => setAdminCreateType('product')}
+              className="text-xs"
+            >
+              Produto (Catálogo)
+            </Button>
+            <Button
+              variant={adminCreateType === 'pa' ? 'primary' : 'secondary'}
+              onClick={() => setAdminCreateType('pa')}
+              className="text-xs"
+            >
+              PA (Estoque)
+            </Button>
+          </div>
+
+          {adminCreateType === 'mother' && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  label="Código"
+                  value={adminMotherForm.code}
+                  onChange={(e) => setAdminMotherForm((prev) => ({ ...prev, code: e.target.value }))}
+                />
+                <Input
+                  label="Material"
+                  value={adminMotherForm.material}
+                  onChange={(e) => setAdminMotherForm((prev) => ({ ...prev, material: e.target.value }))}
+                />
+                <Input
+                  label="Peso (kg)"
+                  value={adminMotherForm.weight}
+                  onChange={(e) => setAdminMotherForm((prev) => ({ ...prev, weight: e.target.value }))}
+                />
+                <Input
+                  label="Largura"
+                  value={adminMotherForm.width}
+                  onChange={(e) => setAdminMotherForm((prev) => ({ ...prev, width: e.target.value }))}
+                />
+                <Input
+                  label="Espessura"
+                  value={adminMotherForm.thickness}
+                  onChange={(e) => setAdminMotherForm((prev) => ({ ...prev, thickness: e.target.value }))}
+                />
+                <Input
+                  label="Tipo"
+                  value={adminMotherForm.type}
+                  onChange={(e) => setAdminMotherForm((prev) => ({ ...prev, type: e.target.value }))}
+                />
+                <Input
+                  label="NF"
+                  value={adminMotherForm.nf}
+                  onChange={(e) => setAdminMotherForm((prev) => ({ ...prev, nf: e.target.value }))}
+                />
+                <Input
+                  label="Quantidade"
+                  type="number"
+                  min="1"
+                  value={adminMotherForm.quantity}
+                  onChange={(e) => setAdminMotherForm((prev) => ({ ...prev, quantity: e.target.value }))}
+                />
+                <Input
+                  label="Data"
+                  type="date"
+                  value={adminMotherForm.entryDate}
+                  onChange={(e) => setAdminMotherForm((prev) => ({ ...prev, entryDate: e.target.value }))}
+                />
+              </div>
+              <div className="mt-4 flex justify-end">
+                <Button variant="primary" onClick={addAdminMotherCoil}>
+                  <Plus size={16} /> Criar Bobina Mãe
+                </Button>
+              </div>
+            </>
+          )}
+
+          {adminCreateType === 'b2' && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  label="Código B2"
+                  value={adminB2Form.b2Code}
+                  onChange={(e) => setAdminB2Form((prev) => ({ ...prev, b2Code: e.target.value }))}
+                />
+                <Input
+                  label="Descrição"
+                  value={adminB2Form.b2Name}
+                  onChange={(e) => setAdminB2Form((prev) => ({ ...prev, b2Name: e.target.value }))}
+                />
+                <Input
+                  label="Peso (kg)"
+                  value={adminB2Form.weight}
+                  onChange={(e) => setAdminB2Form((prev) => ({ ...prev, weight: e.target.value }))}
+                />
+                <Input
+                  label="Largura"
+                  value={adminB2Form.width}
+                  onChange={(e) => setAdminB2Form((prev) => ({ ...prev, width: e.target.value }))}
+                />
+                <Input
+                  label="Espessura"
+                  value={adminB2Form.thickness}
+                  onChange={(e) => setAdminB2Form((prev) => ({ ...prev, thickness: e.target.value }))}
+                />
+                <Input
+                  label="Tipo"
+                  value={adminB2Form.type}
+                  onChange={(e) => setAdminB2Form((prev) => ({ ...prev, type: e.target.value }))}
+                />
+                <Input
+                  label="Quantidade"
+                  type="number"
+                  min="1"
+                  value={adminB2Form.quantity}
+                  onChange={(e) => setAdminB2Form((prev) => ({ ...prev, quantity: e.target.value }))}
+                />
+                <Input
+                  label="Data"
+                  type="date"
+                  value={adminB2Form.entryDate}
+                  onChange={(e) => setAdminB2Form((prev) => ({ ...prev, entryDate: e.target.value }))}
+                />
+              </div>
+              <div className="mt-4 flex justify-end">
+                <Button variant="primary" onClick={addAdminChildCoil}>
+                  <Plus size={16} /> Criar Bobina B2
+                </Button>
+              </div>
+            </>
+          )}
+
+          {adminCreateType === 'product' && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  label="Código"
+                  value={adminProductForm.code}
+                  onChange={(e) => setAdminProductForm((prev) => ({ ...prev, code: e.target.value }))}
+                />
+                <Input
+                  label="Descrição"
+                  value={adminProductForm.name}
+                  onChange={(e) => setAdminProductForm((prev) => ({ ...prev, name: e.target.value }))}
+                />
+                <Input
+                  label="Código B2"
+                  value={adminProductForm.b2Code}
+                  onChange={(e) => setAdminProductForm((prev) => ({ ...prev, b2Code: e.target.value }))}
+                />
+                <Input
+                  label="Descrição B2"
+                  value={adminProductForm.b2Name}
+                  onChange={(e) => setAdminProductForm((prev) => ({ ...prev, b2Name: e.target.value }))}
+                />
+                <Input
+                  label="Largura"
+                  value={adminProductForm.width}
+                  onChange={(e) => setAdminProductForm((prev) => ({ ...prev, width: e.target.value }))}
+                />
+                <Input
+                  label="Espessura"
+                  value={adminProductForm.thickness}
+                  onChange={(e) => setAdminProductForm((prev) => ({ ...prev, thickness: e.target.value }))}
+                />
+                <Input
+                  label="Tipo"
+                  value={adminProductForm.type}
+                  onChange={(e) => setAdminProductForm((prev) => ({ ...prev, type: e.target.value }))}
+                />
+                <Input
+                  label="Código MP"
+                  value={adminProductForm.motherCode}
+                  onChange={(e) => setAdminProductForm((prev) => ({ ...prev, motherCode: e.target.value }))}
+                />
+              </div>
+              <div className="mt-4 flex justify-end">
+                <Button variant="primary" onClick={addAdminProductCatalog}>
+                  <Plus size={16} /> Criar Produto
+                </Button>
+              </div>
+            </>
+          )}
+
+          {adminCreateType === 'pa' && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  label="Código do Produto"
+                  value={adminPaForm.productCode}
+                  onChange={(e) => setAdminPaForm((prev) => ({ ...prev, productCode: e.target.value }))}
+                />
+                <Input
+                  label="Descrição (opcional)"
+                  value={adminPaForm.productName}
+                  onChange={(e) => setAdminPaForm((prev) => ({ ...prev, productName: e.target.value }))}
+                />
+                <Input
+                  label="Quantidade (pcs)"
+                  value={adminPaForm.pieces}
+                  onChange={(e) => setAdminPaForm((prev) => ({ ...prev, pieces: e.target.value }))}
+                />
+                <Input
+                  label="Data"
+                  type="date"
+                  value={adminPaForm.entryDate}
+                  onChange={(e) => setAdminPaForm((prev) => ({ ...prev, entryDate: e.target.value }))}
+                />
+              </div>
+              <div className="mt-4 flex justify-end">
+                <Button variant="primary" onClick={addAdminPaStock}>
+                  <Plus size={16} /> Criar Estoque PA
+                </Button>
+              </div>
+            </>
+          )}
+        </Card>
+
+        <Card>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-4">
+            <h3 className="text-lg font-bold text-white">Resumo de movimentações</h3>
+            <span className="text-xs text-gray-400">
+              {eventLogsLoading ? 'Atualizando...' : `${adminEvents.length} eventos`}
+            </span>
+          </div>
+
+          {adminEvents.length === 0 ? (
+            <div className="text-sm text-gray-400">Sem movimentações registradas.</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                {eventTypeOrder.map((type) => (
+                  <div
+                    key={type}
+                    className={`rounded-xl border px-4 py-3 ${eventTypeColors[type]}`}
+                  >
+                    <p className="text-[11px] uppercase tracking-wide text-gray-400">
+                      {EVENT_TYPE_LABELS[type] || type}
+                    </p>
+                    <div className="flex items-baseline justify-between mt-2">
+                      <span className="text-xl font-bold text-white">{countByType[type] || 0}</span>
+                      <span className="text-[11px] text-gray-400">
+                        7d: {countByType7d[type] || 0}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-5 overflow-auto max-h-[320px] custom-scrollbar-dark">
+                <table className="w-full text-sm text-left text-gray-300">
+                  <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                    <tr>
+                      <th className="p-2">Usuário</th>
+                      <th className="p-2 text-right">Total</th>
+                      <th className="p-2 text-right">Entrada MP</th>
+                      <th className="p-2 text-right">Entrada B2</th>
+                      <th className="p-2 text-right">Corte</th>
+                      <th className="p-2 text-right">Produção</th>
+                      <th className="p-2 text-right">Expedição</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {usersSummary.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" className="p-4 text-center text-gray-500">
+                          Sem dados de usuário.
+                        </td>
+                      </tr>
+                    ) : (
+                      usersSummary.map((row) => (
+                        <tr key={row.user} className="hover:bg-gray-800/40">
+                          <td className="p-2 text-xs text-gray-200">{row.user}</td>
+                          <td className="p-2 text-right font-mono">{row.total}</td>
+                          <td className="p-2 text-right font-mono">
+                            {row.byType[EVENT_TYPES.MP_ENTRY] || 0}
+                          </td>
+                          <td className="p-2 text-right font-mono">
+                            {row.byType[EVENT_TYPES.B2_ENTRY_NF] || 0}
+                          </td>
+                          <td className="p-2 text-right font-mono">
+                            {row.byType[EVENT_TYPES.B2_CUT] || 0}
+                          </td>
+                          <td className="p-2 text-right font-mono">
+                            {row.byType[EVENT_TYPES.PA_PRODUCTION] || 0}
+                          </td>
+                          <td className="p-2 text-right font-mono">
+                            {row.byType[EVENT_TYPES.PA_SHIPPING] || 0}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </Card>
+
+        <Card>
+          <h3 className="text-lg font-bold text-white mb-4">Saldos de Estoque</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-gray-900/60 rounded-xl border border-white/5 p-4">
+              <h4 className="text-sm font-semibold text-gray-300 mb-3">Matéria-prima (Bobinas Mãe)</h4>
+              <div className="mb-3">
+                <Input
+                  label="Filtro"
+                  value={adminMotherFilter}
+                  onChange={(e) => setAdminMotherFilter(e.target.value)}
+                  placeholder="Código, material, NF..."
+                />
+              </div>
+              <div className="overflow-auto max-h-[360px] custom-scrollbar-dark">
+                <table className="w-full text-sm text-left text-gray-300">
+                  <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                    <tr>
+                      <th className="p-2">Código</th>
+                      <th className="p-2">Material</th>
+                      <th className="p-2 text-right">Largura</th>
+                      <th className="p-2 text-right">Saldo (kg)</th>
+                      <th className="p-2">NF</th>
+                      <th className="p-2 text-center">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {motherFiltered.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" className="p-4 text-center text-gray-500">Sem saldo.</td>
+                      </tr>
+                    ) : (
+                      motherFiltered.map((coil) => (
+                        <tr key={coil.id} className="hover:bg-gray-800/40">
+                          <td className="p-2 font-mono text-xs">{coil.code || '-'}</td>
+                          <td className="p-2">{coil.material || '-'}</td>
+                          <td className="p-2 text-right">{coil.width || '-'}</td>
+                          <td className="p-2 text-right font-mono">
+                            {Number(coil.remainingWeight ?? coil.weight ?? 0).toLocaleString('pt-BR', {
+                              minimumFractionDigits: 1,
+                              maximumFractionDigits: 1,
+                            })}
+                          </td>
+                          <td className="p-2 text-xs">{coil.nf || '-'}</td>
+                          <td className="p-2 text-center">
+                            <div className="inline-flex gap-2">
+                              <button
+                                onClick={() => setEditingMotherCoil(coil)}
+                                className="px-2 py-1 text-xs rounded bg-blue-600/20 text-blue-200 hover:bg-blue-600/40"
+                              >
+                                <Edit size={14} /> Editar
+                              </button>
+                              <button
+                                onClick={() => deleteMotherCoil(coil.id)}
+                                className="px-2 py-1 text-xs rounded bg-red-600/20 text-red-200 hover:bg-red-600/40"
+                              >
+                                <Trash2 size={14} /> Apagar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="bg-gray-900/60 rounded-xl border border-white/5 p-4">
+              <h4 className="text-sm font-semibold text-gray-300 mb-3">Bobinas B2</h4>
+              <div className="mb-3">
+                <Input
+                  label="Filtro"
+                  value={adminB2Filter}
+                  onChange={(e) => setAdminB2Filter(e.target.value)}
+                  placeholder="Código, descrição, largura..."
+                />
+              </div>
+              <div className="overflow-auto max-h-[360px] custom-scrollbar-dark">
+                <table className="w-full text-sm text-left text-gray-300">
+                  <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                    <tr>
+                      <th className="p-2">B2</th>
+                      <th className="p-2">Descrição</th>
+                      <th className="p-2 text-right">Largura</th>
+                      <th className="p-2 text-right">Saldo (kg)</th>
+                      <th className="p-2">Origem</th>
+                      <th className="p-2 text-center">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {childFiltered.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" className="p-4 text-center text-gray-500">Sem saldo.</td>
+                      </tr>
+                    ) : (
+                      childFiltered.map((coil) => (
+                        <tr key={coil.id} className="hover:bg-gray-800/40">
+                          <td className="p-2 font-mono text-xs">{coil.b2Code || '-'}</td>
+                          <td className="p-2">{coil.b2Name || coil.description || '-'}</td>
+                          <td className="p-2 text-right">{coil.width || '-'}</td>
+                          <td className="p-2 text-right font-mono">
+                            {Number(coil.weight ?? 0).toLocaleString('pt-BR', {
+                              minimumFractionDigits: 1,
+                              maximumFractionDigits: 1,
+                            })}
+                          </td>
+                          <td className="p-2 text-xs">{coil.origin || coil.source || '-'}</td>
+                          <td className="p-2 text-center">
+                            <div className="inline-flex gap-2">
+                              <button
+                                onClick={() => setEditingChildCoil(coil)}
+                                className="px-2 py-1 text-xs rounded bg-blue-600/20 text-blue-200 hover:bg-blue-600/40"
+                              >
+                                <Edit size={14} /> Editar
+                              </button>
+                              <button
+                                onClick={() => deleteChildCoil(coil.id)}
+                                className="px-2 py-1 text-xs rounded bg-red-600/20 text-red-200 hover:bg-red-600/40"
+                              >
+                                <Trash2 size={14} /> Apagar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="bg-gray-900/60 rounded-xl border border-white/5 p-4 lg:col-span-2">
+              <h4 className="text-sm font-semibold text-gray-300 mb-3">Produtos Acabados</h4>
+              <div className="mb-3">
+                <Input
+                  label="Filtro"
+                  value={adminPaFilter}
+                  onChange={(e) => setAdminPaFilter(e.target.value)}
+                  placeholder="Código ou descrição..."
+                />
+              </div>
+              <div className="overflow-auto max-h-[360px] custom-scrollbar-dark">
+                <table className="w-full text-sm text-left text-gray-300">
+                  <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                    <tr>
+                      <th className="p-2">Código</th>
+                      <th className="p-2">Descrição</th>
+                      <th className="p-2 text-right">Saldo (pcs)</th>
+                      <th className="p-2 text-center">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {finishedFiltered.length === 0 ? (
+                      <tr>
+                        <td colSpan="4" className="p-4 text-center text-gray-500">Sem saldo.</td>
+                      </tr>
+                    ) : (
+                      finishedFiltered.map((item) => (
+                        <tr key={item.code} className="hover:bg-gray-800/40">
+                          <td className="p-2 font-mono text-xs">{item.code}</td>
+                          <td className="p-2">{item.name || '-'}</td>
+                          <td className="p-2 text-right font-mono">{item.count}</td>
+                          <td className="p-2 text-center">
+                            <div className="inline-flex gap-2">
+                              <button
+                                onClick={() => {
+                                  setAdminCreateType('pa');
+                                  setAdminPaForm((prev) => ({
+                                    ...prev,
+                                    productCode: item.code,
+                                    productName: item.name || '',
+                                  }));
+                                }}
+                                className="px-2 py-1 text-xs rounded bg-blue-600/20 text-blue-200 hover:bg-blue-600/40"
+                              >
+                                <Edit size={14} /> Ajustar
+                              </button>
+                              <button
+                                onClick={() => deleteAdminProductionByCode(item.code)}
+                                className="px-2 py-1 text-xs rounded bg-red-600/20 text-red-200 hover:bg-red-600/40"
+                              >
+                                <Trash2 size={14} /> Apagar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <h3 className="text-lg font-bold text-white mb-4">Movimentações (apagar no Firebase)</h3>
+          <div className="overflow-auto max-h-[420px] custom-scrollbar-dark">
+            <table className="w-full text-sm text-left text-gray-300">
+              <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                <tr>
+                  <th className="p-2">Data</th>
+                  <th className="p-2">Tipo</th>
+                  <th className="p-2">Descrição</th>
+                  <th className="p-2 text-right">Qtd</th>
+                  <th className="p-2 text-right">Peso</th>
+                  <th className="p-2">ID</th>
+                  <th className="p-2 text-center">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800">
+                {movements.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="p-4 text-center text-gray-500">Sem movimentações.</td>
+                  </tr>
+                ) : (
+                  movements.map((mov, idx) => (
+                    <tr key={`${mov.collection}-${mov.id || idx}`} className="hover:bg-gray-800/40">
+                      <td className="p-2 text-xs text-gray-400">{formatDate(mov.date)}</td>
+                      <td className="p-2 text-xs font-semibold">{mov.type}</td>
+                      <td className="p-2">{mov.desc}</td>
+                      <td className="p-2 text-right font-mono">{mov.qty}</td>
+                      <td className="p-2 text-right font-mono">{mov.weight}</td>
+                      <td className="p-2 font-mono text-[10px] text-gray-500">{mov.id}</td>
+                      <td className="p-2 text-center">
+                        <button
+                          onClick={() => deleteAdminMovement(mov.collection, mov.id)}
+                          className="inline-flex items-center gap-2 px-2 py-1 text-xs rounded bg-red-600/20 text-red-200 hover:bg-red-600/40"
+                        >
+                          <Trash2 size={14} /> Apagar
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+    );
+  };
+
   // ==================================================================
   // COLE ISTO DENTRO DO APP, ANTES DE "const renderDashboard = ..."
   // ==================================================================
@@ -6855,6 +7951,20 @@ const handleUploadJSONToFirebase = async (e) => {
 
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mt-8 mb-4">Gestão</p>
 
+           {isAdminUser && (
+             <button
+               onClick={() => { setActiveTab('admin'); setSidebarOpen(false); }}
+               className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${
+                 activeTab === 'admin'
+                   ? 'bg-red-600/15 text-red-200 border border-red-500/20 shadow-inner'
+                   : 'text-gray-400 hover:bg-white/5 hover:text-white'
+               }`}
+             >
+               <Shield size={20} className={activeTab === 'admin' ? "text-red-300" : "group-hover:text-red-300 transition-colors"} />
+               <span className="font-medium">Admin</span>
+             </button>
+           )}
+
            {ENABLE_BACKUP_BUTTON && (
   <div className="mt-2 px-4">
     <Button
@@ -6915,6 +8025,7 @@ const handleUploadJSONToFirebase = async (e) => {
                   {activeTab === 'mpNeed' && "Necessidade MP"}
                   {activeTab === 'steelDemand' && "Demanda de Aço"}
                   {activeTab === 'inoxBlanks' && "Planejamento Inox"}
+                  {activeTab === 'admin' && "Admin"}
                                                 
                 </h2>
                 <p className="text-xs text-gray-500 mt-0.5 font-medium uppercase tracking-wider hidden md:block">Controle de Produção</p>
@@ -6941,6 +8052,7 @@ const handleUploadJSONToFirebase = async (e) => {
               {activeTab === 'shipping' && renderShipping()}
               {activeTab === 'reports' && renderReports()}
               {activeTab === 'b2report' && renderB2DynamicReport()}
+              {activeTab === 'admin' && renderAdmin()}
 
               {activeTab === 'bi' && (
                 <IndicatorsDashboard
