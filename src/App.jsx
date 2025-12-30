@@ -1498,6 +1498,20 @@ export default function App() {
   const [adminMotherFilter, setAdminMotherFilter] = useState('');
   const [adminB2Filter, setAdminB2Filter] = useState('');
   const [adminPaFilter, setAdminPaFilter] = useState('');
+  const [adminStockTab, setAdminStockTab] = useState('mother');
+  const [blockedCutModal, setBlockedCutModal] = useState(null);
+  const [adminCatalogFilter, setAdminCatalogFilter] = useState('');
+  const [adminCatalogPage, setAdminCatalogPage] = useState(1);
+  const [adminCatalogEdit, setAdminCatalogEdit] = useState(null);
+  const [adminCatalogEditForm, setAdminCatalogEditForm] = useState(null);
+  const [adminUserMovementsModal, setAdminUserMovementsModal] = useState(null);
+  const [adminMotherCatalogFilter, setAdminMotherCatalogFilter] = useState('');
+  const [adminMotherCatalogPage, setAdminMotherCatalogPage] = useState(1);
+  const [adminMotherCatalogEditForm, setAdminMotherCatalogEditForm] = useState(null);
+  const [adminMotherPage, setAdminMotherPage] = useState(1);
+  const [adminB2Page, setAdminB2Page] = useState(1);
+  const [adminPaPage, setAdminPaPage] = useState(1);
+  const [adminMovementsPage, setAdminMovementsPage] = useState(1);
   const [adminMotherForm, setAdminMotherForm] = useState({
     code: '',
     weight: '',
@@ -1591,6 +1605,7 @@ export default function App() {
   // true no npm run dev, false no build/Vercel
   const ADMIN_EMAIL = 'pcp@metalosa.com.br';
   const isAdminUser = user?.email?.toLowerCase() === ADMIN_EMAIL;
+  const ADMIN_PAGE_SIZE = 20;
 
   const {
     eventLogs,
@@ -2268,6 +2283,174 @@ export default function App() {
       return;
     }
 
+    const findEventLog = (eventType, matcher) => {
+      const logs = Array.isArray(eventLogs) ? eventLogs : [];
+      const candidates = logs.filter((event) => event.eventType === eventType);
+      if (!matcher) return candidates[0];
+      return candidates.find(matcher);
+    };
+
+    const revertCuttingLog = async (log) => {
+      if (!log) return false;
+      const inputWeight = Number(log.inputWeight || 0);
+      const scrapWeight = Number(log.scrap || 0);
+      const motherCode = String(log.motherCode || '');
+
+      const eventMatch = findEventLog(EVENT_TYPES.B2_CUT, (event) => {
+        const details = event.details || {};
+        const sameCode = String(details.motherCode || '') === motherCode;
+        const sameWeight = Number(details.totalWeight || 0) === inputWeight;
+        return sameCode && (sameWeight || details.date === log.date);
+      });
+
+      const motherId = eventMatch?.sourceId;
+      let mother = motherCoils.find((m) => String(m.id) === String(motherId));
+
+      if (!mother && motherCode) {
+        const candidates = motherCoils.filter((m) => String(m.code) === motherCode);
+        if (candidates.length === 1) {
+          mother = candidates[0];
+        }
+      }
+
+      if (!mother) {
+        alert('N\u00e3o consegui identificar a bobina m\u00e3e para reverter.');
+        return false;
+      }
+
+      const targetChildIds = (eventMatch?.targetIds || []).map(String);
+      if (targetChildIds.length === 0) {
+        alert('N\u00e3o encontrei as bobinas B2 geradas para reverter.');
+        return false;
+      }
+
+      const usedChildMap = new Map();
+      productionLogs.forEach((prod) => {
+        (prod.childIds || []).forEach((childId) => {
+          const key = String(childId);
+          if (targetChildIds.includes(key)) {
+            if (!usedChildMap.has(key)) usedChildMap.set(key, []);
+            usedChildMap.get(key).push(prod.id || prod.productCode || 'PROD');
+          }
+        });
+      });
+
+      if (usedChildMap.size > 0) {
+        const blockedItems = Array.from(usedChildMap.entries()).map(([childId, prodIds]) => {
+          const coil = childCoils.find((c) => String(c.id) === childId);
+          return {
+            id: childId,
+            b2Code: coil?.b2Code || coil?.code || '-',
+            b2Name: coil?.b2Name || coil?.description || '-',
+            prodIds,
+          };
+        });
+        setBlockedCutModal({
+          motherCode: motherCode || mother?.code || '-',
+          items: blockedItems,
+        });
+        return false;
+      }
+
+      const currentRemaining = Number(mother.remainingWeight || 0);
+      const originalWeight = Number(mother.originalWeight || 0);
+      let nextRemaining = currentRemaining + inputWeight;
+      if (originalWeight > 0) {
+        nextRemaining = Math.min(originalWeight, nextRemaining);
+      }
+      const nextCutWaste = Math.max(0, Number(mother.cutWaste || 0) - scrapWeight);
+      const nextStatus = nextRemaining > 0 ? 'stock' : mother.status;
+
+      setMotherCoils((prev) =>
+        prev.map((m) =>
+          m.id === mother.id
+            ? { ...m, remainingWeight: nextRemaining, cutWaste: nextCutWaste, status: nextStatus }
+            : m,
+        ),
+      );
+      setChildCoils((prev) => prev.filter((c) => !targetChildIds.includes(String(c.id))));
+
+      if (USE_LOCAL_JSON) return true;
+
+      try {
+        await updateInDb('motherCoils', mother.id, {
+          remainingWeight: nextRemaining,
+          cutWaste: nextCutWaste,
+          status: nextStatus,
+        });
+
+        for (const childId of targetChildIds) {
+          await deleteFromDb('childCoils', childId);
+        }
+        return true;
+      } catch (error) {
+        console.error('Erro ao reverter corte (admin)', error);
+        alert('Erro ao reverter corte no Firebase. Nada foi alterado.');
+        return false;
+      }
+    };
+
+    const revertProductionLog = async (log) => {
+      if (!log) return false;
+      const eventMatch = findEventLog(EVENT_TYPES.PA_PRODUCTION, (event) => {
+        const details = event.details || {};
+        const sameCode = String(details.productCode || '') === String(log.productCode || '');
+        return event.targetIds?.includes(String(log.id)) || sameCode;
+      });
+
+      const childIds = [
+        ...(Array.isArray(log.childIds) ? log.childIds : []),
+        ...(Array.isArray(eventMatch?.details?.childIds) ? eventMatch.details.childIds : []),
+      ]
+        .filter(Boolean)
+        .map(String);
+
+      if (childIds.length === 0) {
+        return true;
+      }
+
+      const usedElsewhere = new Set(
+        productionLogs
+          .filter((entry) => entry.id !== log.id)
+          .flatMap((entry) => (entry.childIds || []).map(String)),
+      );
+
+      const toRestore = childIds.filter((childId) => !usedElsewhere.has(childId));
+
+      if (toRestore.length === 0) {
+        return true;
+      }
+
+      setChildCoils((prev) =>
+        prev.map((coil) =>
+          toRestore.includes(String(coil.id)) ? { ...coil, status: 'stock' } : coil,
+        ),
+      );
+
+      if (USE_LOCAL_JSON) return true;
+
+      try {
+        for (const childId of toRestore) {
+          await updateInDb('childCoils', childId, { status: 'stock' });
+        }
+        return true;
+      } catch (error) {
+        console.error('Erro ao reverter produ\u00e7\u00e3o (admin)', error);
+        alert('Erro ao reverter produ\u00e7\u00e3o no Firebase.');
+        return false;
+      }
+    };
+
+    let log = null;
+    if (collectionName === 'cuttingLogs') {
+      log = cuttingLogs.find((entry) => String(entry.id) === String(id));
+      if (!(await revertCuttingLog(log))) return;
+    }
+    if (collectionName === 'productionLogs') {
+      log = productionLogs.find((entry) => String(entry.id) === String(id));
+      if (!(await revertProductionLog(log))) return;
+    }
+
     const setters = {
       cuttingLogs: setCuttingLogs,
       productionLogs: setProductionLogs,
@@ -2549,6 +2732,122 @@ export default function App() {
     } catch (error) {
       console.error('Erro ao salvar estoque de PA (admin)', error);
       alert('Erro ao salvar no Firebase. Vou manter apenas localmente.');
+    }
+  };
+
+  const startEditCatalogItem = (item) => {
+    if (!item) return;
+    setAdminCatalogEdit(item);
+    setAdminCatalogEditForm({
+      id: item.id,
+      code: item.code || '',
+      name: item.name || '',
+      b2Code: item.b2Code || '',
+      b2Name: item.b2Name || '',
+      width: item.width || '',
+      thickness: item.thickness || '',
+      type: item.type || '',
+      motherCode: item.motherCode || '',
+    });
+  };
+
+  const saveAdminCatalogEdit = async () => {
+    if (!adminCatalogEditForm?.code || !adminCatalogEditForm?.name) {
+      return alert('Preencha c\u00f3digo e descri\u00e7\u00e3o.');
+    }
+
+    const payload = {
+      code: adminCatalogEditForm.code,
+      name: adminCatalogEditForm.name,
+      b2Code: adminCatalogEditForm.b2Code || '',
+      b2Name: adminCatalogEditForm.b2Name || '',
+      width: parseFloat(String(adminCatalogEditForm.width || '').replace(',', '.')) || 0,
+      thickness: adminCatalogEditForm.thickness || '',
+      type: adminCatalogEditForm.type || '',
+      motherCode: adminCatalogEditForm.motherCode || '',
+    };
+
+    setProductCatalog((prev) =>
+      prev.map((item) =>
+        item.id === adminCatalogEditForm.id || item.code === adminCatalogEditForm.code
+          ? { ...item, ...payload }
+          : item,
+      ),
+    );
+
+    if (USE_LOCAL_JSON) {
+      setAdminCatalogEdit(null);
+      setAdminCatalogEditForm(null);
+      return;
+    }
+
+    if (!adminCatalogEditForm.id) {
+      alert('Este item n\u00e3o possui ID do Firebase. Editei apenas localmente.');
+      setAdminCatalogEdit(null);
+      setAdminCatalogEditForm(null);
+      return;
+    }
+
+    try {
+      await updateInDb('productCatalog', adminCatalogEditForm.id, payload);
+      setAdminCatalogEdit(null);
+      setAdminCatalogEditForm(null);
+      alert('Produto atualizado no Firebase.');
+    } catch (error) {
+      console.error('Erro ao atualizar produto (admin)', error);
+      alert('Erro ao atualizar no Firebase.');
+    }
+  };
+
+  const startEditMotherCatalogItem = (item) => {
+    if (!item) return;
+    setAdminMotherCatalogEditForm({
+      id: item.id,
+      code: item.code || '',
+      description: item.description || '',
+      thickness: item.thickness || '',
+      type: item.type || '',
+    });
+  };
+
+  const saveAdminMotherCatalogEdit = async () => {
+    if (!adminMotherCatalogEditForm?.code || !adminMotherCatalogEditForm?.description) {
+      return alert('Preencha c\u00f3digo e descri\u00e7\u00e3o.');
+    }
+
+    const payload = {
+      code: adminMotherCatalogEditForm.code,
+      description: adminMotherCatalogEditForm.description,
+      thickness: adminMotherCatalogEditForm.thickness || '',
+      type: adminMotherCatalogEditForm.type || '',
+    };
+
+    setMotherCatalog((prev) =>
+      prev.map((item) =>
+        item.id === adminMotherCatalogEditForm.id || item.code === adminMotherCatalogEditForm.code
+          ? { ...item, ...payload }
+          : item,
+      ),
+    );
+
+    if (USE_LOCAL_JSON) {
+      setAdminMotherCatalogEditForm(null);
+      return;
+    }
+
+    if (!adminMotherCatalogEditForm.id) {
+      alert('Este item n\u00e3o possui ID do Firebase. Editei apenas localmente.');
+      setAdminMotherCatalogEditForm(null);
+      return;
+    }
+
+    try {
+      await updateInDb('motherCatalog', adminMotherCatalogEditForm.id, payload);
+      setAdminMotherCatalogEditForm(null);
+      alert('Cat\u00e1logo de bobinas atualizado no Firebase.');
+    } catch (error) {
+      console.error('Erro ao atualizar cat\u00e1logo de bobinas (admin)', error);
+      alert('Erro ao atualizar no Firebase.');
     }
   };
 
@@ -6115,6 +6414,50 @@ safeCutting.forEach((c) => {
     }, 500);
   };
 
+  const getAdminUserLabel = (event) =>
+    event?.details?.userEmail || event?.userEmail || event?.userId || 'Sem usuário';
+
+  const formatEventDate = (value) => {
+    if (!value) return '-';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleString('pt-BR');
+  };
+
+  const describeEvent = (event) => {
+    const details = event.details || {};
+    switch (event.eventType) {
+      case EVENT_TYPES.MP_ENTRY:
+        return `MP ${details.code || '-'} ${details.material || ''} ${
+          details.weight ? `(${details.weight}kg)` : ''
+        }`;
+      case EVENT_TYPES.B2_ENTRY_NF:
+        return `B2 ${details.b2Code || '-'} ${details.b2Name || ''} ${
+          details.weight ? `(${details.weight}kg)` : ''
+        }`;
+      case EVENT_TYPES.B2_CUT:
+        return `Corte ${details.motherCode || '-'} ${
+          details.totalWeight ? `(${details.totalWeight}kg)` : ''
+        }`;
+      case EVENT_TYPES.PA_PRODUCTION:
+        return `Prod ${details.productCode || '-'} ${details.productName || ''} ${
+          details.pieces ? `(${details.pieces} pcs)` : ''
+        }`;
+      case EVENT_TYPES.PA_SHIPPING:
+        return `Exp ${details.productCode || '-'} ${details.productName || ''} ${
+          details.quantity ? `(${details.quantity} pcs)` : ''
+        }`;
+      default:
+        return event.referenceId || '-';
+    }
+  };
+
+  const selectedUserEvents = adminUserMovementsModal
+    ? (Array.isArray(eventLogs) ? eventLogs : []).filter(
+        (event) => getAdminUserLabel(event) === adminUserMovementsModal,
+      )
+    : [];
+
   const renderAdmin = () => {
     if (!isAdminUser) {
       return (
@@ -6172,6 +6515,31 @@ safeCutting.forEach((c) => {
       const haystack = `${item.code || ''} ${item.name || ''}`;
       return normalizeSearch(haystack).includes(search);
     });
+    const catalogFiltered = (productCatalog || []).filter((item) => {
+      const search = normalizeSearch(adminCatalogFilter);
+      if (!search) return true;
+      const haystack = `${item.code || ''} ${item.name || ''} ${item.b2Code || ''} ${item.b2Name || ''}`;
+      return normalizeSearch(haystack).includes(search);
+    });
+    const motherCatalogFiltered = (motherCatalog || []).filter((item) => {
+      const search = normalizeSearch(adminMotherCatalogFilter);
+      if (!search) return true;
+      const haystack = `${item.code || ''} ${item.description || ''} ${item.type || ''}`;
+      return normalizeSearch(haystack).includes(search);
+    });
+
+    const paginateItems = (items, page) => {
+      const totalItems = items.length;
+      const totalPages = Math.max(1, Math.ceil(totalItems / ADMIN_PAGE_SIZE));
+      const safePage = Math.min(page, totalPages);
+      const start = (safePage - 1) * ADMIN_PAGE_SIZE;
+      return {
+        items: items.slice(start, start + ADMIN_PAGE_SIZE),
+        totalItems,
+        totalPages,
+        page: safePage,
+      };
+    };
 
     const movements = [
       ...(cuttingLogs || []).map((log) => ({
@@ -6206,6 +6574,13 @@ safeCutting.forEach((c) => {
       const dateB = parseDate(b.date)?.getTime() || 0;
       return dateB - dateA;
     });
+
+    const motherPageData = paginateItems(motherFiltered, adminMotherPage);
+    const childPageData = paginateItems(childFiltered, adminB2Page);
+    const finishedPageData = paginateItems(finishedFiltered, adminPaPage);
+    const movementsPageData = paginateItems(movements, adminMovementsPage);
+    const catalogPageData = paginateItems(catalogFiltered, adminCatalogPage);
+    const motherCatalogPageData = paginateItems(motherCatalogFiltered, adminMotherCatalogPage);
 
     const eventTypeOrder = [
       EVENT_TYPES.MP_ENTRY,
@@ -6256,11 +6631,7 @@ safeCutting.forEach((c) => {
 
     const userMap = {};
     adminEvents.forEach((event) => {
-      const email =
-        event?.details?.userEmail ||
-        event?.userEmail ||
-        event?.userId ||
-        'Sem usuário';
+      const email = getAdminUserLabel(event);
       if (!userMap[email]) {
         userMap[email] = {
           user: email,
@@ -6513,6 +6884,126 @@ safeCutting.forEach((c) => {
 
         <Card>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-4">
+            <h3 className="text-lg font-bold text-white">Catálogo de Produtos</h3>
+          </div>
+          <div className="mb-3">
+            <Input
+              label="Filtro"
+              value={adminCatalogFilter}
+              onChange={(e) => setAdminCatalogFilter(e.target.value)}
+              placeholder="Código, descrição, B2..."
+            />
+          </div>
+          <div className="overflow-auto max-h-[360px] custom-scrollbar-dark">
+            <table className="w-full text-sm text-left text-gray-300">
+              <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                <tr>
+                  <th className="p-2">Código</th>
+                  <th className="p-2">Descrição</th>
+                  <th className="p-2">B2</th>
+                  <th className="p-2">Descrição B2</th>
+                  <th className="p-2 text-right">Largura</th>
+                  <th className="p-2 text-right">Esp.</th>
+                  <th className="p-2 text-right">Tipo</th>
+                  <th className="p-2 text-center">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800">
+                {catalogPageData.items.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" className="p-4 text-center text-gray-500">Sem itens.</td>
+                  </tr>
+                ) : (
+                  catalogPageData.items.map((item) => (
+                    <tr key={item.id || item.code} className="hover:bg-gray-800/40">
+                      <td className="p-2 font-mono text-xs">{item.code || '-'}</td>
+                      <td className="p-2">{item.name || '-'}</td>
+                      <td className="p-2 text-xs">{item.b2Code || '-'}</td>
+                      <td className="p-2 text-xs">{item.b2Name || '-'}</td>
+                      <td className="p-2 text-right">{item.width || '-'}</td>
+                      <td className="p-2 text-right">{item.thickness || '-'}</td>
+                      <td className="p-2 text-right">{item.type || '-'}</td>
+                      <td className="p-2 text-center">
+                        <button
+                          onClick={() => startEditCatalogItem(item)}
+                          className="px-2 py-1 text-xs rounded bg-blue-600/20 text-blue-200 hover:bg-blue-600/40"
+                        >
+                          <Edit size={14} /> Editar
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <PaginationControls
+            currentPage={catalogPageData.page}
+            totalItems={catalogPageData.totalItems}
+            itemsPerPage={ADMIN_PAGE_SIZE}
+            onPageChange={setAdminCatalogPage}
+          />
+        </Card>
+
+        <Card>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-4">
+            <h3 className="text-lg font-bold text-white">Catálogo de Bobinas</h3>
+          </div>
+          <div className="mb-3">
+            <Input
+              label="Filtro"
+              value={adminMotherCatalogFilter}
+              onChange={(e) => setAdminMotherCatalogFilter(e.target.value)}
+              placeholder="Código, descrição, tipo..."
+            />
+          </div>
+          <div className="overflow-auto max-h-[360px] custom-scrollbar-dark">
+            <table className="w-full text-sm text-left text-gray-300">
+              <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                <tr>
+                  <th className="p-2">Código</th>
+                  <th className="p-2">Descrição</th>
+                  <th className="p-2 text-right">Esp.</th>
+                  <th className="p-2 text-right">Tipo</th>
+                  <th className="p-2 text-center">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800">
+                {motherCatalogPageData.items.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="p-4 text-center text-gray-500">Sem itens.</td>
+                  </tr>
+                ) : (
+                  motherCatalogPageData.items.map((item) => (
+                    <tr key={item.id || item.code} className="hover:bg-gray-800/40">
+                      <td className="p-2 font-mono text-xs">{item.code || '-'}</td>
+                      <td className="p-2">{item.description || '-'}</td>
+                      <td className="p-2 text-right">{item.thickness || '-'}</td>
+                      <td className="p-2 text-right">{item.type || '-'}</td>
+                      <td className="p-2 text-center">
+                        <button
+                          onClick={() => startEditMotherCatalogItem(item)}
+                          className="px-2 py-1 text-xs rounded bg-blue-600/20 text-blue-200 hover:bg-blue-600/40"
+                        >
+                          <Edit size={14} /> Editar
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <PaginationControls
+            currentPage={motherCatalogPageData.page}
+            totalItems={motherCatalogPageData.totalItems}
+            itemsPerPage={ADMIN_PAGE_SIZE}
+            onPageChange={setAdminMotherCatalogPage}
+          />
+        </Card>
+
+        <Card>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-4">
             <h3 className="text-lg font-bold text-white">Resumo de movimentações</h3>
             <span className="text-xs text-gray-400">
               {eventLogsLoading ? 'Atualizando...' : `${adminEvents.length} eventos`}
@@ -6553,12 +7044,13 @@ safeCutting.forEach((c) => {
                       <th className="p-2 text-right">Corte</th>
                       <th className="p-2 text-right">Produção</th>
                       <th className="p-2 text-right">Expedição</th>
+                      <th className="p-2 text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
                     {usersSummary.length === 0 ? (
                       <tr>
-                        <td colSpan="7" className="p-4 text-center text-gray-500">
+                        <td colSpan="8" className="p-4 text-center text-gray-500">
                           Sem dados de usuário.
                         </td>
                       </tr>
@@ -6582,6 +7074,14 @@ safeCutting.forEach((c) => {
                           <td className="p-2 text-right font-mono">
                             {row.byType[EVENT_TYPES.PA_SHIPPING] || 0}
                           </td>
+                          <td className="p-2 text-right">
+                            <button
+                              onClick={() => setAdminUserMovementsModal(row.user)}
+                              className="px-2 py-1 text-xs rounded bg-blue-600/20 text-blue-200 hover:bg-blue-600/40"
+                            >
+                              <Eye size={14} /> Ver
+                            </button>
+                          </td>
                         </tr>
                       ))
                     )}
@@ -6594,7 +7094,31 @@ safeCutting.forEach((c) => {
 
         <Card>
           <h3 className="text-lg font-bold text-white mb-4">Saldos de Estoque</h3>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="flex flex-wrap gap-2 mb-4">
+            <Button
+              variant={adminStockTab === 'mother' ? 'primary' : 'secondary'}
+              onClick={() => setAdminStockTab('mother')}
+              className="text-xs"
+            >
+              Bobinas Mãe
+            </Button>
+            <Button
+              variant={adminStockTab === 'b2' ? 'primary' : 'secondary'}
+              onClick={() => setAdminStockTab('b2')}
+              className="text-xs"
+            >
+              Bobinas B2
+            </Button>
+            <Button
+              variant={adminStockTab === 'pa' ? 'primary' : 'secondary'}
+              onClick={() => setAdminStockTab('pa')}
+              className="text-xs"
+            >
+              Produtos Acabados
+            </Button>
+          </div>
+
+          {adminStockTab === 'mother' && (
             <div className="bg-gray-900/60 rounded-xl border border-white/5 p-4">
               <h4 className="text-sm font-semibold text-gray-300 mb-3">Matéria-prima (Bobinas Mãe)</h4>
               <div className="mb-3">
@@ -6618,12 +7142,12 @@ safeCutting.forEach((c) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
-                    {motherFiltered.length === 0 ? (
+                    {motherPageData.items.length === 0 ? (
                       <tr>
                         <td colSpan="6" className="p-4 text-center text-gray-500">Sem saldo.</td>
                       </tr>
                     ) : (
-                      motherFiltered.map((coil) => (
+                      motherPageData.items.map((coil) => (
                         <tr key={coil.id} className="hover:bg-gray-800/40">
                           <td className="p-2 font-mono text-xs">{coil.code || '-'}</td>
                           <td className="p-2">{coil.material || '-'}</td>
@@ -6657,8 +7181,16 @@ safeCutting.forEach((c) => {
                   </tbody>
                 </table>
               </div>
+              <PaginationControls
+                currentPage={motherPageData.page}
+                totalItems={motherPageData.totalItems}
+                itemsPerPage={ADMIN_PAGE_SIZE}
+                onPageChange={setAdminMotherPage}
+              />
             </div>
+          )}
 
+          {adminStockTab === 'b2' && (
             <div className="bg-gray-900/60 rounded-xl border border-white/5 p-4">
               <h4 className="text-sm font-semibold text-gray-300 mb-3">Bobinas B2</h4>
               <div className="mb-3">
@@ -6682,12 +7214,12 @@ safeCutting.forEach((c) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
-                    {childFiltered.length === 0 ? (
+                    {childPageData.items.length === 0 ? (
                       <tr>
                         <td colSpan="6" className="p-4 text-center text-gray-500">Sem saldo.</td>
                       </tr>
                     ) : (
-                      childFiltered.map((coil) => (
+                      childPageData.items.map((coil) => (
                         <tr key={coil.id} className="hover:bg-gray-800/40">
                           <td className="p-2 font-mono text-xs">{coil.b2Code || '-'}</td>
                           <td className="p-2">{coil.b2Name || coil.description || '-'}</td>
@@ -6721,9 +7253,17 @@ safeCutting.forEach((c) => {
                   </tbody>
                 </table>
               </div>
+              <PaginationControls
+                currentPage={childPageData.page}
+                totalItems={childPageData.totalItems}
+                itemsPerPage={ADMIN_PAGE_SIZE}
+                onPageChange={setAdminB2Page}
+              />
             </div>
+          )}
 
-            <div className="bg-gray-900/60 rounded-xl border border-white/5 p-4 lg:col-span-2">
+          {adminStockTab === 'pa' && (
+            <div className="bg-gray-900/60 rounded-xl border border-white/5 p-4">
               <h4 className="text-sm font-semibold text-gray-300 mb-3">Produtos Acabados</h4>
               <div className="mb-3">
                 <Input
@@ -6744,12 +7284,12 @@ safeCutting.forEach((c) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
-                    {finishedFiltered.length === 0 ? (
+                    {finishedPageData.items.length === 0 ? (
                       <tr>
                         <td colSpan="4" className="p-4 text-center text-gray-500">Sem saldo.</td>
                       </tr>
                     ) : (
-                      finishedFiltered.map((item) => (
+                      finishedPageData.items.map((item) => (
                         <tr key={item.code} className="hover:bg-gray-800/40">
                           <td className="p-2 font-mono text-xs">{item.code}</td>
                           <td className="p-2">{item.name || '-'}</td>
@@ -6783,8 +7323,14 @@ safeCutting.forEach((c) => {
                   </tbody>
                 </table>
               </div>
+              <PaginationControls
+                currentPage={finishedPageData.page}
+                totalItems={finishedPageData.totalItems}
+                itemsPerPage={ADMIN_PAGE_SIZE}
+                onPageChange={setAdminPaPage}
+              />
             </div>
-          </div>
+          )}
         </Card>
 
         <Card>
@@ -6803,12 +7349,12 @@ safeCutting.forEach((c) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800">
-                {movements.length === 0 ? (
+                {movementsPageData.items.length === 0 ? (
                   <tr>
                     <td colSpan="7" className="p-4 text-center text-gray-500">Sem movimentações.</td>
                   </tr>
                 ) : (
-                  movements.map((mov, idx) => (
+                  movementsPageData.items.map((mov, idx) => (
                     <tr key={`${mov.collection}-${mov.id || idx}`} className="hover:bg-gray-800/40">
                       <td className="p-2 text-xs text-gray-400">{formatDate(mov.date)}</td>
                       <td className="p-2 text-xs font-semibold">{mov.type}</td>
@@ -6830,6 +7376,12 @@ safeCutting.forEach((c) => {
               </tbody>
             </table>
           </div>
+          <PaginationControls
+            currentPage={movementsPageData.page}
+            totalItems={movementsPageData.totalItems}
+            itemsPerPage={ADMIN_PAGE_SIZE}
+            onPageChange={setAdminMovementsPage}
+          />
         </Card>
       </div>
     );
@@ -8161,6 +8713,264 @@ const handleUploadJSONToFirebase = async (e) => {
             group={reportGroupData} 
             onClose={() => setReportGroupData(null)} 
         />
+      )}
+      {blockedCutModal && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl">
+            <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+              <div>
+                <h3 className="text-white font-bold text-lg">Reversão bloqueada</h3>
+                <p className="text-gray-400 text-sm">
+                  Bobina mãe: {blockedCutModal.motherCode}
+                </p>
+              </div>
+              <button
+                onClick={() => setBlockedCutModal(null)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 custom-scrollbar-dark">
+              <p className="text-sm text-gray-400 mb-4">
+                As bobinas B2 abaixo já foram usadas em produção. Apague a produção antes de reverter o corte.
+              </p>
+              <table className="w-full text-sm text-left text-gray-300">
+                <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                  <tr>
+                    <th className="p-2">B2</th>
+                    <th className="p-2">Descrição</th>
+                    <th className="p-2">Produções</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {blockedCutModal.items.map((item) => (
+                    <tr key={item.id} className="hover:bg-gray-700/50">
+                      <td className="p-2 font-mono text-xs text-blue-300">{item.b2Code}</td>
+                      <td className="p-2">{item.b2Name}</td>
+                      <td className="p-2 text-xs text-gray-400">
+                        {(item.prodIds || []).join(', ') || '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-3 border-t border-gray-700 bg-gray-900/50 flex justify-end">
+              <Button variant="secondary" onClick={() => setBlockedCutModal(null)}>
+                Fechar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {adminUserMovementsModal && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-4xl max-h-[80vh] flex flex-col shadow-2xl">
+            <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+              <div>
+                <h3 className="text-white font-bold text-lg">Movimentações do usuário</h3>
+                <p className="text-gray-400 text-sm">{adminUserMovementsModal}</p>
+              </div>
+              <button
+                onClick={() => setAdminUserMovementsModal(null)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 custom-scrollbar-dark">
+              {selectedUserEvents.length === 0 ? (
+                <div className="text-sm text-gray-400">Sem movimentações.</div>
+              ) : (
+                <table className="w-full text-sm text-left text-gray-300">
+                  <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                    <tr>
+                      <th className="p-2">Data</th>
+                      <th className="p-2">Tipo</th>
+                      <th className="p-2">Detalhe</th>
+                      <th className="p-2">Referência</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-700">
+                    {selectedUserEvents.map((event) => (
+                      <tr key={event.id} className="hover:bg-gray-700/50">
+                        <td className="p-2 text-xs text-gray-400">
+                          {formatEventDate(event.timestamp || event.createdAt)}
+                        </td>
+                        <td className="p-2 text-xs font-semibold">
+                          {EVENT_TYPE_LABELS[event.eventType] || event.eventType}
+                        </td>
+                        <td className="p-2">{describeEvent(event)}</td>
+                        <td className="p-2 text-xs text-gray-400">{event.referenceId || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="p-3 border-t border-gray-700 bg-gray-900/50 flex justify-end">
+              <Button variant="secondary" onClick={() => setAdminUserMovementsModal(null)}>
+                Fechar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {adminCatalogEditForm && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-3xl max-h-[80vh] flex flex-col shadow-2xl">
+            <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+              <div>
+                <h3 className="text-white font-bold text-lg">Editar produto do catálogo</h3>
+                <p className="text-gray-400 text-sm">{adminCatalogEditForm.code}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setAdminCatalogEdit(null);
+                  setAdminCatalogEditForm(null);
+                }}
+                className="text-gray-400 hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 custom-scrollbar-dark">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  label="Código"
+                  value={adminCatalogEditForm.code}
+                  onChange={(e) =>
+                    setAdminCatalogEditForm((prev) => ({ ...prev, code: e.target.value }))
+                  }
+                  readOnly
+                />
+                <Input
+                  label="Descrição"
+                  value={adminCatalogEditForm.name}
+                  onChange={(e) =>
+                    setAdminCatalogEditForm((prev) => ({ ...prev, name: e.target.value }))
+                  }
+                />
+                <Input
+                  label="Código B2"
+                  value={adminCatalogEditForm.b2Code}
+                  onChange={(e) =>
+                    setAdminCatalogEditForm((prev) => ({ ...prev, b2Code: e.target.value }))
+                  }
+                />
+                <Input
+                  label="Descrição B2"
+                  value={adminCatalogEditForm.b2Name}
+                  onChange={(e) =>
+                    setAdminCatalogEditForm((prev) => ({ ...prev, b2Name: e.target.value }))
+                  }
+                />
+                <Input
+                  label="Largura"
+                  value={adminCatalogEditForm.width}
+                  onChange={(e) =>
+                    setAdminCatalogEditForm((prev) => ({ ...prev, width: e.target.value }))
+                  }
+                />
+                <Input
+                  label="Espessura"
+                  value={adminCatalogEditForm.thickness}
+                  onChange={(e) =>
+                    setAdminCatalogEditForm((prev) => ({ ...prev, thickness: e.target.value }))
+                  }
+                />
+                <Input
+                  label="Tipo"
+                  value={adminCatalogEditForm.type}
+                  onChange={(e) =>
+                    setAdminCatalogEditForm((prev) => ({ ...prev, type: e.target.value }))
+                  }
+                />
+                <Input
+                  label="Código MP"
+                  value={adminCatalogEditForm.motherCode}
+                  onChange={(e) =>
+                    setAdminCatalogEditForm((prev) => ({ ...prev, motherCode: e.target.value }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="p-3 border-t border-gray-700 bg-gray-900/50 flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setAdminCatalogEdit(null);
+                  setAdminCatalogEditForm(null);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button variant="primary" onClick={saveAdminCatalogEdit}>
+                Salvar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {adminMotherCatalogEditForm && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl">
+            <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+              <div>
+                <h3 className="text-white font-bold text-lg">Editar catálogo de bobinas</h3>
+                <p className="text-gray-400 text-sm">{adminMotherCatalogEditForm.code}</p>
+              </div>
+              <button
+                onClick={() => setAdminMotherCatalogEditForm(null)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 custom-scrollbar-dark">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  label="Código"
+                  value={adminMotherCatalogEditForm.code}
+                  onChange={(e) =>
+                    setAdminMotherCatalogEditForm((prev) => ({ ...prev, code: e.target.value }))
+                  }
+                  readOnly
+                />
+                <Input
+                  label="Descrição"
+                  value={adminMotherCatalogEditForm.description}
+                  onChange={(e) =>
+                    setAdminMotherCatalogEditForm((prev) => ({ ...prev, description: e.target.value }))
+                  }
+                />
+                <Input
+                  label="Espessura"
+                  value={adminMotherCatalogEditForm.thickness}
+                  onChange={(e) =>
+                    setAdminMotherCatalogEditForm((prev) => ({ ...prev, thickness: e.target.value }))
+                  }
+                />
+                <Input
+                  label="Tipo"
+                  value={adminMotherCatalogEditForm.type}
+                  onChange={(e) =>
+                    setAdminMotherCatalogEditForm((prev) => ({ ...prev, type: e.target.value }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="p-3 border-t border-gray-700 bg-gray-900/50 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setAdminMotherCatalogEditForm(null)}>
+                Cancelar
+              </Button>
+              <Button variant="primary" onClick={saveAdminMotherCatalogEdit}>
+                Salvar
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
       {viewingMpDetails && (
         <MpDetailsModal 
