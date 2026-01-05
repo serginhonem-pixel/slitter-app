@@ -92,6 +92,11 @@ const Dashboard = ({
     return entry?.description || fallback;
   };
 
+  const getCatalogType = (code, fallback) => {
+    const entry = catalogByCode?.[String(code)] || catalogByCode?.[Number(code)];
+    return entry?.type || fallback || '-';
+  };
+
   const b2CatalogByCode = useMemo(() => {
     return (Array.isArray(productCatalog) ? productCatalog : []).reduce((acc, item) => {
       if (item?.b2Code) acc[String(item.b2Code)] = item;
@@ -379,9 +384,48 @@ const Dashboard = ({
   ]);
 
   const exportMother = () => {
-    const dataToExport = motherCoils
-      .filter((coil) => coil.status === 'stock')
-      .map((coil) => ({
+    const stockRows = motherCoils.filter((coil) => coil.status === 'stock');
+
+    const summaryMap = new Map();
+    stockRows.forEach((coil) => {
+      const code = String(coil.code || '');
+      const type = getCatalogType(code, coil.type);
+      const thicknessRaw = getCatalogThickness(code) ?? coil.thickness;
+      const thicknessValue = normalizeThicknessForExport(thicknessRaw);
+      const thicknessLabel = formatThicknessDisplay(thicknessRaw);
+      const key = `${type}|${thicknessValue ?? thicknessLabel}`;
+
+      if (!summaryMap.has(key)) {
+        summaryMap.set(key, {
+          Tipo: type || '-',
+          'Espessura (mm)': thicknessLabel,
+          'Peso (kg)': 0,
+          'Qtd Bobinas': 0,
+          _sortType: type || '',
+          _sortThickness: thicknessValue ?? Number.MAX_SAFE_INTEGER,
+        });
+      }
+
+      const entry = summaryMap.get(key);
+      const weight = Number(coil.remainingWeight ?? coil.weight ?? 0);
+      entry['Peso (kg)'] += weight;
+      entry['Qtd Bobinas'] += 1;
+    });
+
+    const summaryRows = Array.from(summaryMap.values())
+      .sort((a, b) => {
+        const typeSort = String(a._sortType).localeCompare(String(b._sortType));
+        if (typeSort !== 0) return typeSort;
+        return (a._sortThickness || 0) - (b._sortThickness || 0);
+      })
+      .map((row) => ({
+        Tipo: row.Tipo,
+        'Espessura (mm)': row['Espessura (mm)'],
+        'Peso (kg)': Number(row['Peso (kg)'].toFixed(1)),
+        'Qtd Bobinas': row['Qtd Bobinas'],
+      }));
+
+    const dataToExport = stockRows.map((coil) => ({
         ID: coil.id,
         Codigo: coil.code,
         Material: getCatalogDescription(coil.code, coil.material),
@@ -394,7 +438,13 @@ const Dashboard = ({
         NF: coil.nf,
         Data_Entrada: coil.entryDate,
       }));
-    exportToExcelXml([{ name: 'Estoque MP', rows: dataToExport }], 'Estoque_Bobinas_Mae');
+    exportToExcelXml(
+      [
+        { name: 'Estoque MP', rows: dataToExport },
+        { name: 'Resumo Tipo/Esp', rows: summaryRows },
+      ],
+      'Estoque_Bobinas_Mae',
+    );
   };
 
   const exportMotherPdf = () => {
@@ -446,7 +496,58 @@ const Dashboard = ({
       headStyles: { fillColor: [50, 50, 50], textColor: [255, 255, 255] },
     });
 
-    const detailsStart = (doc.lastAutoTable?.finalY || 26) + 8;
+    const summaryMap = new Map();
+    stockRows.forEach((coil) => {
+      const code = String(coil.code || '');
+      const type = getCatalogType(code, coil.type);
+      const thicknessRaw = getCatalogThickness(code) ?? coil.thickness;
+      const thicknessValue = normalizeThicknessForExport(thicknessRaw);
+      const thicknessLabel = formatThicknessDisplay(thicknessRaw);
+      const key = `${type}|${thicknessValue ?? thicknessLabel}`;
+
+      if (!summaryMap.has(key)) {
+        summaryMap.set(key, {
+          type: type || '-',
+          thicknessLabel,
+          thicknessValue: thicknessValue ?? Number.MAX_SAFE_INTEGER,
+          qty: 0,
+          weight: 0,
+        });
+      }
+
+      const entry = summaryMap.get(key);
+      entry.qty += 1;
+      entry.weight += Number(coil.remainingWeight ?? coil.weight ?? 0);
+    });
+
+    const summaryRows = Array.from(summaryMap.values()).sort((a, b) => {
+      const typeSort = String(a.type).localeCompare(String(b.type));
+      if (typeSort !== 0) return typeSort;
+      return (a.thicknessValue || 0) - (b.thicknessValue || 0);
+    });
+
+    doc.addPage();
+    doc.setFontSize(14);
+    doc.text('Resumo por Tipo e Espessura', 14, 16);
+    doc.setFontSize(9);
+    doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 22);
+
+    autoTable(doc, {
+      startY: 26,
+      head: [['Tipo', 'Espessura (mm)', 'Qtd Bobinas', 'Peso (kg)']],
+      body: summaryRows.map((row) => [
+        row.type,
+        row.thicknessLabel || '-',
+        String(row.qty),
+        row.weight.toLocaleString('pt-BR', { maximumFractionDigits: 1 }),
+      ]),
+      theme: 'grid',
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [50, 50, 50], textColor: [255, 255, 255] },
+    });
+
+    doc.addPage();
+    const detailsStart = 16;
     doc.setFontSize(11);
     doc.text('Detalhado (ordem por codigo)', 14, detailsStart);
 
