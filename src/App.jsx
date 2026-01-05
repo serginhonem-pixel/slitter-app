@@ -407,7 +407,13 @@ const DailyGlobalModal = ({ group, onClose }) => {
   );
 };
 
-const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [] }) => {
+const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [], productCatalog = [] }) => {
+  const normalizeCode = (value) => String(value || '').trim().toUpperCase();
+  const mergedProductCatalog =
+    Array.isArray(productCatalog) && productCatalog.length
+      ? productCatalog
+      : INITIAL_PRODUCT_CATALOG;
+
   const getMotherDescription = (item) => {
     const catalogEntry = motherCatalog.find(
       (entry) => String(entry.code) === String(item.motherCode || item.code)
@@ -457,15 +463,59 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [] })
     return '-';
   };
 
-  const buildQrPayload = ({ item, name, code, quantity, date, id, isProduct }) => {
+  const getB2CatalogEntry = (item) => {
+    const code = normalizeCode(item?.b2Code || item?.code);
+    if (!code) return null;
+    return mergedProductCatalog.find(
+      (entry) => normalizeCode(entry?.b2Code || entry?.code) === code,
+    );
+  };
+
+  const normalizeNumber = (value) => {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = parseFloat(String(value).replace(',', '.').replace(/[^0-9.]/g, ''));
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const getB2ThicknessDisplay = (item) => {
+    const catalogEntry = getB2CatalogEntry(item);
+    const candidates = [item.thickness, catalogEntry?.thickness];
+    for (const candidate of candidates) {
+      const parsed = normalizeThicknessValue(candidate);
+      if (parsed !== null) return formatThicknessNumber(parsed);
+    }
+    return '-';
+  };
+
+  const getB2WidthDisplay = (item) => {
+    const catalogEntry = getB2CatalogEntry(item);
+    const candidates = [item.width, catalogEntry?.width];
+    for (const candidate of candidates) {
+      const parsed = normalizeNumber(candidate);
+      if (parsed && parsed > 0) return parsed;
+    }
+    return '-';
+  };
+
+  const getB2TypeDisplay = (item) => {
+    const catalogEntry = getB2CatalogEntry(item);
+    const candidates = [item.type, catalogEntry?.type];
+    for (const candidate of candidates) {
+      const value = String(candidate || '').trim();
+      if (value) return value;
+    }
+    return '-';
+  };
+
+  const buildQrPayload = ({ item, name, code, quantity, date, id, isProduct, width, thickness, coilType }) => {
     const payload = {
       id,
       code,
       desc: name || '',
       qtd: quantity,
-      w: item.width ?? null,
-      t: getThicknessDisplay(item),
-      type: item.type || '',
+      w: width === '-' ? null : width ?? null,
+      t: thickness,
+      type: coilType === '-' ? '' : (coilType || ''),
       date,
     };
 
@@ -489,6 +539,7 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [] })
         <div className="print:block w-full flex flex-col items-center">
           {items.map((item, index) => {
             const isProduct = type === 'product' || type === 'product_stock';
+            const isB2 = !isProduct && Boolean(item.b2Code || item.b2Name);
 
             let name = '';
             let code = '';
@@ -511,7 +562,21 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [] })
             const quantity = type === 'product_stock' ? `${item.count} PÇS` : (isProduct ? `${item.pieces} PÇS` : `${item.weight} KG`);
             const date = item.date || new Date().toLocaleDateString();
             const id = item.id || 'ESTOQUE';
-            const qrPayload = buildQrPayload({ item, name, code, quantity, date, id, isProduct });
+            const widthDisplay = isB2 ? getB2WidthDisplay(item) : (item.width || '-');
+            const thicknessDisplay = isB2 ? getB2ThicknessDisplay(item) : getThicknessDisplay(item);
+            const typeDisplay = isB2 ? getB2TypeDisplay(item) : (item.type || '-');
+            const qrPayload = buildQrPayload({
+              item,
+              name,
+              code,
+              quantity,
+              date,
+              id,
+              isProduct,
+              width: widthDisplay,
+              thickness: thicknessDisplay,
+              coilType: typeDisplay,
+            });
 
             return (
                   
@@ -546,9 +611,9 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [] })
                    </div>
                    {!isProduct && (
                      <div className="grid grid-cols-3 gap-1 mt-2 text-center">
-                        <div className="bg-gray-200 p-1"><p className="text-[8px] font-bold">LARGURA</p><p className="font-bold text-sm">{item.width} mm</p></div>
-                        <div className="bg-gray-200 p-1"><p className="text-[8px] font-bold">ESPESSURA</p><p className="font-bold text-sm">{getThicknessDisplay(item)}</p></div>
-                        <div className="bg-gray-200 p-1"><p className="text-[8px] font-bold">TIPO</p><p className="font-bold text-sm">{item.type}</p></div>
+                        <div className="bg-gray-200 p-1"><p className="text-[8px] font-bold">LARGURA</p><p className="font-bold text-sm">{widthDisplay} mm</p></div>
+                        <div className="bg-gray-200 p-1"><p className="text-[8px] font-bold">ESPESSURA</p><p className="font-bold text-sm">{thicknessDisplay}</p></div>
+                        <div className="bg-gray-200 p-1"><p className="text-[8px] font-bold">TIPO</p><p className="font-bold text-sm">{typeDisplay}</p></div>
                      </div>
                    )}
                  </div>
@@ -1532,6 +1597,8 @@ export default function App() {
   const [adminB2Page, setAdminB2Page] = useState(1);
   const [adminPaPage, setAdminPaPage] = useState(1);
   const [adminMovementsPage, setAdminMovementsPage] = useState(1);
+  const [adminInventoryReport, setAdminInventoryReport] = useState(null);
+  const [adminInventoryMovementsModal, setAdminInventoryMovementsModal] = useState(null);
   const [adminMotherForm, setAdminMotherForm] = useState({
     code: '',
     weight: '',
@@ -1584,6 +1651,8 @@ export default function App() {
   const [logsPage, setLogsPage] = useState(1);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const inventoryMotherRef = useRef(null); // <--- ADICIONE ISSO
+  const adminInventoryB2FileRef = useRef(null);
+  const adminInventoryPaFileRef = useRef(null);
   const fileInputMotherRef = useRef(null);
   const importMotherStockRef = useRef(null);
   const importChildStockRef = useRef(null);
@@ -3232,6 +3301,490 @@ export default function App() {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleAdminInventoryUpload = (e, scopeOverride) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target.result;
+        const delimiter = detectDelimiter(text);
+        const rows = parseCSVLine(text, delimiter);
+        if (rows.length < 2) return alert("Arquivo vazio ou sem cabecalho.");
+
+        const normalizeHeader = (value) =>
+          String(value || '')
+            .toLowerCase()
+            .trim()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+        const headers = rows[0].map(normalizeHeader);
+        const findIdx = (keys) => headers.findIndex((h) => keys.some((k) => h.includes(k)));
+
+        const idxDate = findIdx(['data']);
+        const idxId = findIdx(['id', 'codigo', 'cod']);
+        const idxDesc = findIdx(['descricao', 'descri']);
+        const idxQty = findIdx(['peso', 'qtd', 'quantidade']);
+        const idxUser = findIdx(['usuario', 'user', 'operador']);
+
+        if (idxId === -1 || idxQty === -1) {
+          return alert(`Colunas obrigatorias nao encontradas. Colunas lidas: ${headers.join(', ')}`);
+        }
+
+        const normalizeCode = (value) => String(value || '').trim().toUpperCase();
+        const parseNumber = (value) => {
+          if (value === undefined || value === null || value === '') return 0;
+          const cleaned = String(value).replace(/\./g, '').replace(',', '.').replace(/[^0-9.]/g, '');
+          const parsed = parseFloat(cleaned);
+          return Number.isFinite(parsed) ? parsed : 0;
+        };
+
+        const mergedProductCatalog =
+          Array.isArray(productCatalog) && productCatalog.length
+            ? productCatalog
+            : INITIAL_PRODUCT_CATALOG;
+
+        const productByCode = mergedProductCatalog.reduce((acc, item) => {
+          const code = normalizeCode(item?.code);
+          if (code) acc[code] = item;
+          return acc;
+        }, {});
+        const b2ByCode = mergedProductCatalog.reduce((acc, item) => {
+          const code = normalizeCode(item?.b2Code || item?.code);
+          if (code) acc[code] = item;
+          return acc;
+        }, {});
+
+        const classifyType = (rawType, code) => {
+          if (scopeOverride) return scopeOverride;
+          const type = String(rawType || '').toLowerCase();
+          if (type.includes('bobina') || type.includes('b2')) return 'b2';
+          if (type.includes('pa') || type.includes('produto') || type.includes('acabado')) return 'pa';
+          if (productByCode[code]) return 'pa';
+          if (b2ByCode[code]) return 'b2';
+          return null;
+        };
+
+        const b2Map = {};
+        const paMap = {};
+        const warnings = [];
+        let skipped = 0;
+
+        rows.slice(1).forEach((row, idx) => {
+          const code = normalizeCode(row[idxId]);
+          if (!code) {
+            skipped += 1;
+            return;
+          }
+          const qty = parseNumber(row[idxQty]);
+          if (!qty) {
+            skipped += 1;
+            return;
+          }
+
+          const rawType = '';
+          const scope = classifyType(rawType, code);
+          if (!scope) {
+            if (warnings.length < 20) warnings.push(`Linha ${idx + 2}: tipo nao identificado (${code}).`);
+            skipped += 1;
+            return;
+          }
+
+          const desc = idxDesc !== -1 ? String(row[idxDesc] || '').trim() : '';
+          const date = idxDate !== -1 ? String(row[idxDate] || '').trim() : '';
+          const user = idxUser !== -1 ? String(row[idxUser] || '').trim() : '';
+          const base = { code, desc, date, user };
+
+          if (scope === 'b2') {
+            if (!b2Map[code]) b2Map[code] = { ...base, qty: 0 };
+            b2Map[code].qty += qty;
+          } else {
+            if (!paMap[code]) paMap[code] = { ...base, qty: 0 };
+            paMap[code].qty += qty;
+          }
+        });
+
+        const systemB2Map = (childCoils || [])
+          .filter((coil) => coil.status === 'stock')
+          .reduce((acc, coil) => {
+            const code = normalizeCode(coil.b2Code || coil.code);
+            if (!code) return acc;
+            if (!acc[code]) {
+              acc[code] = {
+                code,
+                name: coil.b2Name || b2ByCode[code]?.b2Name || b2ByCode[code]?.name || '',
+                qty: 0,
+              };
+            }
+            acc[code].qty += Number(coil.weight) || 0;
+            return acc;
+          }, {});
+
+        const finishedStock = getFinishedStock() || {};
+        const systemPaMap = Object.keys(finishedStock).reduce((acc, code) => {
+          const normalized = normalizeCode(code);
+          acc[normalized] = {
+            code: normalized,
+            name: finishedStock[code]?.name || productByCode[normalized]?.name || '',
+            qty: finishedStock[code]?.count || 0,
+          };
+          return acc;
+        }, {});
+
+        const buildRows = (fileMap, systemMap) => {
+          const codes = new Set([...Object.keys(fileMap), ...Object.keys(systemMap)]);
+          const rowsOut = [];
+          codes.forEach((code) => {
+            const fileQty = fileMap[code]?.qty || 0;
+            const systemQty = systemMap[code]?.qty || 0;
+            const diff = fileQty - systemQty;
+            if (diff === 0) return;
+            rowsOut.push({
+              code,
+              name: fileMap[code]?.desc || systemMap[code]?.name || '',
+              fileQty,
+              systemQty,
+              diff,
+            });
+          });
+          rowsOut.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+          return rowsOut;
+        };
+
+        const b2Rows = buildRows(b2Map, systemB2Map);
+        const paRows = buildRows(paMap, systemPaMap);
+
+        const totals = (map) =>
+          Object.values(map).reduce((acc, item) => acc + (Number(item.qty) || 0), 0);
+
+        setAdminInventoryReport((prev) => {
+          const base = prev || {
+            b2: { rows: [], totalFile: 0, totalSystem: 0 },
+            pa: { rows: [], totalFile: 0, totalSystem: 0 },
+          };
+          const next = {
+            ...base,
+            warnings,
+            skipped,
+          };
+
+          if (scopeOverride === 'b2' || !scopeOverride) {
+            next.b2 = {
+              rows: b2Rows,
+              totalFile: totals(b2Map),
+              totalSystem: totals(systemB2Map),
+              fileName: scopeOverride === 'b2' ? file.name : base.b2.fileName,
+              parsedAt: scopeOverride === 'b2' ? new Date().toLocaleString() : base.b2.parsedAt,
+            };
+          }
+          if (scopeOverride === 'pa' || !scopeOverride) {
+            next.pa = {
+              rows: paRows,
+              totalFile: totals(paMap),
+              totalSystem: totals(systemPaMap),
+              fileName: scopeOverride === 'pa' ? file.name : base.pa.fileName,
+              parsedAt: scopeOverride === 'pa' ? new Date().toLocaleString() : base.pa.parsedAt,
+            };
+          }
+
+          return next;
+        });
+
+        e.target.value = '';
+      } catch (err) {
+        alert(`Erro ao processar inventario: ${err.message}`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const applyAdminInventoryAdjustments = (scope) => {
+    if (!adminInventoryReport) return;
+    const applyB2 = scope === 'b2' || scope === 'all';
+    const applyPa = scope === 'pa' || scope === 'all';
+
+    const hasB2 = adminInventoryReport.b2.rows.length > 0;
+    const hasPa = adminInventoryReport.pa.rows.length > 0;
+    if ((applyB2 && !hasB2) && (applyPa && !hasPa)) {
+      return alert('Sem divergencias para ajustar.');
+    }
+
+    const confirmLabel =
+      scope === 'b2' ? 'Confirmar ajuste de B2?' :
+      scope === 'pa' ? 'Confirmar ajuste de PA?' :
+      'Confirmar ajuste de B2 e PA?';
+    if (!window.confirm(confirmLabel)) return;
+
+    const mergedProductCatalog =
+      Array.isArray(productCatalog) && productCatalog.length
+        ? productCatalog
+        : INITIAL_PRODUCT_CATALOG;
+    const b2ByCode = mergedProductCatalog.reduce((acc, item) => {
+      const code = String(item?.b2Code || item?.code || '').trim().toUpperCase();
+      if (!code) return acc;
+      acc[code] = item;
+      return acc;
+    }, {});
+    const productByCode = mergedProductCatalog.reduce((acc, item) => {
+      const code = String(item?.code || '').trim().toUpperCase();
+      if (!code) return acc;
+      acc[code] = item;
+      return acc;
+    }, {});
+
+    const dateNow = new Date().toLocaleDateString();
+    const timeNow = new Date().toLocaleString();
+
+    if (applyB2 && hasB2) {
+      const newChildCoils = [...childCoils];
+      const shortages = [];
+
+      adminInventoryReport.b2.rows.forEach((row) => {
+        const code = String(row.code || '').trim().toUpperCase();
+        const diff = Number(row.diff) || 0;
+        if (!diff) return;
+
+        if (diff > 0) {
+          const meta = b2ByCode[code] || {};
+          newChildCoils.push({
+            id: `INV-B2-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+            motherCode: meta.motherCode || 'INVENTARIO',
+            b2Code: code,
+            b2Name: row.name || meta.b2Name || meta.name || '',
+            width: meta.width ?? 0,
+            thickness: meta.thickness || '-',
+            type: meta.type || '',
+            weight: diff,
+            initialWeight: diff,
+            status: 'stock',
+            date: dateNow,
+            source: 'inventory_adjustment',
+          });
+          return;
+        }
+
+        let remaining = Math.abs(diff);
+        const candidates = newChildCoils.filter(
+          (coil) => String(coil.b2Code || coil.code).trim().toUpperCase() === code && coil.status === 'stock',
+        );
+
+        for (const coil of candidates) {
+          if (remaining <= 0) break;
+          const current = Number(coil.weight) || 0;
+          if (current <= 0) continue;
+          if (current <= remaining) {
+            coil.weight = 0;
+            coil.status = 'consumed';
+            coil.consumedDate = dateNow;
+            coil.consumptionDetail = 'AJUSTE INVENTARIO';
+            remaining -= current;
+          } else {
+            coil.weight = current - remaining;
+            remaining = 0;
+          }
+        }
+
+        if (remaining > 0) shortages.push(code);
+      });
+
+      setChildCoils(newChildCoils);
+      if (shortages.length > 0) {
+        alert(`Ajuste B2 aplicado, mas faltou saldo para: ${shortages.join(', ')}`);
+      }
+    }
+
+    if (applyPa && hasPa) {
+      const newProdLogs = [...productionLogs];
+      const newShipLogs = [...shippingLogs];
+
+      adminInventoryReport.pa.rows.forEach((row) => {
+        const code = String(row.code || '').trim().toUpperCase();
+        const diff = Math.round(Number(row.diff) || 0);
+        if (!diff) return;
+
+        const productData = productByCode[code] || { name: row.name || `ITEM MANUAL (${code})` };
+
+        if (diff > 0) {
+          newProdLogs.push({
+            id: `AJUSTE-ENT-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+            date: dateNow,
+            timestamp: timeNow,
+            productCode: code,
+            productName: productData.name,
+            pieces: diff,
+            weight: 0,
+            b2Code: 'INVENTARIO',
+            motherCode: '-',
+            scrap: 0,
+            packIndex: 'Ajuste',
+          });
+        } else {
+          newShipLogs.push({
+            id: `AJUSTE-SAI-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+            date: dateNow,
+            timestamp: timeNow,
+            productCode: code,
+            productName: productData.name,
+            quantity: Math.abs(diff),
+            destination: 'AJUSTE INVENTARIO',
+          });
+        }
+      });
+
+      setProductionLogs(newProdLogs);
+      setShippingLogs(newShipLogs);
+    }
+  };
+
+  const exportInventoryDiscrepanciesPdf = (scope) => {
+    if (!adminInventoryReport || !adminInventoryReport[scope]) {
+      return alert('Carregue o inventario antes de gerar o PDF.');
+    }
+    const report = adminInventoryReport[scope];
+    const rows = Array.isArray(report.rows) ? report.rows : [];
+    if (rows.length === 0) {
+      return alert('Sem discrepancias para exportar.');
+    }
+
+    const title = scope === 'b2'
+      ? 'Inventario - Discrepancias B2'
+      : 'Inventario - Discrepancias PA';
+    const unit = scope === 'b2' ? 'kg' : 'pcs';
+    const doc = new jsPDF({ orientation: 'landscape' });
+    doc.setFontSize(12);
+    doc.text(title, 14, 12);
+    doc.setFontSize(9);
+    doc.text(`Arquivo: ${report.fileName || '-'}`, 14, 18);
+
+    const formatMovDate = (value) => {
+      const parsed = parseMovementDate(value);
+      if (!parsed) return '-';
+      return parsed.toLocaleDateString('pt-BR');
+    };
+
+    const formatMovements = (code) => {
+      const data = buildInventoryModalData(scope, code);
+      const list = data?.rows || [];
+      if (list.length === 0) return '-';
+      const slice = list.slice(0, 4);
+      return slice
+        .map((item) => {
+          const qty = scope === 'b2'
+            ? (Number(item.qty) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+            : Math.round(Number(item.qty) || 0).toLocaleString('pt-BR');
+          const dest = item.destination && item.destination !== '-' ? ` | ${item.destination}` : '';
+          return `${formatMovDate(item.date)} | ${item.status} | ${qty}${unit}${dest}`;
+        })
+        .join('\n');
+    };
+
+    const body = rows.map((row) => ([
+      `${row.code}\n${row.name || ''}`.trim(),
+      scope === 'b2' ? row.fileQty.toFixed(1) : Math.round(row.fileQty),
+      scope === 'b2' ? row.systemQty.toFixed(1) : Math.round(row.systemQty),
+      scope === 'b2' ? row.diff.toFixed(1) : Math.round(row.diff),
+      formatMovements(row.code),
+    ]));
+
+    autoTable(doc, {
+      head: [[`Codigo / Detalhe`, `CSV (${unit})`, `Sistema (${unit})`, `Diff (${unit})`, 'Movimentos (ultimos 4)']],
+      body,
+      startY: 24,
+      styles: { fontSize: 6, cellPadding: 1, overflow: 'linebreak' },
+      headStyles: { fillColor: [30, 41, 59] },
+      columnStyles: { 0: { cellWidth: 70 }, 4: { cellWidth: 140 } },
+    });
+
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    doc.save(`inventario_discrepancias_${scope}_${dateStamp}.pdf`);
+  };
+
+  const buildInventoryModalData = (scope, code) => {
+    const target = normalizeCode(code);
+    const rows = [];
+
+    if (scope === 'b2') {
+      const prodByChildId = new Map();
+      (productionLogs || []).forEach((log) => {
+        if (!Array.isArray(log.childIds)) return;
+        log.childIds.forEach((id) => {
+          if (!prodByChildId.has(id)) prodByChildId.set(id, log);
+        });
+      });
+
+      (childCoils || [])
+        .filter((coil) => normalizeCode(coil.b2Code || coil.code) === target)
+        .forEach((coil) => {
+          const prodLog = prodByChildId.get(coil.id);
+          const statusLabel = coil.status === 'stock' ? 'ESTOQUE' : 'BAIXADO';
+          const consumedLabel = prodLog
+            ? `${prodLog.date || prodLog.timestamp || ''} ${prodLog.productCode || ''} ${prodLog.productName || ''}`.trim()
+            : coil.consumptionDetail || '';
+          rows.push({
+            date: coil.date || coil.entryDate || coil.createdAt,
+            origin: coil.motherCode || '-',
+            trackingId: coil.id || '-',
+            qty: Number(coil.weight ?? coil.initialWeight ?? 0),
+            unit: 'kg',
+            status: statusLabel,
+            destination: statusLabel === 'BAIXADO' ? (consumedLabel || '-') : '-',
+          });
+        });
+    }
+
+    if (scope === 'pa') {
+      (productionLogs || [])
+        .filter((log) => normalizeCode(log.productCode) === target)
+        .forEach((log) => {
+          rows.push({
+            date: log.timestamp || log.date,
+            origin: log.b2Code || '-',
+            trackingId: log.trackingId || log.packIndex || log.id || '-',
+            qty: Number(log.pieces) || 0,
+            unit: 'pcs',
+            status: 'ESTOQUE',
+            destination: '-',
+          });
+        });
+
+      (shippingLogs || [])
+        .filter((log) => normalizeCode(log.productCode) === target)
+        .forEach((log) => {
+          rows.push({
+            date: log.timestamp || log.date,
+            origin: log.b2Code || '-',
+            trackingId: log.id || '-',
+            qty: Number(log.quantity) || 0,
+            unit: 'pcs',
+            status: 'BAIXADO',
+            destination: log.destination || '-',
+          });
+        });
+    }
+
+    rows.sort((a, b) => {
+      const dateA = parseMovementDate(a.date)?.getTime() || 0;
+      const dateB = parseMovementDate(b.date)?.getTime() || 0;
+      return dateB - dateA;
+    });
+
+    const totals = rows.reduce(
+      (acc, row) => {
+        if (row.status === 'ESTOQUE') acc.stock += row.qty || 0;
+        if (row.status === 'BAIXADO') acc.consumed += row.qty || 0;
+        acc.total += 1;
+        return acc;
+      },
+      { stock: 0, consumed: 0, total: 0 },
+    );
+
+    return {
+      rows,
+      totals,
+    };
   };
   const registerProduction = async () => {
     if (selectedInputCoils.length === 0) return alert("Selecione bobinas!");
@@ -6764,6 +7317,44 @@ safeCutting.forEach((c) => {
     });
 
     const usersSummary = Object.values(userMap).sort((a, b) => b.total - a.total);
+    const inventoryModalData = adminInventoryMovementsModal
+      ? buildInventoryModalData(
+          adminInventoryMovementsModal.scope,
+          adminInventoryMovementsModal.code,
+        )
+      : null;
+    const inventoryMovements = inventoryModalData?.rows || [];
+    const inventoryMovementsTitle = adminInventoryMovementsModal
+      ? `${adminInventoryMovementsModal.scope === 'b2' ? 'B2' : 'PA'} ${adminInventoryMovementsModal.code}`
+      : '';
+    const inventoryTotals = inventoryModalData?.totals || { stock: 0, consumed: 0, total: 0 };
+    const inventoryScopeKey = adminInventoryMovementsModal?.scope;
+    const inventoryScopeReport =
+      inventoryScopeKey && adminInventoryReport
+        ? adminInventoryReport[inventoryScopeKey]
+        : null;
+    const inventoryDiffTotal =
+      inventoryScopeReport?.rows?.reduce((acc, row) => acc + (Number(row.diff) || 0), 0) || 0;
+
+    const inventoryTimelineGroups = inventoryMovements.reduce((acc, mov) => {
+      const label = formatDate(mov.date) || '-';
+      if (!acc.map[label]) {
+        acc.map[label] = { date: label, items: [] };
+        acc.list.push(acc.map[label]);
+      }
+      acc.map[label].items.push(mov);
+      return acc;
+    }, { map: {}, list: [] }).list;
+
+    const getInventoryMovementLabel = (mov) => {
+      if (adminInventoryMovementsModal?.scope === 'b2') {
+        return mov.status === 'BAIXADO' ? 'Baixa B2' : 'Entrada B2';
+      }
+      return mov.status === 'BAIXADO' ? 'Expedicao PA' : 'Producao PA';
+    };
+
+    const getInventoryMovementColor = (mov) =>
+      mov.status === 'BAIXADO' ? 'bg-amber-500/30 text-amber-200' : 'bg-emerald-500/30 text-emerald-200';
 
     return (
       <div className="space-y-6">
@@ -6998,6 +7589,230 @@ safeCutting.forEach((c) => {
                 </Button>
               </div>
             </>
+          )}
+        </Card>
+
+        <Card>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-4">
+            <h3 className="text-lg font-bold text-white">Inventario (B2 e PA)</h3>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => adminInventoryB2FileRef.current?.click()}
+                className="text-xs"
+              >
+                <Upload size={16} /> Importar B2 CSV
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => adminInventoryPaFileRef.current?.click()}
+                className="text-xs"
+              >
+                <Upload size={16} /> Importar PA CSV
+              </Button>
+              {adminInventoryReport && (
+                <Button
+                  variant="secondary"
+                  onClick={() => setAdminInventoryReport(null)}
+                  className="text-xs"
+                >
+                  Limpar
+                </Button>
+              )}
+            </div>
+          </div>
+          <input
+            ref={adminInventoryB2FileRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={(e) => handleAdminInventoryUpload(e, 'b2')}
+          />
+          <input
+            ref={adminInventoryPaFileRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={(e) => handleAdminInventoryUpload(e, 'pa')}
+          />
+          <p className="text-xs text-gray-400">
+            CSV esperado: Data, ID, Descricao, Peso/Qtd, Usuario.
+          </p>
+
+          {!adminInventoryReport && (
+            <p className="text-xs text-gray-500 mt-3">Nenhum arquivo carregado.</p>
+          )}
+
+          {adminInventoryReport && (
+            <div className="mt-4 space-y-4">
+              <div className="text-xs text-gray-400">
+                {adminInventoryReport.b2?.fileName
+                  ? `B2: ${adminInventoryReport.b2.fileName} · ${adminInventoryReport.b2.parsedAt || ''}`
+                  : 'B2: nenhum arquivo'}
+                {' | '}
+                {adminInventoryReport.pa?.fileName
+                  ? `PA: ${adminInventoryReport.pa.fileName} · ${adminInventoryReport.pa.parsedAt || ''}`
+                  : 'PA: nenhum arquivo'}
+                {adminInventoryReport.skipped ? ` · Ignoradas: ${adminInventoryReport.skipped}` : ''}
+              </div>
+              {adminInventoryReport.warnings.length > 0 && (
+                <div className="text-xs text-amber-300">
+                  {adminInventoryReport.warnings.join(' | ')}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="bg-gray-900/40 border border-gray-700 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold text-white">Bobinas B2</h4>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-400">
+                      CSV: {adminInventoryReport.b2.totalFile.toFixed(1)} kg ·
+                      Sistema: {adminInventoryReport.b2.totalSystem.toFixed(1)} kg
+                    </span>
+                    <Button
+                      variant="secondary"
+                      className="text-[11px]"
+                      onClick={() => exportInventoryDiscrepanciesPdf('b2')}
+                      disabled={adminInventoryReport.b2.rows.length === 0}
+                    >
+                      <FileText size={14} /> PDF discrepancias
+                    </Button>
+                  </div>
+                </div>
+                  <div className="overflow-auto max-h-[260px] custom-scrollbar-dark">
+                    <table className="w-full text-xs text-left text-gray-300">
+                      <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                        <tr>
+                          <th className="p-2">Codigo</th>
+                          <th className="p-2">Descricao</th>
+                          <th className="p-2 text-right">CSV (kg)</th>
+                          <th className="p-2 text-right">Sistema (kg)</th>
+                          <th className="p-2 text-right">Diff (kg)</th>
+                          <th className="p-2 text-center">Acoes</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-800">
+                        {adminInventoryReport.b2.rows.length === 0 ? (
+                          <tr>
+                            <td colSpan="6" className="p-3 text-center text-gray-500">
+                              Sem divergencias.
+                            </td>
+                          </tr>
+                        ) : (
+                          adminInventoryReport.b2.rows.map((row) => (
+                            <tr key={`b2-${row.code}`} className="hover:bg-gray-800/40">
+                              <td className="p-2 font-mono">{row.code}</td>
+                              <td className="p-2">{row.name || '-'}</td>
+                              <td className="p-2 text-right">{row.fileQty.toFixed(1)}</td>
+                              <td className="p-2 text-right">{row.systemQty.toFixed(1)}</td>
+                              <td className={`p-2 text-right font-semibold ${row.diff > 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+                                {row.diff.toFixed(1)}
+                              </td>
+                              <td className="p-2 text-center">
+                                <button
+                                  onClick={() =>
+                                    setAdminInventoryMovementsModal({ scope: 'b2', code: row.code })
+                                  }
+                                  className="px-2 py-1 text-[11px] rounded bg-blue-600/20 text-blue-200 hover:bg-blue-600/40"
+                                >
+                                  Movimentos
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-2 flex justify-end">
+                    <Button
+                      variant="primary"
+                      className="text-xs"
+                      disabled={adminInventoryReport.b2.rows.length === 0}
+                      onClick={() => applyAdminInventoryAdjustments('b2')}
+                    >
+                      Confirmar ajuste B2
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="bg-gray-900/40 border border-gray-700 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold text-white">Produto Acabado</h4>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-400">
+                      CSV: {adminInventoryReport.pa.totalFile} pcs ·
+                      Sistema: {adminInventoryReport.pa.totalSystem} pcs
+                    </span>
+                    <Button
+                      variant="secondary"
+                      className="text-[11px]"
+                      onClick={() => exportInventoryDiscrepanciesPdf('pa')}
+                      disabled={adminInventoryReport.pa.rows.length === 0}
+                    >
+                      <FileText size={14} /> PDF discrepancias
+                    </Button>
+                  </div>
+                </div>
+                  <div className="overflow-auto max-h-[260px] custom-scrollbar-dark">
+                    <table className="w-full text-xs text-left text-gray-300">
+                      <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                        <tr>
+                          <th className="p-2">Codigo</th>
+                          <th className="p-2">Descricao</th>
+                          <th className="p-2 text-right">CSV (pcs)</th>
+                          <th className="p-2 text-right">Sistema (pcs)</th>
+                          <th className="p-2 text-right">Diff (pcs)</th>
+                          <th className="p-2 text-center">Acoes</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-800">
+                        {adminInventoryReport.pa.rows.length === 0 ? (
+                          <tr>
+                            <td colSpan="6" className="p-3 text-center text-gray-500">
+                              Sem divergencias.
+                            </td>
+                          </tr>
+                        ) : (
+                          adminInventoryReport.pa.rows.map((row) => (
+                            <tr key={`pa-${row.code}`} className="hover:bg-gray-800/40">
+                              <td className="p-2 font-mono">{row.code}</td>
+                              <td className="p-2">{row.name || '-'}</td>
+                              <td className="p-2 text-right">{Math.round(row.fileQty)}</td>
+                              <td className="p-2 text-right">{Math.round(row.systemQty)}</td>
+                              <td className={`p-2 text-right font-semibold ${row.diff > 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+                                {Math.round(row.diff)}
+                              </td>
+                              <td className="p-2 text-center">
+                                <button
+                                  onClick={() =>
+                                    setAdminInventoryMovementsModal({ scope: 'pa', code: row.code })
+                                  }
+                                  className="px-2 py-1 text-[11px] rounded bg-blue-600/20 text-blue-200 hover:bg-blue-600/40"
+                                >
+                                  Movimentos
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-2 flex justify-end">
+                    <Button
+                      variant="primary"
+                      className="text-xs"
+                      disabled={adminInventoryReport.pa.rows.length === 0}
+                      onClick={() => applyAdminInventoryAdjustments('pa')}
+                    >
+                      Confirmar ajuste PA
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
         </Card>
 
@@ -7518,6 +8333,133 @@ safeCutting.forEach((c) => {
             onPageChange={setAdminMovementsPage}
           />
         </Card>
+
+        {adminInventoryMovementsModal && (
+          <div className="fixed inset-0 bg-black/80 z-[90] flex items-center justify-center p-4">
+            <div className="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-4xl shadow-2xl flex flex-col max-h-[85vh]">
+              <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-950">
+                <div>
+                  <h3 className="text-white font-bold text-lg">Movimentos: {inventoryMovementsTitle}</h3>
+                  <p className="text-xs text-gray-500">{inventoryMovements.length} registros</p>
+                  {inventoryScopeReport && (
+                    <p className="text-xs text-gray-500">
+                      Inventario: {inventoryScopeReport.fileName || 'arquivo nao informado'} ·
+                      CSV {inventoryScopeReport.totalFile.toLocaleString('pt-BR', {
+                        minimumFractionDigits: inventoryScopeKey === 'b2' ? 1 : 0,
+                        maximumFractionDigits: inventoryScopeKey === 'b2' ? 1 : 0,
+                      })}{' '}
+                      {inventoryScopeKey === 'b2' ? 'kg' : 'pcs'} ·
+                      Sistema {inventoryScopeReport.totalSystem.toLocaleString('pt-BR', {
+                        minimumFractionDigits: inventoryScopeKey === 'b2' ? 1 : 0,
+                        maximumFractionDigits: inventoryScopeKey === 'b2' ? 1 : 0,
+                      })}{' '}
+                      {inventoryScopeKey === 'b2' ? 'kg' : 'pcs'} ·
+                      Dif {inventoryDiffTotal.toLocaleString('pt-BR', {
+                        minimumFractionDigits: inventoryScopeKey === 'b2' ? 1 : 0,
+                        maximumFractionDigits: inventoryScopeKey === 'b2' ? 1 : 0,
+                      })}{' '}
+                      {inventoryScopeKey === 'b2' ? 'kg' : 'pcs'}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => setAdminInventoryMovementsModal(null)}
+                  className="text-gray-400 hover:text-white"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 border-b border-gray-800 bg-gray-950/60">
+                <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-gray-400">Saldo em estoque</p>
+                  <p className="text-lg font-bold text-emerald-300">
+                    {inventoryTotals.stock.toLocaleString('pt-BR', {
+                      minimumFractionDigits: adminInventoryMovementsModal.scope === 'b2' ? 1 : 0,
+                      maximumFractionDigits: adminInventoryMovementsModal.scope === 'b2' ? 1 : 0,
+                    })}{' '}
+                    {adminInventoryMovementsModal.scope === 'b2' ? 'kg' : 'pcs'}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-gray-400">Total baixado</p>
+                  <p className="text-lg font-bold text-amber-300">
+                    {inventoryTotals.consumed.toLocaleString('pt-BR', {
+                      minimumFractionDigits: adminInventoryMovementsModal.scope === 'b2' ? 1 : 0,
+                      maximumFractionDigits: adminInventoryMovementsModal.scope === 'b2' ? 1 : 0,
+                    })}{' '}
+                    {adminInventoryMovementsModal.scope === 'b2' ? 'kg' : 'pcs'}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-gray-400">Itens</p>
+                  <p className="text-lg font-bold text-blue-300">
+                    {inventoryTotals.stock > 0 || inventoryTotals.consumed > 0
+                      ? `${inventoryTotals.stock > 0 ? inventoryMovements.filter((m) => m.status === 'ESTOQUE').length : 0}/${inventoryTotals.total}`
+                      : inventoryTotals.total}
+                  </p>
+                </div>
+              </div>
+              <div className="p-4 overflow-y-auto custom-scrollbar-dark flex-1">
+                {inventoryMovements.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-6">
+                    Sem movimentacoes encontradas.
+                  </p>
+                ) : (
+                  <div className="space-y-6">
+                    {inventoryTimelineGroups.map((group) => (
+                      <div key={`inv-${group.date}`} className="space-y-3">
+                        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                          {group.date}
+                        </div>
+                        <div className="border-l border-gray-700 pl-4 space-y-3">
+                          {group.items.map((mov, idx) => {
+                            const qtyValue = Number(mov.qty) || 0;
+                            const qtyFormatted =
+                              mov.unit === 'kg'
+                                ? qtyValue.toLocaleString('pt-BR', {
+                                    minimumFractionDigits: 1,
+                                    maximumFractionDigits: 1,
+                                  })
+                                : qtyValue.toLocaleString('pt-BR');
+                            const typeLabel = getInventoryMovementLabel(mov);
+                            return (
+                              <div key={`${mov.trackingId}-${idx}`} className="relative">
+                                <span
+                                  className={`absolute -left-[22px] top-2 h-2.5 w-2.5 rounded-full ${getInventoryMovementColor(mov)}`}
+                                />
+                                <div className="bg-gray-900/40 border border-gray-800 rounded-lg p-3">
+                                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                                    <span className={`px-2 py-0.5 rounded ${getInventoryMovementColor(mov)}`}>
+                                      {typeLabel}
+                                    </span>
+                                    <span className="text-gray-400">Origem: {mov.origin || '-'}</span>
+                                    <span className="text-gray-400">ID: {mov.trackingId || '-'}</span>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                                    <span className="text-sm font-semibold text-white">
+                                      {qtyFormatted} {mov.unit || ''}
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-wide text-gray-400">
+                                      {mov.status}
+                                    </span>
+                                  </div>
+                                  <div className="mt-2 text-xs text-gray-300">
+                                    Destino/Consumo: {mov.destination || '-'}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     );
   };
@@ -7847,6 +8789,22 @@ const formatKgToT = (kg) => {
 const formatKg = (kg) => {
   const v = Number(kg) || 0;
   return `${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kg`;
+};
+
+const normalizeCode = (value) => String(value || '').trim().toUpperCase();
+
+const parseMovementDate = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (raw.includes('/')) {
+    const [day, month, year] = raw.split('/');
+    const parsed = new Date(`${year}-${month}-${day}`);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
 const formatPcs = (pcs) => {
@@ -8780,6 +9738,7 @@ const handleUploadJSONToFirebase = async (e) => {
           items={itemsToPrint}
           type={printType}
           motherCatalog={motherCatalog}
+          productCatalog={productCatalog}
           onClose={() => setShowPrintModal(false)}
         />
       )}
