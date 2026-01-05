@@ -3642,6 +3642,105 @@ export default function App() {
     document.body.removeChild(link);
   };
 
+  const buildFinishedStructureRows = () => {
+    const stockMap = getFinishedStock() || {};
+    const runtimeProductCatalog = Array.isArray(productCatalog) ? productCatalog : [];
+    const mergedProductCatalog = [...INITIAL_PRODUCT_CATALOG, ...runtimeProductCatalog];
+    const productByCode = mergedProductCatalog.reduce((acc, item) => {
+      if (!item?.code) return acc;
+      const key = String(item.code);
+      const existing = acc[key];
+      const hasMother = String(item.motherCode || '').trim();
+      const existingHasMother = String(existing?.motherCode || '').trim();
+      if (!existing || (!existingHasMother && hasMother)) acc[key] = item;
+      return acc;
+    }, {});
+    const runtimeMotherCatalog = Array.isArray(motherCatalog) ? motherCatalog : [];
+    const mergedMotherCatalog = [...INITIAL_MOTHER_CATALOG, ...runtimeMotherCatalog];
+    const motherByCode = mergedMotherCatalog.reduce((acc, item) => {
+      if (item?.code) acc[String(item.code)] = item;
+      return acc;
+    }, {});
+
+    const codes = new Set([
+      ...mergedProductCatalog.map((item) => String(item.code || '').trim()).filter(Boolean),
+      ...Object.keys(stockMap || {}).map((code) => String(code || '').trim()).filter(Boolean),
+    ]);
+
+    if (codes.size === 0) {
+      alert('Nenhum produto encontrado para exportar.');
+      return null;
+    }
+
+    const rows = Array.from(codes)
+      .map((code) => {
+        const stock = stockMap[code] || {};
+        const catalogItem = productByCode[code] || {};
+        const motherCode = String(catalogItem.motherCode || '');
+        const motherInfo = motherByCode[motherCode] || {};
+
+        return {
+          'Codigo PA': code || '-',
+          'Descricao PA': stock.name || catalogItem.name || '-',
+          'Codigo B2': catalogItem.b2Code || '-',
+          'Descricao B2': catalogItem.b2Name || '-',
+          'Codigo Bobina Mae': motherCode || '-',
+          'Descricao Bobina Mae': motherInfo.description || '-',
+          'Espessura Mae': motherInfo.thickness || '-',
+          'Tipo Mae': motherInfo.type || '-',
+        };
+      })
+      .sort((a, b) =>
+        String(a['Codigo PA']).localeCompare(String(b['Codigo PA']))
+      );
+
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    return { rows, dateStamp };
+  };
+
+  const exportFinishedStructureReport = () => {
+    const data = buildFinishedStructureRows();
+    if (!data) return;
+    const { rows, dateStamp } = data;
+    exportToExcelXml(
+      [{ name: 'Estrutura PA', rows }],
+      `estrutura_produtos_acabados_${dateStamp}`
+    );
+  };
+
+  const exportFinishedStructureReportPdf = () => {
+    const data = buildFinishedStructureRows();
+    if (!data) return;
+    const { rows, dateStamp } = data;
+
+    const doc = new jsPDF({ orientation: 'landscape' });
+    doc.setFontSize(14);
+    doc.text('Estrutura de Produtos Acabados', 14, 14);
+    doc.setFontSize(10);
+    doc.text(`Data: ${dateStamp}`, 14, 20);
+
+    const columns = [
+      { header: 'Codigo PA', dataKey: 'Codigo PA' },
+      { header: 'Descricao PA', dataKey: 'Descricao PA' },
+      { header: 'Codigo B2', dataKey: 'Codigo B2' },
+      { header: 'Descricao B2', dataKey: 'Descricao B2' },
+      { header: 'Codigo Bobina Mae', dataKey: 'Codigo Bobina Mae' },
+      { header: 'Descricao Bobina Mae', dataKey: 'Descricao Bobina Mae' },
+      { header: 'Espessura Mae', dataKey: 'Espessura Mae' },
+      { header: 'Tipo Mae', dataKey: 'Tipo Mae' },
+    ];
+
+    autoTable(doc, {
+      head: [columns.map((c) => c.header)],
+      body: rows.map((row) => columns.map((c) => row[c.dataKey])),
+      startY: 26,
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [30, 41, 59] },
+    });
+
+    doc.save(`estrutura_produtos_acabados_${dateStamp}.pdf`);
+  };
+
 
   const handleDownloadTemplate = (type) => {
     let headers = '';
@@ -6885,6 +6984,22 @@ safeCutting.forEach((c) => {
         <Card>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-4">
             <h3 className="text-lg font-bold text-white">Catálogo de Produtos</h3>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                onClick={exportFinishedStructureReport}
+                className="text-xs"
+              >
+                <Download size={16} /> Estrutura PA
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={exportFinishedStructureReportPdf}
+                className="text-xs"
+              >
+                <FileText size={16} /> Estrutura PA (PDF)
+              </Button>
+            </div>
           </div>
           <div className="mb-3">
             <Input
