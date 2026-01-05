@@ -106,9 +106,15 @@ const aggregateRows = (rows) => {
   return { aggregated: result, stats };
 };
 
+const LS_KEYS = {
+  categoryOverrides: 'demandFocus.categoryOverrides.v1',
+  finishedStock: 'demandFocus.finishedStock.v1',
+};
+
 const tabOptions = [
   { id: 'produtos', title: 'Produtos', description: 'Componentes agrupados por código.' },
   { id: 'bobinas', title: 'Bobinas', description: 'Consumo por bobina e necessidades.' },
+  { id: 'estoque_pa', title: 'Estoque PA', description: 'Informe o estoque de produto acabado.' },
   { id: 'componentes', title: 'Itens & Componentes', description: 'Itens pai com seus componentes e bobinas.' },
 ];
 
@@ -150,6 +156,25 @@ const getEdgeFactor = (edge) => {
   const baseEstrut = Number(ESTRUTURA_ITEMS?.[parentCode]?.baseEstrut ?? 0) || 0;
   const baseFactor = baseEstrut > 0 ? baseEstrut : 1;
   return (qtdNec / qtdBase) * (1 + perdaPct / 100) / baseFactor;
+};
+
+const getBaseFactor = (parentCode) => {
+  const code = String(parentCode ?? '').trim();
+  const baseEstrut = Number(ESTRUTURA_ITEMS?.[code]?.baseEstrut ?? 0) || 0;
+  return baseEstrut > 0 ? baseEstrut : 1;
+};
+
+const getMpFactor = (edge, parentUm) => {
+  const um = String(edge?.um ?? '').toUpperCase();
+  const parentUnit = String(parentUm ?? '').toUpperCase();
+  const perdaPct = Number(edge?.perdaPct ?? 0) || 0;
+  const baseFactor = getBaseFactor(edge?.parent);
+
+  if (parentUnit === 'KG' && um === 'KG') {
+    return (1 + perdaPct / 100) / baseFactor;
+  }
+
+  return Number(edge?.qtdNec ?? 0) || 0;
 };
 const parseEdgeDate = (value) => {
   if (!value) return null;
@@ -282,7 +307,13 @@ const collectMpEdges = (rootCode, edgesByParent) => {
       }
       if (tp === 'PA' || tp === 'PI') {
         const um = String(item.edge?.um ?? '').toUpperCase();
-        if (um === 'KG') return;
+        if (um === 'KG') {
+          const childEdges = edgesByParent.get(child) || [];
+          const hasMp = childEdges.some(
+            (childEdge) => String(childEdge?.tp ?? '').toUpperCase() === 'MP',
+          );
+          if (!hasMp) return;
+        }
         stack.push(child);
       }
     });
@@ -337,7 +368,9 @@ const DemandFocus = () => {
   const [screenMode, setScreenMode] = useState('grupos');
   const [planMode, setPlanMode] = useState('carteira');
   const [categoriasAbertas, setCategoriasAbertas] = useState(new Set());
+  const [categoriasResumoAbertas, setCategoriasResumoAbertas] = useState(new Set());
   const [categoriaGrupoDrafts, setCategoriaGrupoDrafts] = useState({});
+  const [categoriaProdutoDrafts, setCategoriaProdutoDrafts] = useState({});
   const [producaoPorProduto, setProducaoPorProduto] = useState({});
   const [motherStock, setMotherStock] = useState({ byCode: {}, totalKg: 0 });
   const [metaDiaria, setMetaDiaria] = useState(3300);
@@ -346,6 +379,10 @@ const DemandFocus = () => {
   const [filtroEstoqueFaltante, setFiltroEstoqueFaltante] = useState(false);
   const [bobinaSearch, setBobinaSearch] = useState('');
   const [nivelFiltro, setNivelFiltro] = useState('todos');
+  const [manualFinishedStockByProduct, setManualFinishedStockByProduct] = useState({});
+  const [manualFinishedStockDrafts, setManualFinishedStockDrafts] = useState({});
+  const [componentesSort, setComponentesSort] = useState('need_desc');
+  const [estoquePaSearch, setEstoquePaSearch] = useState('');
   const applySugestaoItem = (produto, extra) => {
     const inc = Math.max(0, Math.round(extra || 0));
     if (!inc) return;
@@ -379,6 +416,37 @@ const DemandFocus = () => {
     }
   }, []);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_KEYS.categoryOverrides);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') setCategoriaOverrides(parsed);
+      }
+    } catch {}
+
+    try {
+      const raw = localStorage.getItem(LS_KEYS.finishedStock);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') setManualFinishedStockByProduct(parsed);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_KEYS.categoryOverrides, JSON.stringify(categoriaOverrides || {}));
+    } catch {}
+  }, [categoriaOverrides]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_KEYS.finishedStock, JSON.stringify(manualFinishedStockByProduct || {}));
+    } catch {}
+  }, [manualFinishedStockByProduct]);
+
+
   const produtos = useMemo(() => {
     const list = Array.isArray(bobinasPorProdutoData?.produtos) ? bobinasPorProdutoData.produtos : [];
     return list.map((item) => ({
@@ -387,15 +455,56 @@ const DemandFocus = () => {
     }));
   }, []);
 
+  const getFinishedStockByProduct = (code) => {
+    const key = String(code || '').trim();
+    if (!key) return 0;
+    return Number(manualFinishedStockByProduct[key] || 0);
+  };
+
+  const handleManualFinishedStockChange = (code, value) => {
+    const key = String(code || '').trim();
+    if (!key) return;
+    const raw = String(value ?? '');
+    if (!raw.trim()) {
+      setManualFinishedStockByProduct((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      return;
+    }
+    const qty = parseQty(raw);
+    setManualFinishedStockByProduct((prev) => ({ ...prev, [key]: qty }));
+  };
+
+  const handleManualFinishedStockDraft = (code, value) => {
+    const key = String(code || '').trim();
+    if (!key) return;
+    setManualFinishedStockDrafts((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleManualFinishedStockCommit = (code) => {
+    const key = String(code || '').trim();
+    if (!key) return;
+    const draft = manualFinishedStockDrafts[key];
+    handleManualFinishedStockChange(key, draft);
+    setManualFinishedStockDrafts((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
   const bomSummary = useMemo(() => {
     const enriched = produtos.map((item) => {
       const demanded = Number(qtdPorProduto[item.produto] || 0);
       const producedRaw = Number(producaoPorProduto[item.produto] || 0);
       const produced = Number.isFinite(producedRaw) ? Math.max(0, Math.round(producedRaw)) : 0;
-      const qty = Math.max(demanded - produced, 0);
+      const stockFinished = getFinishedStockByProduct(item.produto);
+      const qty = Math.max(demanded - produced - stockFinished, 0);
       const totalKg = item.bobinas.reduce((acc, bobina) => acc + Number(bobina.porUnidade || 0) * qty, 0);
       const categoriaKey = categoriaOverrides[item.produto] || item.categoriaKey || 'Sem categoria';
-      return { ...item, qty, demanded, produced, totalKg, categoriaKey };
+      return { ...item, qty, demanded, produced, stockFinished, totalKg, categoriaKey };
     });
     const selected = enriched.filter((item) => item.qty > 0);
     const bobinasAgg = selected.reduce((acc, item) => {
@@ -428,9 +537,18 @@ const DemandFocus = () => {
       totalUnits: selected.reduce((sum, item) => sum + item.qty, 0),
       totalKg: selected.reduce((sum, item) => sum + item.totalKg, 0),
       totalDemanded: enriched.reduce((sum, item) => sum + item.demanded, 0),
-      totalProduced: enriched.reduce((sum, item) => sum + Math.min(item.produced, item.demanded), 0),
+      totalProduced: enriched.reduce(
+        (sum, item) => sum + Math.min(item.produced + item.stockFinished, item.demanded),
+        0,
+      ),
     };
-  }, [produtos, qtdPorProduto, categoriaOverrides, producaoPorProduto]);
+  }, [
+    produtos,
+    qtdPorProduto,
+    categoriaOverrides,
+    producaoPorProduto,
+    manualFinishedStockByProduct,
+  ]);
 
   const metaMensal = Math.max(0, metaDiaria * diasUteis);
   const totalDemandado = bomSummary.totalDemanded || 0;
@@ -473,10 +591,11 @@ const DemandFocus = () => {
       const produced = Number.isFinite(producedRaw) ? Math.max(0, Math.round(producedRaw)) : 0;
       const extra = Number(extraCapacidade.byProd?.[item.produto] || 0);
       const pmpDemanded = demanded + extra;
-      const qty = Math.max(pmpDemanded - produced, 0);
+      const stockFinished = getFinishedStockByProduct(item.produto);
+      const qty = Math.max(pmpDemanded - produced - stockFinished, 0);
       const totalKg = item.bobinas.reduce((acc, bobina) => acc + Number(bobina.porUnidade || 0) * qty, 0);
       const categoriaKey = categoriaOverrides[item.produto] || item.categoriaKey || 'Sem categoria';
-      return { ...item, qty, demanded: pmpDemanded, produced, totalKg, categoriaKey };
+      return { ...item, qty, demanded: pmpDemanded, produced, stockFinished, totalKg, categoriaKey };
     });
     const selected = enriched.filter((item) => item.qty > 0 || item.demanded > 0);
     const bobinasAgg = selected.reduce((acc, item) => {
@@ -509,9 +628,19 @@ const DemandFocus = () => {
       totalUnits: selected.reduce((sum, item) => sum + item.qty, 0),
       totalKg: selected.reduce((sum, item) => sum + item.totalKg, 0),
       totalDemanded: enriched.reduce((sum, item) => sum + item.demanded, 0),
-      totalProduced: enriched.reduce((sum, item) => sum + Math.min(item.produced, item.demanded), 0),
+      totalProduced: enriched.reduce(
+        (sum, item) => sum + Math.min(item.produced + item.stockFinished, item.demanded),
+        0,
+      ),
     };
-  }, [produtos, qtdPorProduto, producaoPorProduto, categoriaOverrides, extraCapacidade.byProd]);
+  }, [
+    produtos,
+    qtdPorProduto,
+    producaoPorProduto,
+    categoriaOverrides,
+    extraCapacidade.byProd,
+    manualFinishedStockByProduct,
+  ]);
 
   const demandaBase = planMode === 'pmp' ? pmpSummary.totalUnits : bomSummary.totalUnits;
   const faltaProduzir = Math.max(0, demandaBase - metaMensal);
@@ -603,6 +732,19 @@ const DemandFocus = () => {
       });
     });
   }, [parentItems, edgesByParent, bobinaSearch]);
+
+  const parentItemsOrdenados = useMemo(() => {
+    const list = parentItemsFiltrados.slice();
+    const sortByNeed = componentesSort.startsWith('need');
+    if (sortByNeed) {
+      list.sort((a, b) => {
+        const aNeed = Number(a.qty || 0);
+        const bNeed = Number(b.qty || 0);
+        return componentesSort === 'need_asc' ? aNeed - bNeed : bNeed - aNeed;
+      });
+    }
+    return list;
+  }, [parentItemsFiltrados, componentesSort]);
   const componentesAgrupados = useMemo(() => {
     const totals = new Map();
     const meta = new Map();
@@ -919,6 +1061,21 @@ const DemandFocus = () => {
     setCategoriaGrupoDrafts((prev) => ({ ...prev, [categoria]: value }));
   };
 
+  const handleCategoriaProdutoDraft = (produto, value) => {
+    setCategoriaProdutoDrafts((prev) => ({ ...prev, [produto]: value }));
+  };
+
+  const handleAplicarCategoriaProduto = (produto, novoValor) => {
+    const target = String(novoValor || '').trim();
+    if (!target) return;
+    handleCategoriaChange(produto, target);
+    setCategoriaProdutoDrafts((prev) => {
+      const next = { ...prev };
+      delete next[produto];
+      return next;
+    });
+  };
+
   const handleAplicarCategoriaGrupo = (categoria, novoValor) => {
     const target = String(novoValor || '').trim();
     if (!target) return;
@@ -935,6 +1092,18 @@ const DemandFocus = () => {
 
   const toggleCategoriaOpen = (categoria) => {
     setCategoriasAbertas((prev) => {
+      const next = new Set(prev);
+      if (next.has(categoria)) {
+        next.delete(categoria);
+      } else {
+        next.add(categoria);
+      }
+      return next;
+    });
+  };
+
+  const toggleResumoCategoriaOpen = (categoria) => {
+    setCategoriasResumoAbertas((prev) => {
       const next = new Set(prev);
       if (next.has(categoria)) {
         next.delete(categoria);
@@ -1104,7 +1273,7 @@ const DemandFocus = () => {
               <p className="text-xs text-slate-300">Subtotal da carteira</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-              <p className="text-[11px] uppercase tracking-wide text-slate-300">Produzido (informado)</p>
+              <p className="text-[11px] uppercase tracking-wide text-slate-300">Produzido + estoque</p>
               <p className="text-2xl font-semibold text-slate-100">{fmtUnits(viewSummary.totalProduced)} {unitLabel}</p>
               <p className="text-xs text-slate-300">Abatido da demanda</p>
             </div>
@@ -1154,6 +1323,41 @@ const DemandFocus = () => {
                     <p className="text-xs uppercase tracking-wide text-slate-300">{category.categoriaKey}</p>
                     <p className="text-2xl font-semibold text-slate-100">{fmtKg(category.totalKg || 0)} kg</p>
                     <p className="text-xs text-slate-400">({fmtNum(category.products)} produtos)</p>
+                    <div className="mt-3 flex items-center gap-2 text-xs text-slate-300">
+                      <input
+                        type="text"
+                        value={
+                          categoriaGrupoDrafts[category.categoriaKey] ?? category.categoriaKey
+                        }
+                        onChange={(event) =>
+                          handleCategoriaGrupoChange(
+                            category.categoriaKey,
+                            event.target.value
+                          )
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter') return;
+                          event.preventDefault();
+                          handleAplicarCategoriaGrupo(
+                            category.categoriaKey,
+                            categoriaGrupoDrafts[category.categoriaKey] ?? category.categoriaKey
+                          );
+                        }}
+                        className="flex-1 rounded-lg border border-white/10 bg-[#0b1220] px-2 py-1 text-xs text-slate-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleAplicarCategoriaGrupo(
+                            category.categoriaKey,
+                            categoriaGrupoDrafts[category.categoriaKey] ?? category.categoriaKey
+                          )
+                        }
+                        className="rounded-lg border border-white/10 bg-[#101a33] px-2 py-1 text-xs text-slate-200 hover:bg-white/10"
+                      >
+                        Aplicar
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1279,7 +1483,7 @@ const DemandFocus = () => {
                             <th className="p-3">Descrição</th>
                             <th className="p-3 text-right">Consumo (kg)</th>
                             <th className="p-3 text-right">Estoque (kg)</th>
-                            <th className="p-3 text-right">Diferença</th>
+                            <th className="p-3 text-right">Necessidade (kg)</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-white/10">
@@ -1294,20 +1498,97 @@ const DemandFocus = () => {
                                 const weight = bobina.totalKg || 0;
                                 const displayWeight = weight * viewFactor;
                                 const stock = getEstoquePorBobina(bobina.cod);
-                                const diff = stock - displayWeight;
+                                const need = Math.max(displayWeight - stock, 0);
                                 return (
                           <tr key={bobina.cod} className="hover:bg-white/5 transition-colors">
                                     <td className="p-3 font-mono text-slate-200">{bobina.cod}</td>
                                     <td className="p-3 text-sm text-slate-200">{bobina.desc}</td>
                                     <td className="p-3 text-right font-mono">{fmtKg(displayWeight)} {kgLabel}</td>
                                     <td className="p-3 text-right font-mono">{fmtKg(stock)} kg</td>
-                                    <td className={`p-3 text-right font-mono ${diff < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                                      {fmtKg(diff)} kg
+                                    <td className={`p-3 text-right font-mono ${need > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                                      {fmtKg(need)} kg
                                     </td>
                                   </tr>
                                 );
                               })
                             )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+                {viewMode === 'estoque_pa' && (
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <h3 className="text-lg font-semibold text-slate-100">Estoque de Produto Acabado</h3>
+                        <p className="text-xs text-slate-300">Preencha o saldo de PA para abater da necessidade.</p>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-slate-300">
+                        <input
+                          type="text"
+                          value={estoquePaSearch}
+                          onChange={(event) => setEstoquePaSearch(event.target.value)}
+                          placeholder="Buscar PA (codigo ou descricao)"
+                          className="w-64 rounded-lg border border-white/10 bg-[#0b1220] px-3 py-2 text-xs text-slate-200 placeholder:text-slate-500"
+                        />
+                        <span className="text-slate-400">
+                          {fmtNum(
+                            produtos.filter((item) => {
+                              const term = String(estoquePaSearch || '').trim().toLowerCase();
+                              if (!term) return true;
+                              const code = String(item.produto || '').toLowerCase();
+                              const desc = String(item.desc || '').toLowerCase();
+                              return code.includes(term) || desc.includes(term);
+                            }).length
+                          )} itens
+                        </span>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-left border-collapse">
+                        <thead>
+                          <tr className="text-xs uppercase tracking-wider text-slate-300 border-b border-white/10">
+                            <th className="p-3">Codigo</th>
+                            <th className="p-3">Descricao</th>
+                            <th className="p-3 text-right">Estoque PA (un)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/10">
+                          {produtos
+                            .filter((item) => {
+                              const term = String(estoquePaSearch || '').trim().toLowerCase();
+                              if (!term) return true;
+                              const code = String(item.produto || '').toLowerCase();
+                              const desc = String(item.desc || '').toLowerCase();
+                              return code.includes(term) || desc.includes(term);
+                            })
+                            .map((item) => (
+                              <tr key={`estoque-pa-${item.produto}`} className="hover:bg-white/5">
+                                <td className="p-3 font-mono text-slate-200">{item.produto}</td>
+                                <td className="p-3 text-sm text-slate-200">{item.desc || '-'}</td>
+                                <td className="p-3 text-right">
+                                  <input
+                                    type="number"
+                                    value={
+                                      Object.prototype.hasOwnProperty.call(manualFinishedStockDrafts, item.produto)
+                                        ? manualFinishedStockDrafts[item.produto]
+                                        : Object.prototype.hasOwnProperty.call(manualFinishedStockByProduct, item.produto)
+                                          ? manualFinishedStockByProduct[item.produto]
+                                          : ''
+                                    }
+                                    onChange={(event) => handleManualFinishedStockDraft(item.produto, event.target.value)}
+                                    onKeyDown={(event) => {
+                                      if (event.key !== 'Enter') return;
+                                      event.preventDefault();
+                                      handleManualFinishedStockCommit(item.produto);
+                                    }}
+                                    placeholder="0"
+                                    className="w-24 rounded-md border border-white/10 bg-[#0b1220] px-2 py-1 text-right text-xs text-slate-200 placeholder:text-slate-500"
+                                  />
+                                </td>
+                              </tr>
+                            ))}
                         </tbody>
                       </table>
                     </div>
@@ -1334,15 +1615,26 @@ const DemandFocus = () => {
                               placeholder="Buscar bobina (codigo ou descricao)"
                               className="w-64 rounded-lg border border-white/10 bg-[#0b1220] px-3 py-2 text-xs text-slate-200 placeholder:text-slate-500"
                             />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setComponentesSort((prev) =>
+                                  prev === 'need_desc' ? 'need_asc' : 'need_desc'
+                                )
+                              }
+                              className="rounded-lg border border-white/10 bg-[#101a33] px-3 py-2 text-xs text-slate-200 hover:bg-white/10"
+                            >
+                              Ordenar necessidade {componentesSort === 'need_desc' ? '↓' : '↑'}
+                            </button>
                             <span className="text-slate-400">{fmtNum(parentItemsFiltrados.length)} itens</span>
                           </div>
                         </div>
-                        {parentItemsFiltrados.length === 0 ? (
+                        {parentItemsOrdenados.length === 0 ? (
                           <div className="rounded-2xl border border-dashed border-white/10 bg-[#0b1220] p-6 text-center text-sm text-slate-400">
                             Nenhum item encontrado para essa bobina.
                           </div>
                         ) : (
-                          parentItemsFiltrados.map((item) => {
+                          parentItemsOrdenados.map((item) => {
                         return (
                           <details key={item.produto} className="group rounded-2xl border border-white/10 bg-[#0b1220]">
                             <summary className="flex flex-col gap-1 p-4 md:flex-row md:items-center md:justify-between list-none cursor-pointer">
@@ -1351,7 +1643,11 @@ const DemandFocus = () => {
                                 <p className="text-xs text-slate-300">{item.categoriaKey}</p>
                               </div>
                               <div className="text-right text-sm text-slate-300 space-y-1">
+                                <p className="text-xs text-slate-400">Necessidade</p>
                                 <p className="text-slate-100 font-semibold">{fmtUnits(item.qty)} un</p>
+                                <p className="text-[11px] text-slate-400">
+                                  Estoque PA: {fmtNum(getFinishedStockByProduct(item.produto))}
+                                </p>
                                 <p className="text-slate-200 font-mono">{fmtKgScaled(item.totalKg)} kg</p>
                                 {levelTotalsByParent[item.produto]?.length ? (
                                   <div className="flex flex-wrap justify-end gap-2 text-[10px] text-slate-400">
@@ -1389,8 +1685,13 @@ const DemandFocus = () => {
                                               {child.subItems.map((sub, subIndex) => {
                                                 const childQty = (child.factorSum ?? getEdgeFactor(child.edge)) * (Number(item.qty || 0) || 0);
                                                 const subQty = getEdgeFactor(sub.edge) * childQty;
-                                                const subCanExpand = String(sub.edge?.um ?? '').toUpperCase() !== 'KG';
-                                                const subEdges = subCanExpand ? (edgesByParent.get(sub.code) || []) : [];
+                                                const subEdgesAll = edgesByParent.get(sub.code) || [];
+                                                const hasSubMp = subEdgesAll.some(
+                                                  (subEdge) => String(subEdge?.tp ?? '').toUpperCase() === 'MP',
+                                                );
+                                                const subCanExpand =
+                                                  String(sub.edge?.um ?? '').toUpperCase() !== 'KG' || hasSubMp;
+                                                const subEdges = subCanExpand ? subEdgesAll : [];
                                                 const subChildren = subEdges
                                                   .filter((subEdge) => {
                                                     const tp = String(subEdge?.tp ?? '').toUpperCase();
@@ -1455,19 +1756,19 @@ const DemandFocus = () => {
                                                         )}
                                                         {hasSubMps && (
                                                           <div className="mt-2 space-y-1">
-                                                            <div className="text-[10px] uppercase tracking-wider text-slate-400">Bobinas (MP)</div>
-                                                            {subMpsAgg.map((subMp, subMpIndex) => {
-                                                              const subMpQty = (subMp.factorSum ?? getEdgeFactor(subMp.edge)) * subQty;
+                                                          <div className="text-[10px] uppercase tracking-wider text-slate-400">MP</div>
+                                                          {subMpsAgg.map((subMp, subMpIndex) => {
+                                                              const mpQty = getMpFactor(subMp.edge, sub.edge?.um) * subQty;
                                                               return (
                                                                 <div key={`${sub.code}-${subMp.code}-${subMpIndex}`} className="flex items-center justify-between gap-2">
                                                                   <span className="font-mono text-slate-200">{subMp.code}</span>
                                                                   <span className="truncate">{subMp.desc || 'Sem descricao'}</span>
                                                                   <span className="text-slate-400">N{subMp.edge?.nivel ?? '-'} MP</span>
-                                                                  <span className="font-mono text-slate-300">{fmtUnits(subMpQty)} {subMp.edge?.um ?? ''}</span>
+                                                                  <span className="font-mono text-slate-300">{fmtQtyByUm(mpQty, subMp.edge?.um)} {subMp.edge?.um ?? ''}</span>
                                                                 </div>
                                                               );
                                                             })}
-                                                          </div>
+                                                        </div>
                                                         )}
                                                       </div>
                                                     </details>
@@ -1478,15 +1779,15 @@ const DemandFocus = () => {
                                                     <div key={`${child.code}-${sub.code}-${subIndex}`} className="rounded-lg bg-[#0b1220] border border-white/10 px-3 py-2 text-sm">
                                                       {subHeader}
                                                       <div className="mt-2 border-t border-white/10 pt-2 space-y-1 text-xs text-slate-300">
-                                                        <div className="text-[10px] uppercase tracking-wider text-slate-400">Bobinas (MP)</div>
+                                                        <div className="text-[10px] uppercase tracking-wider text-slate-400">MP</div>
                                                         {subMpsAgg.map((subMp, subMpIndex) => {
-                                                          const subMpQty = (subMp.factorSum ?? getEdgeFactor(subMp.edge)) * subQty;
+                                                          const mpQty = getMpFactor(subMp.edge, sub.edge?.um) * subQty;
                                                           return (
                                                             <div key={`${sub.code}-${subMp.code}-${subMpIndex}`} className="flex items-center justify-between gap-2">
                                                               <span className="font-mono text-slate-200">{subMp.code}</span>
                                                               <span className="truncate">{subMp.desc || 'Sem descricao'}</span>
                                                               <span className="text-slate-400">N{subMp.edge?.nivel ?? '-'} MP</span>
-                                                              <span className="font-mono text-slate-300">{fmtUnits(subMpQty)} {subMp.edge?.um ?? ''}</span>
+                                                              <span className="font-mono text-slate-300">{fmtQtyByUm(mpQty, subMp.edge?.um)} {subMp.edge?.um ?? ''}</span>
                                                             </div>
                                                           );
                                                         })}
@@ -1503,13 +1804,19 @@ const DemandFocus = () => {
                                             </div>
                                           </div>
                                         ) : null}
-                                        {child.mps?.length ? (
-                                          <div className="flex flex-col gap-2">
-                                            {sortByLevelAndCode(child.mps).map((mp) => (
-                                              <div
-                                                key={`${child.code}-${mp.child}`}
-                                                className="flex items-center justify-between gap-3 rounded-lg bg-[#0b1220] border border-white/10 px-3 py-2 text-sm"
-                                              >
+                                      {child.mps?.length ? (
+                                        <div className="flex flex-col gap-2">
+                                          {sortByLevelAndCode(child.mps).map((mp) => {
+                                            const childQty =
+                                              (child.factorSum ?? getEdgeFactor(child.edge)) *
+                                              (Number(item.qty || 0) || 0);
+                                            const mpQty =
+                                              getMpFactor(mp, child.edge?.um) * childQty;
+                                            return (
+                                            <div
+                                              key={`${child.code}-${mp.child}`}
+                                              className="flex items-center justify-between gap-3 rounded-lg bg-[#0b1220] border border-white/10 px-3 py-2 text-sm"
+                                            >
                                                 <div className="min-w-0">
                                                   <div className="font-mono font-semibold text-slate-100">{mp.child}</div>
                                                   <div className="text-sm text-slate-300 truncate">
@@ -1519,15 +1826,30 @@ const DemandFocus = () => {
                                                 <div className="text-right text-sm text-slate-200 shrink-0">
                                                   <div className="font-semibold">N{mp.nivel ?? '-'}</div>
                                                   <div className="font-mono">
-                                                    {fmtQtyByUm((Number(mp.qtdNec || 0) * (child.factorSum ?? getEdgeFactor(child.edge)) * (Number(item.qty || 0) || 0)), mp.um)} {mp.um ?? ''}
+                                                    {fmtQtyByUm(mpQty, mp.um)} {mp.um ?? ''}
                                                   </div>
                                                 </div>
                                               </div>
-                                            ))}
-                                          </div>
-                                        ) : (
-                                          <div className="text-[11px] text-slate-400">Sem bobinas vinculadas</div>
-                                        )}
+                                          );
+                                          })}
+                                        </div>
+                                      ) : (
+                                        (() => {
+                                          const subItems = child.subItems || [];
+                                          const hasSubMp = subItems.some((sub) =>
+                                            (edgesByParent.get(sub.code) || []).some(
+                                              (subEdge) =>
+                                                String(subEdge?.tp ?? '').toUpperCase() === 'MP',
+                                            ),
+                                          );
+                                          if (hasSubMp) return null;
+                                          return (
+                                            <div className="text-[11px] text-slate-400">
+                                              Sem bobinas vinculadas
+                                            </div>
+                                          );
+                                        })()
+                                      )}
                                       </div>
                                     </details>
                                   );
@@ -1538,29 +1860,32 @@ const DemandFocus = () => {
 
                                 {estruturaByParent[item.produto]?.directMps?.length ? (
                                   <div className="rounded-lg border border-white/10 bg-[#0f1729] p-3">
-                                    <div className="text-xs uppercase text-slate-300 mb-2">
-                                      Bobinas diretas ({fmtNum(estruturaByParent[item.produto].directMps.length)})
-                                    </div>
+                                            <div className="text-xs uppercase text-slate-300 mb-2">
+                                              MP diretas ({fmtNum(estruturaByParent[item.produto].directMps.length)})
+                                            </div>
                                     <div className="flex flex-col gap-2">
-                                      {estruturaByParent[item.produto].directMps.map((mp) => (
-                                        <div
-                                          key={`${item.produto}-mp-${mp.child}`}
-                                          className="flex items-center justify-between gap-3 rounded-lg bg-[#0b1220] border border-white/10 px-3 py-2 text-sm"
-                                        >
+                                              {estruturaByParent[item.produto].directMps.map((mp) => {
+                                                const mpQty = getMpFactor(mp, null) * (Number(item.qty || 0) || 0);
+                                                return (
+                                                <div
+                                                  key={`${item.produto}-mp-${mp.child}`}
+                                                  className="flex items-center justify-between gap-3 rounded-lg bg-[#0b1220] border border-white/10 px-3 py-2 text-sm"
+                                                >
                                           <div className="min-w-0">
                                             <div className="font-mono font-semibold text-slate-100">{mp.child}</div>
                                             <div className="text-sm text-slate-300 truncate">
                                               {getItemDesc(mp.child) || 'Bobina'}
                                             </div>
                                           </div>
-                                          <div className="text-right text-sm text-slate-200 shrink-0">
-                                            <div className="font-semibold">N{mp.nivel ?? '-'}</div>
-                                            <div className="font-mono">
-                                              {fmtQtyByUm((Number(mp.qtdNec || 0) * (Number(item.qty || 0) || 0)), mp.um)} {mp.um ?? ''}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ))}
+                                                  <div className="text-right text-sm text-slate-200 shrink-0">
+                                                    <div className="font-semibold">N{mp.nivel ?? '-'}</div>
+                                                    <div className="font-mono">
+                                              {fmtQtyByUm(mpQty, mp.um)} {mp.um ?? ''}
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              );
+                                              })}
                                     </div>
                                   </div>
                                 ) : null}
@@ -1596,13 +1921,97 @@ const DemandFocus = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
-                {viewSummary.categoriasAgg.map((category) => (
-                  <tr key={category.categoriaKey} className="hover:bg-white/5 transition-colors">
-                    <td className="p-3 text-sm text-slate-100">{category.categoriaKey}</td>
-                    <td className="p-3 text-right font-mono text-slate-100">{fmtKg(category.totalKg || 0)} kg</td>
-                    <td className="p-3 text-right text-slate-200">{fmtNum(category.products)}</td>
-                  </tr>
-                ))}
+                {viewSummary.categoriasAgg.map((category) => {
+                  const isOpen = categoriasResumoAbertas.has(category.categoriaKey);
+                  const items = viewSummary.produtoRows
+                    .filter((item) => item.categoriaKey === category.categoriaKey)
+                    .slice()
+                    .sort((a, b) => (b.totalKg || 0) - (a.totalKg || 0));
+                  return (
+                    <React.Fragment key={category.categoriaKey}>
+                      <tr className="hover:bg-white/5 transition-colors">
+                        <td className="p-3 text-sm text-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => toggleResumoCategoriaOpen(category.categoriaKey)}
+                            className="inline-flex items-center gap-2 text-slate-100 hover:text-white"
+                          >
+                            <span
+                              className={`inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/10 text-[10px] ${
+                                isOpen ? 'bg-white/10' : 'bg-transparent'
+                              }`}
+                            >
+                              {isOpen ? '-' : '+'}
+                            </span>
+                            {category.categoriaKey}
+                          </button>
+                        </td>
+                        <td className="p-3 text-right font-mono text-slate-100">{fmtKg(category.totalKg || 0)} kg</td>
+                        <td className="p-3 text-right text-slate-200">{fmtNum(category.products)}</td>
+                      </tr>
+                      {isOpen && (
+                        <tr className="bg-white/5">
+                          <td colSpan={3} className="p-3">
+                            {items.length === 0 ? (
+                              <div className="text-xs text-slate-300">Nenhum item neste grupo.</div>
+                            ) : (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                {items.map((item) => (
+                                  <div
+                                    key={`${category.categoriaKey}-${item.produto}`}
+                                    className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-[#0b1220] px-3 py-2 text-xs text-slate-200"
+                                  >
+                                    <div className="min-w-0">
+                                      <div className="font-mono font-semibold text-slate-100">{item.produto}</div>
+                                      <div className="text-[11px] text-slate-400 truncate">{item.desc || '-'}</div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="text"
+                                        value={
+                                          categoriaProdutoDrafts[item.produto] ??
+                                          item.categoriaKey ??
+                                          ''
+                                        }
+                                        onChange={(event) =>
+                                          handleCategoriaProdutoDraft(item.produto, event.target.value)
+                                        }
+                                        onKeyDown={(event) => {
+                                          if (event.key !== 'Enter') return;
+                                          event.preventDefault();
+                                          handleAplicarCategoriaProduto(
+                                            item.produto,
+                                            categoriaProdutoDrafts[item.produto] ?? item.categoriaKey
+                                          );
+                                        }}
+                                        className="w-28 rounded-md border border-white/10 bg-[#0b1220] px-2 py-1 text-[11px] text-slate-200"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleAplicarCategoriaProduto(
+                                            item.produto,
+                                            categoriaProdutoDrafts[item.produto] ?? item.categoriaKey
+                                          )
+                                        }
+                                        className="rounded-md border border-white/10 bg-[#101a33] px-2 py-1 text-[11px] text-slate-200 hover:bg-white/10"
+                                      >
+                                        OK
+                                      </button>
+                                      <div className="text-right font-mono text-slate-100">
+                                        {fmtKg(item.totalKg || 0)} kg
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
