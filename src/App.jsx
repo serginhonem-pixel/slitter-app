@@ -457,6 +457,25 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [] })
     return '-';
   };
 
+  const buildQrPayload = ({ item, name, code, quantity, date, id, isProduct }) => {
+    const payload = {
+      id,
+      code,
+      desc: name || '',
+      qtd: quantity,
+      w: item.width ?? null,
+      t: getThicknessDisplay(item),
+      type: item.type || '',
+      date,
+    };
+
+    if (!isProduct && item.motherCode) {
+      payload.mother = item.motherCode;
+    }
+
+    return payload;
+  };
+
   return (
     <div className="fixed inset-0 bg-black/90 z-[60] flex flex-col items-center justify-center overflow-hidden">
         <div className="bg-gray-900 w-full p-4 border-b border-gray-700 flex justify-between items-center print:hidden">
@@ -480,7 +499,7 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [] })
                 code = item.productCode || item.code;
                 labelTitle = 'Produto Final';
             } else if (item.b2Name) {
-                name = getMotherDescription(item) || item.b2Name;
+                name = item.b2Name || getMotherDescription(item);
                 code = item.b2Code;
                 labelTitle = 'Bobina Slitter';
             } else {
@@ -492,6 +511,7 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [] })
             const quantity = type === 'product_stock' ? `${item.count} PÇS` : (isProduct ? `${item.pieces} PÇS` : `${item.weight} KG`);
             const date = item.date || new Date().toLocaleDateString();
             const id = item.id || 'ESTOQUE';
+            const qrPayload = buildQrPayload({ item, name, code, quantity, date, id, isProduct });
 
             return (
                   
@@ -533,7 +553,7 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [] })
                    )}
                  </div>
                  <div className="flex flex-col items-center mt-4 pt-2 border-t-2 border-black gap-2">
-                    <QRCodeSVG value={JSON.stringify({id: id, code: code, qtd: quantity})} size={100} />
+                    <QRCodeSVG value={JSON.stringify(qrPayload)} size={100} />
                     <div className="text-[10px] text-center w-full"><p className="font-mono truncate w-full">{id}</p></div>
                  </div>
               </div>
