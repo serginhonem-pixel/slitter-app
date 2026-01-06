@@ -1670,6 +1670,7 @@ export default function App() {
   const [selectedProductForHistory, setSelectedProductForHistory] = useState(null);
   const [isOtherMode, setIsOtherMode] = useState(false); // false = Bobina 2, true = Outros
   const [otherDescription, setOtherDescription] = useState(''); // Ex: "Telha", "Chapa"
+  const [showAllB2Profiles, setShowAllB2Profiles] = useState(false);
   // Junto com os outros useState
   const [cuttingDate, setCuttingDate] = useState(new Date().toISOString().split('T')[0]);
   // Junto com os outros useState
@@ -5116,31 +5117,34 @@ const getUnitWeight = (code) => {
     const selectedMother = motherCoils.find(m => m.id === selectedMotherForCut);
 
     // --- LÓGICA DE FILTRO (LÊ DIRETO DO ARQUIVO) ---
-    let availableB2Types = [];
+    const cleanNum = (val) => {
+        if (!val) return 0;
+        return parseFloat(String(val).replace(',', '.').replace('mm', '').trim());
+    };
+
+    const uniqueByB2 = (items) => {
+        const map = new Map();
+        items.forEach((p) => { if (!map.has(p.b2Code)) map.set(p.b2Code, p); });
+        return Array.from(map.values()).sort((a, b) => a.b2Name.localeCompare(b.b2Name));
+    };
+
+    const allB2Types = uniqueByB2(INITIAL_PRODUCT_CATALOG);
+    let filteredB2Types = [];
     if (selectedMother) {
-        const cleanNum = (val) => {
-            if (!val) return 0;
-            return parseFloat(String(val).replace(',', '.').replace('mm', '').trim());
-        };
         const motherThick = cleanNum(selectedMother.thickness);
         const targetCode = String(selectedMother.code).trim();
 
-        // Filtra direto do INITIAL_PRODUCT_CATALOG
         const filteredCatalog = INITIAL_PRODUCT_CATALOG.filter(p => {
-            // 1. Vínculo pelo Código (Prioridade)
             if (p.motherCode && String(p.motherCode).trim() === targetCode) return true;
-            
-            // 2. Vínculo pela Espessura (Backup)
             const prodThick = cleanNum(p.thickness);
             if (Math.abs(prodThick - motherThick) < 0.05) return true;
-            
             return false;
         });
 
-        const uniqueMap = new Map();
-        filteredCatalog.forEach(p => { if (!uniqueMap.has(p.b2Code)) uniqueMap.set(p.b2Code, p); });
-        availableB2Types = Array.from(uniqueMap.values()).sort((a, b) => a.b2Name.localeCompare(b.b2Name));
+        filteredB2Types = uniqueByB2(filteredCatalog);
     }
+
+    const availableB2Types = showAllB2Profiles ? allB2Types : filteredB2Types;
 
     return (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
@@ -5185,13 +5189,36 @@ const getUnitWeight = (code) => {
                           <div className="bg-amber-900/10 p-4 rounded-lg border border-amber-500/30"><Input label="Descrição" value={otherDescription} onChange={e => setOtherDescription(e.target.value)} /><Input label="Peso" type="number" value={cutWeight} onChange={e => setCutWeight(e.target.value)} /><Button onClick={addTempChildCoil} variant="warning" className="w-full mt-2">Adicionar</Button></div>
                       ) : (
                           <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Tipo de Bobina 2</label>
+                              <div className="flex items-center justify-between mb-1.5">
+                                  <label className="block text-xs font-bold text-gray-500 uppercase">Tipo de Bobina 2</label>
+                                  <button
+                                      type="button"
+                                      onClick={() => {
+                                          setShowAllB2Profiles(prev => {
+                                              const next = !prev;
+                                              if (!next && targetB2Code) {
+                                                  const stillAllowed = filteredB2Types.some(t => t.b2Code === targetB2Code);
+                                                  if (!stillAllowed) setTargetB2Code('');
+                                              }
+                                              return next;
+                                          });
+                                      }}
+                                      className={`text-[11px] font-bold px-2 py-1 rounded-full border transition ${showAllB2Profiles ? 'bg-amber-900/30 text-amber-300 border-amber-500/40' : 'bg-gray-900 text-gray-400 border-gray-700 hover:text-gray-200'}`}
+                                  >
+                                      {showAllB2Profiles ? 'Todos os perfis liberados' : 'Liberar todos os perfis'}
+                                  </button>
+                              </div>
                               <select className="w-full p-3 border border-gray-700 rounded-lg bg-gray-900 text-white outline-none text-sm" value={targetB2Code} onChange={e => setTargetB2Code(e.target.value)}>
                                   <option value="">Selecione...</option>
                                   {availableB2Types.map(t => (
                                       <option key={t.code} value={t.b2Code}>{t.b2Code} - {t.b2Name} - {t.width}mm</option>
                                   ))}
                               </select>
+                              {showAllB2Profiles && (
+                                  <div className="text-[11px] text-amber-300/80 mt-1">
+                                      Mostrando todos os perfis do catálogo (não filtrado pela estrutura).
+                                  </div>
+                              )}
                               <div className="grid grid-cols-2 gap-4 mt-4"><div><Input label="Peso" type="number" value={cutWeight} onChange={e => setCutWeight(e.target.value)} /></div><div><Input label="Qtd" type="number" value={cutQuantity} onChange={e => setCutQuantity(e.target.value)} /></div></div>
                               <Button onClick={addTempChildCoil} className="w-full mt-2" disabled={!targetB2Code || !cutWeight || !cutQuantity}>Adicionar</Button>
                           </div>
