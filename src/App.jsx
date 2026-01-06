@@ -21,6 +21,7 @@ import {
 
 import {
   Archive,
+  ChevronLeft,
   ChevronRight,
   Download,
   Edit,
@@ -1650,6 +1651,7 @@ export default function App() {
 
   const [logsPage, setLogsPage] = useState(1);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [isSidebarHidden, setSidebarHidden] = useState(false);
   const inventoryMotherRef = useRef(null); // <--- ADICIONE ISSO
   const adminInventoryB2FileRef = useRef(null);
   const adminInventoryPaFileRef = useRef(null);
@@ -3075,6 +3077,10 @@ export default function App() {
 
     const remaining = Math.max(0, mother.remainingWeight - totalConsumed);
     const isTotalConsumption = remaining < 10;
+
+    if (!isTotalConsumption) {
+      if (!window.confirm(`Vai sobrar ${remaining.toFixed(1)}kg na bobina. Confirmar mesmo assim?`)) return;
+    }
     
     // Texto do Histórico
     const itemsSummary = tempChildCoils.map(t => t.isDirectConsumption ? `${t.b2Name} (${t.weight}kg)` : `${t.b2Code} - ${t.b2Name} (${t.weight.toFixed(0)}kg)`).join(', ');
@@ -3107,8 +3113,14 @@ export default function App() {
       remainingWeight: remaining,
       status: isTotalConsumption ? 'consumed' : 'stock',
       cutWaste: (mother.cutWaste || 0) + manualScrap,
-      consumedDate: isTotalConsumption ? dateNow : mother.consumedDate,
-      consumptionDetail: isTotalConsumption ? (mother.consumptionDetail ? mother.consumptionDetail + ' + ' + itemsSummary : itemsSummary) : mother.consumptionDetail
+      ...(isTotalConsumption
+        ? {
+            consumedDate: dateNow,
+            consumptionDetail: mother.consumptionDetail
+              ? mother.consumptionDetail + ' + ' + itemsSummary
+              : itemsSummary,
+          }
+        : {}),
     };
 
     // --- 4. ATUALIZAÇÃO OTIMISTA (NA TELA AGORA) ---
@@ -9511,6 +9523,12 @@ const handleUploadJSONToFirebase = async (e) => {
     return <Login onLoginSuccess={setUser} />;
   }
 
+  const handleSidebarNavigate = (tab) => {
+    setActiveTab(tab);
+    setSidebarOpen(false);
+    setSidebarHidden(true);
+  };
+
   return (
 
 
@@ -9530,59 +9548,66 @@ const handleUploadJSONToFirebase = async (e) => {
       <div className={`fixed inset-0 z-30 bg-black/50 md:hidden ${isSidebarOpen ? 'block' : 'hidden'}`} onClick={() => setSidebarOpen(false)}></div>
 
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-950/70 text-gray-300 flex flex-col border-r border-white/5 shadow-2xl backdrop-blur-sm transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:w-72`}>
-        <div className="h-20 flex items-center px-6 border-b border-white/5 font-bold text-xl tracking-wider bg-black/20">
-           <img 
-             src="/logo.png" 
-             alt="Logo Metalosa" 
-             className="w-10 h-10 mr-3 object-contain" 
-           />
-           <span className="text-white">METALOSA</span>
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-950/70 text-gray-300 flex flex-col border-r border-white/5 shadow-2xl backdrop-blur-sm transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${isSidebarHidden ? 'md:-translate-x-full' : 'md:translate-x-0 md:static'} md:w-72`}>
+        <div className="h-20 flex items-center justify-between px-6 border-b border-white/5 font-bold text-xl tracking-wider bg-black/20">
+           <div className="flex items-center">
+             <img 
+               src="/logo.png" 
+               alt="Logo Metalosa" 
+               className="w-10 h-10 mr-3 object-contain" 
+             />
+             <span className="text-white">METALOSA</span>
+           </div>
+           <button
+             type="button"
+             onClick={() => setSidebarHidden(true)}
+             className="hidden md:inline-flex p-1.5 rounded-full text-gray-500 hover:text-gray-200 hover:bg-white/5 transition"
+             title="Esconder menu"
+           >
+             <ChevronLeft size={16} />
+           </button>
         </div>
         <nav className="flex-1 py-8 px-4 space-y-2 overflow-y-auto custom-scrollbar-dark">
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Principal</p>
            
-           <button onClick={() => { setActiveTab('dashboard'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'dashboard' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+           <button onClick={() => handleSidebarNavigate('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'dashboard' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <LayoutDashboard size={20} className={activeTab === 'dashboard' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">Visão Geral</span>
            </button>
            
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mt-8 mb-4">Operacional</p>
            
-           <button onClick={() => { setActiveTab('mother'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'mother' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+           <button onClick={() => handleSidebarNavigate('mother')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'mother' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <ScrollText size={20} className={activeTab === 'mother' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">Entrada de MP</span>
            </button>
            {/* ... outros botões ... */}
                      
-           <button onClick={() => { setActiveTab('cutting'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'cutting' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+           <button onClick={() => handleSidebarNavigate('cutting')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'cutting' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <Scissors size={20} className={activeTab === 'cutting' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">Corte Slitter</span>
            </button>
            
-           <button onClick={() => { setActiveTab('production'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'production' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+           <button onClick={() => handleSidebarNavigate('production')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'production' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <Factory size={20} className={activeTab === 'production' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">Apontamento</span>
            </button>
            
-           <button onClick={() => { setActiveTab('shipping'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'shipping' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+           <button onClick={() => handleSidebarNavigate('shipping')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'shipping' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <Truck size={20} className={activeTab === 'shipping' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">Expedição</span>
            </button>
 
            
-           <button onClick={() => { setActiveTab('reports'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'reports' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+           <button onClick={() => handleSidebarNavigate('reports')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'reports' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <FileText size={20} className={activeTab === 'reports' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">Relatórios</span>
            </button>
 
-            <button onClick={() => { setActiveTab('b2report'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'b2report' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+            <button onClick={() => handleSidebarNavigate('b2report')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'b2report' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
               <List size={20} className={activeTab === 'b2report' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">Rastreio B2</span>
             </button>
 
-           <button onClick={() => { setActiveTab('bi'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'bi' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+           <button onClick={() => handleSidebarNavigate('bi')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'bi' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
                 <PieChart size={20} className={activeTab === 'bi' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">BI & Gráficos</span>
             </button>
 
             <button 
-            onClick={() => { 
-              setActiveTab('mpNeed'); 
-              setSidebarOpen(false); 
-            }} 
+            onClick={() => handleSidebarNavigate('mpNeed')}
             className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group 
               ${activeTab === 'mpNeed' 
                 ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' 
@@ -9601,10 +9626,7 @@ const handleUploadJSONToFirebase = async (e) => {
 
           
           <button 
-            onClick={() => { 
-              setActiveTab('steelDemand'); 
-              setSidebarOpen(false); 
-            }} 
+            onClick={() => handleSidebarNavigate('steelDemand')}
             className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group 
               ${activeTab === 'steelDemand' 
                 ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' 
@@ -9625,7 +9647,7 @@ const handleUploadJSONToFirebase = async (e) => {
 
            {isAdminUser && (
              <button
-               onClick={() => { setActiveTab('admin'); setSidebarOpen(false); }}
+               onClick={() => handleSidebarNavigate('admin')}
                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${
                  activeTab === 'admin'
                    ? 'bg-red-600/15 text-red-200 border border-red-500/20 shadow-inner'
@@ -9683,6 +9705,15 @@ const handleUploadJSONToFirebase = async (e) => {
          
          <header className="h-16 md:h-20 bg-slate-900/70 backdrop-blur shadow-lg flex items-center justify-between px-4 md:px-8 z-10 border-b border-white/5 shrink-0">
             <div className="flex items-center gap-4">
+              {isSidebarHidden && (
+                <button
+                  className="hidden md:inline-flex p-2 text-gray-400 hover:text-white"
+                  onClick={() => setSidebarHidden(false)}
+                  title="Mostrar menu"
+                >
+                  <ChevronRight size={22} />
+                </button>
+              )}
               <button className="md:hidden p-2 text-gray-400 hover:text-white" onClick={() => setSidebarOpen(true)}><Menu size={24}/></button>
               <div>
                 <h2 className="text-lg md:text-2xl font-bold text-white tracking-tight truncate">
