@@ -4237,16 +4237,27 @@ export default function App() {
     const fallbackProductCatalog = Array.isArray(INITIAL_PRODUCT_CATALOG)
       ? INITIAL_PRODUCT_CATALOG
       : [];
-    const productByCode = runtimeProductCatalog.reduce((acc, item) => {
+    const fallbackByCode = fallbackProductCatalog.reduce((acc, item) => {
       if (!item?.code) return acc;
-      const key = String(item.code);
-      acc[key] = item;
+      acc[String(item.code)] = item;
       return acc;
     }, {});
-    fallbackProductCatalog.forEach((item) => {
+    const mergeCatalogItem = (base, incoming) => {
+      const merged = { ...(base || {}) };
+      if (!incoming) return merged;
+      Object.keys(incoming).forEach((key) => {
+        const value = incoming[key];
+        if (value !== undefined && value !== null && value !== '') {
+          merged[key] = value;
+        }
+      });
+      return merged;
+    };
+    const productByCode = { ...fallbackByCode };
+    runtimeProductCatalog.forEach((item) => {
       if (!item?.code) return;
       const key = String(item.code);
-      if (!productByCode[key]) productByCode[key] = item;
+      productByCode[key] = mergeCatalogItem(productByCode[key], item);
     });
     const mergedProductCatalog = Object.values(productByCode);
     const runtimeMotherCatalog = Array.isArray(motherCatalog) ? motherCatalog : [];
