@@ -1650,8 +1650,11 @@ export default function App() {
 // 'dashboard', 'rastreioB2', 'mpNeed', etc...
 
   const [logsPage, setLogsPage] = useState(1);
-  const [isSidebarOpen, setSidebarOpen] = useState(false);
-  const [isSidebarHidden, setSidebarHidden] = useState(false);
+    const [isSidebarOpen, setSidebarOpen] = useState(false);
+    const [isSidebarHidden, setSidebarHidden] = useState(() => {
+      if (typeof window === 'undefined') return false;
+      return window.localStorage.getItem('sidebarHidden') === 'true';
+    });
   const inventoryMotherRef = useRef(null); // <--- ADICIONE ISSO
   const adminInventoryB2FileRef = useRef(null);
   const adminInventoryPaFileRef = useRef(null);
@@ -9523,11 +9526,19 @@ const handleUploadJSONToFirebase = async (e) => {
     return <Login onLoginSuccess={setUser} />;
   }
 
-  const handleSidebarNavigate = (tab) => {
-    setActiveTab(tab);
-    setSidebarOpen(false);
-    setSidebarHidden(true);
-  };
+    const setSidebarHiddenPreference = (value) => {
+      setSidebarHidden(value);
+      try {
+        window.localStorage.setItem('sidebarHidden', String(value));
+      } catch (error) {
+        console.warn('Nao foi possivel salvar a preferencia do menu lateral.', error);
+      }
+    };
+
+    const handleSidebarNavigate = (tab) => {
+      setActiveTab(tab);
+      setSidebarOpen(false);
+    };
 
   return (
 
@@ -9560,7 +9571,7 @@ const handleUploadJSONToFirebase = async (e) => {
            </div>
            <button
              type="button"
-             onClick={() => setSidebarHidden(true)}
+               onClick={() => setSidebarHiddenPreference(true)}
              className="hidden md:inline-flex p-1.5 rounded-full text-gray-500 hover:text-gray-200 hover:bg-white/5 transition"
              title="Esconder menu"
            >
@@ -9708,7 +9719,7 @@ const handleUploadJSONToFirebase = async (e) => {
               {isSidebarHidden && (
                 <button
                   className="hidden md:inline-flex p-2 text-gray-400 hover:text-white"
-                  onClick={() => setSidebarHidden(false)}
+                  onClick={() => setSidebarHiddenPreference(false)}
                   title="Mostrar menu"
                 >
                   <ChevronRight size={22} />
