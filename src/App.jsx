@@ -1656,8 +1656,9 @@ export default function App() {
       return window.localStorage.getItem('sidebarHidden') === 'true';
     });
   const inventoryMotherRef = useRef(null); // <--- ADICIONE ISSO
-  const adminInventoryB2FileRef = useRef(null);
-  const adminInventoryPaFileRef = useRef(null);
+    const adminInventoryB2FileRef = useRef(null);
+    const adminInventoryPaFileRef = useRef(null);
+    const adminQuickFormRef = useRef(null);
   const fileInputMotherRef = useRef(null);
   const importMotherStockRef = useRef(null);
   const importChildStockRef = useRef(null);
@@ -4289,6 +4290,8 @@ export default function App() {
           'Descricao PA': stock.name || catalogItem.name || '-',
           'Codigo B2': catalogItem.b2Code || '-',
           'Descricao B2': catalogItem.b2Name || '-',
+          'Espessura B2': catalogItem.thickness || '-',
+          'Tipo B2': catalogItem.type || '-',
           'Codigo Bobina Mae': motherCode || '-',
           'Descricao Bobina Mae': motherInfo.description || '-',
           'Espessura Mae': motherInfo.thickness || '-',
@@ -4329,6 +4332,8 @@ export default function App() {
       { header: 'Descricao PA', dataKey: 'Descricao PA' },
       { header: 'Codigo B2', dataKey: 'Codigo B2' },
       { header: 'Descricao B2', dataKey: 'Descricao B2' },
+      { header: 'Espessura B2', dataKey: 'Espessura B2' },
+      { header: 'Tipo B2', dataKey: 'Tipo B2' },
       { header: 'Codigo Bobina Mae', dataKey: 'Codigo Bobina Mae' },
       { header: 'Descricao Bobina Mae', dataKey: 'Descricao Bobina Mae' },
       { header: 'Espessura Mae', dataKey: 'Espessura Mae' },
@@ -7197,6 +7202,11 @@ safeCutting.forEach((c) => {
       );
     }
 
+    const focusAdminQuickForm = (type) => {
+      setAdminCreateType(type);
+      adminQuickFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
     const parseDate = (value) => {
       if (!value) return null;
       if (typeof value === 'string' && value.includes('/')) {
@@ -7416,7 +7426,8 @@ safeCutting.forEach((c) => {
 
     return (
       <div className="space-y-6">
-        <Card>
+        <div ref={adminQuickFormRef}>
+          <Card>
           <h3 className="text-lg font-bold text-white mb-4">Cadastro rápido</h3>
           <div className="flex flex-wrap gap-2 mb-4">
             <Button
@@ -7649,235 +7660,19 @@ safeCutting.forEach((c) => {
             </>
           )}
         </Card>
+        </div>
 
         <Card>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-4">
-            <h3 className="text-lg font-bold text-white">Inventario (B2 e PA)</h3>
+            <h3 className="text-lg font-bold text-white">Catalogo de Produtos</h3>
             <div className="flex flex-wrap gap-2">
               <Button
-                variant="secondary"
-                onClick={() => adminInventoryB2FileRef.current?.click()}
+                variant="primary"
+                onClick={() => focusAdminQuickForm('product')}
                 className="text-xs"
               >
-                <Upload size={16} /> Importar B2 CSV
+                <Plus size={16} /> Cadastrar produto
               </Button>
-              <Button
-                variant="secondary"
-                onClick={() => adminInventoryPaFileRef.current?.click()}
-                className="text-xs"
-              >
-                <Upload size={16} /> Importar PA CSV
-              </Button>
-              {adminInventoryReport && (
-                <Button
-                  variant="secondary"
-                  onClick={() => setAdminInventoryReport(null)}
-                  className="text-xs"
-                >
-                  Limpar
-                </Button>
-              )}
-            </div>
-          </div>
-          <input
-            ref={adminInventoryB2FileRef}
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={(e) => handleAdminInventoryUpload(e, 'b2')}
-          />
-          <input
-            ref={adminInventoryPaFileRef}
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={(e) => handleAdminInventoryUpload(e, 'pa')}
-          />
-          <p className="text-xs text-gray-400">
-            CSV esperado: Data, ID, Descricao, Peso/Qtd, Usuario.
-          </p>
-
-          {!adminInventoryReport && (
-            <p className="text-xs text-gray-500 mt-3">Nenhum arquivo carregado.</p>
-          )}
-
-          {adminInventoryReport && (
-            <div className="mt-4 space-y-4">
-              <div className="text-xs text-gray-400">
-                {adminInventoryReport.b2?.fileName
-                  ? `B2: ${adminInventoryReport.b2.fileName} · ${adminInventoryReport.b2.parsedAt || ''}`
-                  : 'B2: nenhum arquivo'}
-                {' | '}
-                {adminInventoryReport.pa?.fileName
-                  ? `PA: ${adminInventoryReport.pa.fileName} · ${adminInventoryReport.pa.parsedAt || ''}`
-                  : 'PA: nenhum arquivo'}
-                {adminInventoryReport.skipped ? ` · Ignoradas: ${adminInventoryReport.skipped}` : ''}
-              </div>
-              {adminInventoryReport.warnings.length > 0 && (
-                <div className="text-xs text-amber-300">
-                  {adminInventoryReport.warnings.join(' | ')}
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="bg-gray-900/40 border border-gray-700 rounded-lg p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-sm font-semibold text-white">Bobinas B2</h4>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-gray-400">
-                      CSV: {adminInventoryReport.b2.totalFile.toFixed(1)} kg ·
-                      Sistema: {adminInventoryReport.b2.totalSystem.toFixed(1)} kg
-                    </span>
-                    <Button
-                      variant="secondary"
-                      className="text-[11px]"
-                      onClick={() => exportInventoryDiscrepanciesPdf('b2')}
-                      disabled={adminInventoryReport.b2.rows.length === 0}
-                    >
-                      <FileText size={14} /> PDF discrepancias
-                    </Button>
-                  </div>
-                </div>
-                  <div className="overflow-auto max-h-[260px] custom-scrollbar-dark">
-                    <table className="w-full text-xs text-left text-gray-300">
-                      <thead className="bg-gray-900 text-gray-400 sticky top-0">
-                        <tr>
-                          <th className="p-2">Codigo</th>
-                          <th className="p-2">Descricao</th>
-                          <th className="p-2 text-right">CSV (kg)</th>
-                          <th className="p-2 text-right">Sistema (kg)</th>
-                          <th className="p-2 text-right">Diff (kg)</th>
-                          <th className="p-2 text-center">Acoes</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-800">
-                        {adminInventoryReport.b2.rows.length === 0 ? (
-                          <tr>
-                            <td colSpan="6" className="p-3 text-center text-gray-500">
-                              Sem divergencias.
-                            </td>
-                          </tr>
-                        ) : (
-                          adminInventoryReport.b2.rows.map((row) => (
-                            <tr key={`b2-${row.code}`} className="hover:bg-gray-800/40">
-                              <td className="p-2 font-mono">{row.code}</td>
-                              <td className="p-2">{row.name || '-'}</td>
-                              <td className="p-2 text-right">{row.fileQty.toFixed(1)}</td>
-                              <td className="p-2 text-right">{row.systemQty.toFixed(1)}</td>
-                              <td className={`p-2 text-right font-semibold ${row.diff > 0 ? 'text-emerald-300' : 'text-red-300'}`}>
-                                {row.diff.toFixed(1)}
-                              </td>
-                              <td className="p-2 text-center">
-                                <button
-                                  onClick={() =>
-                                    setAdminInventoryMovementsModal({ scope: 'b2', code: row.code })
-                                  }
-                                  className="px-2 py-1 text-[11px] rounded bg-blue-600/20 text-blue-200 hover:bg-blue-600/40"
-                                >
-                                  Movimentos
-                                </button>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="mt-2 flex justify-end">
-                    <Button
-                      variant="primary"
-                      className="text-xs"
-                      disabled={adminInventoryReport.b2.rows.length === 0}
-                      onClick={() => applyAdminInventoryAdjustments('b2')}
-                    >
-                      Confirmar ajuste B2
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="bg-gray-900/40 border border-gray-700 rounded-lg p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-sm font-semibold text-white">Produto Acabado</h4>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-gray-400">
-                      CSV: {adminInventoryReport.pa.totalFile} pcs ·
-                      Sistema: {adminInventoryReport.pa.totalSystem} pcs
-                    </span>
-                    <Button
-                      variant="secondary"
-                      className="text-[11px]"
-                      onClick={() => exportInventoryDiscrepanciesPdf('pa')}
-                      disabled={adminInventoryReport.pa.rows.length === 0}
-                    >
-                      <FileText size={14} /> PDF discrepancias
-                    </Button>
-                  </div>
-                </div>
-                  <div className="overflow-auto max-h-[260px] custom-scrollbar-dark">
-                    <table className="w-full text-xs text-left text-gray-300">
-                      <thead className="bg-gray-900 text-gray-400 sticky top-0">
-                        <tr>
-                          <th className="p-2">Codigo</th>
-                          <th className="p-2">Descricao</th>
-                          <th className="p-2 text-right">CSV (pcs)</th>
-                          <th className="p-2 text-right">Sistema (pcs)</th>
-                          <th className="p-2 text-right">Diff (pcs)</th>
-                          <th className="p-2 text-center">Acoes</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-800">
-                        {adminInventoryReport.pa.rows.length === 0 ? (
-                          <tr>
-                            <td colSpan="6" className="p-3 text-center text-gray-500">
-                              Sem divergencias.
-                            </td>
-                          </tr>
-                        ) : (
-                          adminInventoryReport.pa.rows.map((row) => (
-                            <tr key={`pa-${row.code}`} className="hover:bg-gray-800/40">
-                              <td className="p-2 font-mono">{row.code}</td>
-                              <td className="p-2">{row.name || '-'}</td>
-                              <td className="p-2 text-right">{Math.round(row.fileQty)}</td>
-                              <td className="p-2 text-right">{Math.round(row.systemQty)}</td>
-                              <td className={`p-2 text-right font-semibold ${row.diff > 0 ? 'text-emerald-300' : 'text-red-300'}`}>
-                                {Math.round(row.diff)}
-                              </td>
-                              <td className="p-2 text-center">
-                                <button
-                                  onClick={() =>
-                                    setAdminInventoryMovementsModal({ scope: 'pa', code: row.code })
-                                  }
-                                  className="px-2 py-1 text-[11px] rounded bg-blue-600/20 text-blue-200 hover:bg-blue-600/40"
-                                >
-                                  Movimentos
-                                </button>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="mt-2 flex justify-end">
-                    <Button
-                      variant="primary"
-                      className="text-xs"
-                      disabled={adminInventoryReport.pa.rows.length === 0}
-                      onClick={() => applyAdminInventoryAdjustments('pa')}
-                    >
-                      Confirmar ajuste PA
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </Card>
-
-        <Card>
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-4">
-            <h3 className="text-lg font-bold text-white">Catálogo de Produtos</h3>
-            <div className="flex flex-wrap gap-2">
               <Button
                 variant="secondary"
                 onClick={exportFinishedStructureReport}
@@ -7899,21 +7694,21 @@ safeCutting.forEach((c) => {
               label="Filtro"
               value={adminCatalogFilter}
               onChange={(e) => setAdminCatalogFilter(e.target.value)}
-              placeholder="Código, descrição, B2..."
+              placeholder="Codigo, descricao, B2..."
             />
           </div>
           <div className="overflow-auto max-h-[360px] custom-scrollbar-dark">
             <table className="w-full text-sm text-left text-gray-300">
               <thead className="bg-gray-900 text-gray-400 sticky top-0">
                 <tr>
-                  <th className="p-2">Código</th>
-                  <th className="p-2">Descrição</th>
+                  <th className="p-2">Codigo</th>
+                  <th className="p-2">Descricao</th>
                   <th className="p-2">B2</th>
-                  <th className="p-2">Descrição B2</th>
+                  <th className="p-2">Descricao B2</th>
                   <th className="p-2 text-right">Largura</th>
                   <th className="p-2 text-right">Esp.</th>
                   <th className="p-2 text-right">Tipo</th>
-                  <th className="p-2 text-center">Ações</th>
+                  <th className="p-2 text-center">Acoes</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800">
@@ -7955,25 +7750,34 @@ safeCutting.forEach((c) => {
 
         <Card>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-4">
-            <h3 className="text-lg font-bold text-white">Catálogo de Bobinas</h3>
+            <h3 className="text-lg font-bold text-white">Catalogo de Bobinas</h3>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="primary"
+                onClick={() => focusAdminQuickForm('mother')}
+                className="text-xs"
+              >
+                <Plus size={16} /> Cadastrar bobina mae
+              </Button>
+            </div>
           </div>
           <div className="mb-3">
             <Input
               label="Filtro"
               value={adminMotherCatalogFilter}
               onChange={(e) => setAdminMotherCatalogFilter(e.target.value)}
-              placeholder="Código, descrição, tipo..."
+              placeholder="Codigo, descricao, tipo..."
             />
           </div>
           <div className="overflow-auto max-h-[360px] custom-scrollbar-dark">
             <table className="w-full text-sm text-left text-gray-300">
               <thead className="bg-gray-900 text-gray-400 sticky top-0">
                 <tr>
-                  <th className="p-2">Código</th>
-                  <th className="p-2">Descrição</th>
+                  <th className="p-2">Codigo</th>
+                  <th className="p-2">Descricao</th>
                   <th className="p-2 text-right">Esp.</th>
                   <th className="p-2 text-right">Tipo</th>
-                  <th className="p-2 text-center">Ações</th>
+                  <th className="p-2 text-center">Acoes</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800">
@@ -8009,8 +7813,7 @@ safeCutting.forEach((c) => {
             onPageChange={setAdminMotherCatalogPage}
           />
         </Card>
-
-        <Card>
+<Card>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-4">
             <h3 className="text-lg font-bold text-white">Resumo de movimentações</h3>
             <span className="text-xs text-gray-400">
