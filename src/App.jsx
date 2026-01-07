@@ -4234,16 +4234,21 @@ export default function App() {
   const buildFinishedStructureRows = () => {
     const stockMap = getFinishedStock() || {};
     const runtimeProductCatalog = Array.isArray(productCatalog) ? productCatalog : [];
-    const mergedProductCatalog = [...INITIAL_PRODUCT_CATALOG, ...runtimeProductCatalog];
-    const productByCode = mergedProductCatalog.reduce((acc, item) => {
+    const fallbackProductCatalog = Array.isArray(INITIAL_PRODUCT_CATALOG)
+      ? INITIAL_PRODUCT_CATALOG
+      : [];
+    const productByCode = runtimeProductCatalog.reduce((acc, item) => {
       if (!item?.code) return acc;
       const key = String(item.code);
-      const existing = acc[key];
-      const hasMother = String(item.motherCode || '').trim();
-      const existingHasMother = String(existing?.motherCode || '').trim();
-      if (!existing || (!existingHasMother && hasMother)) acc[key] = item;
+      acc[key] = item;
       return acc;
     }, {});
+    fallbackProductCatalog.forEach((item) => {
+      if (!item?.code) return;
+      const key = String(item.code);
+      if (!productByCode[key]) productByCode[key] = item;
+    });
+    const mergedProductCatalog = Object.values(productByCode);
     const runtimeMotherCatalog = Array.isArray(motherCatalog) ? motherCatalog : [];
     const mergedMotherCatalog = [...INITIAL_MOTHER_CATALOG, ...runtimeMotherCatalog];
     const motherByCode = mergedMotherCatalog.reduce((acc, item) => {
@@ -6769,7 +6774,7 @@ safeCutting.forEach((c) => {
 
                         {isExpanded && (
                           <tr>
-                            <td colSpan={6} className="bg-gray-900/50 p-0">
+                            <td colSpan={8} className="bg-gray-900/50 p-0">
                               <div className="p-4 border-t border-purple-900/50 animate-fade-in">
                                 {details.length === 0 ? (
                                   <div className="text-center text-gray-500 text-sm py-4">
@@ -8945,6 +8950,10 @@ const renderB2DynamicReport = () => {
       (m) => String(m.code) === String(b2.motherCode)
     );
 
+    const b2CatalogEntry = b2CatalogMap[String(b2.b2Code || b2.code || '').trim()] || {};
+    const b2Thickness = b2CatalogEntry.thickness ?? b2.thickness ?? null;
+    const b2Type = b2CatalogEntry.type ?? b2.type ?? null;
+
     return {
       ...b2,
       motherMaterial: mother.material,
@@ -8958,6 +8967,8 @@ const renderB2DynamicReport = () => {
         : null,
       productionBatchId: prodLog ? prodLog.id : null,
 
+      b2Thickness,
+      b2Type,
       // chave: espessura e tipo sempre baseados na MP
       thickness: motherCatalogMatch?.thickness ?? null,
       type: motherCatalogMatch?.type ?? null,
@@ -8993,12 +9004,12 @@ const renderB2DynamicReport = () => {
       const matchesThickness =
         !b2ThicknessFilter ||
         b2ThicknessFilter === "all" ||
-        String(item.thickness) === String(b2ThicknessFilter);
+        String(item.b2Thickness ?? item.thickness) === String(b2ThicknessFilter);
 
       const matchesType =
         !b2TypeFilter ||
         b2TypeFilter === "all" ||
-        String(item.type) === String(b2TypeFilter);
+        String(item.b2Type ?? item.type) === String(b2TypeFilter);
 
       return matchesSearch && matchesThickness && matchesType;
     });
@@ -9029,20 +9040,20 @@ const renderB2DynamicReport = () => {
       ];
     });
 
-    autoTable(doc, {
-      startY: 28,
-      head: [[
-        'B2 Codigo',
-        'B2 Descricao',
-        'Mae Codigo',
-        'Mae Descricao',
-        'Mae Largura (mm)',
-        'Mae Espessura (mm)',
-        'B2 Largura (mm)',
-        'B2 Espessura (mm)',
-        'Tipo',
-      ]],
-      body: rows,
+      autoTable(doc, {
+        startY: 28,
+        head: [[
+          'B2 Codigo',
+          'B2 Descricao',
+          'Mae Codigo',
+          'Mae Descricao',
+          'Mae Largura (mm)',
+          'Mae Espessura (mm)',
+          'B2 Largura (mm)',
+          'B2 Espessura (mm)',
+          'B2 Tipo',
+        ]],
+        body: rows,
       theme: 'grid',
       styles: { fontSize: 7 },
       headStyles: { fillColor: [40, 40, 40], textColor: [255, 255, 255] },
@@ -9064,7 +9075,7 @@ const renderB2DynamicReport = () => {
 
   // --- 3. OPÇÕES DE FILTRO (ESPESSURA / TIPO) ---
   const thicknessOptions = Array.from(
-    new Set(enrichedData.map((i) => i.thickness).filter(Boolean))
+    new Set(enrichedData.map((i) => i.b2Thickness ?? i.thickness).filter(Boolean))
   ).sort((a, b) => {
     const pa = parseFloat(String(a).replace(",", ".")) || 0;
     const pb = parseFloat(String(b).replace(",", ".")) || 0;
@@ -9072,7 +9083,7 @@ const renderB2DynamicReport = () => {
   });
 
   const typeOptions = Array.from(
-    new Set(enrichedData.map((i) => i.type).filter(Boolean))
+    new Set(enrichedData.map((i) => i.b2Type ?? i.type).filter(Boolean))
   ).sort();
 
   // --- 4. FILTRAGEM PRÉVIA (BUSCA + ESPESSURA + TIPO) ---
@@ -9087,12 +9098,12 @@ const renderB2DynamicReport = () => {
     const matchesThickness =
       !b2ThicknessFilter ||
       b2ThicknessFilter === "all" ||
-      String(item.thickness) === String(b2ThicknessFilter);
+      String(item.b2Thickness ?? item.thickness) === String(b2ThicknessFilter);
 
     const matchesType =
       !b2TypeFilter ||
       b2TypeFilter === "all" ||
-      String(item.type) === String(b2TypeFilter);
+      String(item.b2Type ?? item.type) === String(b2TypeFilter);
 
     return matchesSearch && matchesThickness && matchesType;
   });
@@ -9106,6 +9117,8 @@ const renderB2DynamicReport = () => {
       acc[code] = {
         code: code,
         name: item.b2Name,
+        b2Type: item.b2Type ?? null,
+        b2Thickness: item.b2Thickness ?? null,
         totalItems: 0,
         stockCount: 0,
         stockWeight: 0,
@@ -9246,8 +9259,10 @@ const renderB2DynamicReport = () => {
           <table className="w-full text-sm text-left text-gray-300">
             <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10 uppercase text-xs">
               <tr>
-                <th className="p-4">Código</th>
-                <th className="p-4">Descrição</th>
+                <th className="p-4">Codigo</th>
+                <th className="p-4">Descricao</th>
+                <th className="p-4">Tipo</th>
+                <th className="p-4">Espessura</th>
                 <th className="p-4 text-center">Bobinas</th>
                 <th className="p-4 text-right text-emerald-400">
                   Peso Estoque
@@ -9281,6 +9296,12 @@ const renderB2DynamicReport = () => {
                       <td className="p-4 text-gray-300 font-medium">
                         {group.name}
                       </td>
+                      <td className="p-4 text-gray-300">
+                        {group.b2Type || "-"}
+                      </td>
+                      <td className="p-4 text-gray-300">
+                        {formatThickness(group.b2Thickness)}
+                      </td>
                       <td className="p-4 text-center">
                         <span className="bg-gray-800 px-2 py-1 rounded text-xs font-bold border border-gray-600">
                           {group.stockCount} / {group.totalItems}
@@ -9308,7 +9329,7 @@ const renderB2DynamicReport = () => {
                     {/* LINHA DETALHADA */}
                     {isExpanded && (
                       <tr>
-                        <td colSpan={6} className="bg-gray-900/50 p-0">
+                        <td colSpan={8} className="bg-gray-900/50 p-0">
                           <div className="p-4 border-t border-indigo-900/50 animate-fade-in">
                             <table className="w-full text-xs text-left text-gray-400">
                               <thead className="text-indigo-300 border-b border-gray-700">
@@ -9392,7 +9413,7 @@ const renderB2DynamicReport = () => {
               {groupsList.length === 0 && (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={8}
                     className="p-8 text-center text-gray-500"
                   >
                     Nenhum registro encontrado para os filtros atuais.

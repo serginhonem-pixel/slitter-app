@@ -636,6 +636,7 @@ const Dashboard = ({
         ID: coil.id,
         Codigo_B2: coil.b2Code,
         Nome_B2: getB2Description(coil.b2Code, coil.b2Name),
+        Tipo: getB2Type(coil.b2Code, coil.type),
         Largura: coil.width,
         'Espessura (mm)':
           normalizeThicknessForExport(getB2Thickness(coil.b2Code, coil.thickness)) ??
