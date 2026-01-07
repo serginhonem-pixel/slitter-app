@@ -117,6 +117,11 @@ const Dashboard = ({
     return entry?.thickness ?? fallback;
   };
 
+  const getB2Type = (code, fallback) => {
+    const entry = getB2CatalogEntry(code);
+    return entry?.type || fallback || '-';
+  };
+
   const getProductWeight = (code, count) => {
     if (!getUnitWeight) return 0;
     const unit = Number(getUnitWeight(code)) || 0;
@@ -588,9 +593,46 @@ const Dashboard = ({
   };
 
   const exportChild = () => {
-    const dataToExport = childCoils
-      .filter((coil) => coil.status === 'stock')
-      .map((coil) => ({
+    const stockRows = childCoils.filter((coil) => coil.status === 'stock');
+    const summaryMap = new Map();
+
+    stockRows.forEach((coil) => {
+      const type = getB2Type(coil.b2Code, coil.type);
+      const thicknessRaw = getB2Thickness(coil.b2Code, coil.thickness);
+      const thicknessValue = normalizeThicknessForExport(thicknessRaw);
+      const thicknessLabel = formatThicknessDisplay(thicknessRaw);
+      const key = `${type}|${thicknessValue ?? thicknessLabel}`;
+
+      if (!summaryMap.has(key)) {
+        summaryMap.set(key, {
+          Tipo: type || '-',
+          'Espessura (mm)': thicknessLabel,
+          'Peso (kg)': 0,
+          'Qtd Bobinas': 0,
+          _sortType: type || '',
+          _sortThickness: thicknessValue ?? Number.MAX_SAFE_INTEGER,
+        });
+      }
+
+      const entry = summaryMap.get(key);
+      entry['Peso (kg)'] += Number(coil.weight || 0);
+      entry['Qtd Bobinas'] += 1;
+    });
+
+    const summaryRows = Array.from(summaryMap.values())
+      .sort((a, b) => {
+        const typeSort = String(a._sortType).localeCompare(String(b._sortType));
+        if (typeSort !== 0) return typeSort;
+        return (a._sortThickness || 0) - (b._sortThickness || 0);
+      })
+      .map((row) => ({
+        Tipo: row.Tipo,
+        'Espessura (mm)': row['Espessura (mm)'],
+        'Peso (kg)': Number(row['Peso (kg)'].toFixed(1)),
+        'Qtd Bobinas': row['Qtd Bobinas'],
+      }));
+
+    const dataToExport = stockRows.map((coil) => ({
         ID: coil.id,
         Codigo_B2: coil.b2Code,
         Nome_B2: getB2Description(coil.b2Code, coil.b2Name),
@@ -603,7 +645,13 @@ const Dashboard = ({
         Bobina_Mae_ID: coil.motherId,
         Bobina_Mae_Codigo: coil.motherCode,
       }));
-    exportToExcelXml([{ name: 'Estoque B2', rows: dataToExport }], 'Estoque_Bobinas_B2');
+    exportToExcelXml(
+      [
+        { name: 'Estoque B2', rows: dataToExport },
+        { name: 'Resumo Tipo/Esp', rows: summaryRows },
+      ],
+      'Estoque_Bobinas_B2',
+    );
   };
 
   const exportFinished = () => {
