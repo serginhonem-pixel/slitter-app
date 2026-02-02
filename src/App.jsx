@@ -124,6 +124,16 @@ const ReportTabs = ({ viewMode, setViewMode }) => (
     >
     Estoque PA
     </button>
+    <button
+      onClick={() => setViewMode('INSIGHTS')}
+      className={`px-4 py-3 font-bold text-xs md:text-sm rounded-t-lg transition-colors ${
+        viewMode === 'INSIGHTS'
+          ? 'bg-amber-600 text-white'
+          : 'bg-gray-800 text-gray-400 hover:text-white'
+      }`}
+    >
+      Insights
+    </button>
   </div>
 );
 
@@ -294,6 +304,51 @@ const GlobalTimelineOverview = ({ timeline, onExport, onViewDetail, getTypeColor
         </tbody>
       </table>
     </div>
+  </Card>
+);
+
+const InsightCard = ({ title, value, sub, accent = 'text-amber-300', tooltip }) => (
+  <Card className="bg-gray-800/70 border border-white/5 p-4">
+    <p
+      className="text-[10px] uppercase tracking-wide text-gray-400 leading-tight break-words"
+      title={tooltip || ''}
+    >
+      {title}
+    </p>
+    <div className="mt-2">
+      <div className={`text-2xl font-bold ${accent} leading-tight break-words`}>{value}</div>
+      {sub && <div className="text-[11px] text-gray-400 mt-1 leading-tight break-words">{sub}</div>}
+    </div>
+  </Card>
+);
+
+const InsightList = ({ title, items, valueLabel }) => (
+  <Card className="bg-gray-800/50 border border-white/5 p-4 flex flex-col min-h-[220px]">
+    <div className="flex items-center justify-between mb-3">
+      <h4 className="text-sm font-semibold text-gray-200">{title}</h4>
+      {valueLabel && <span className="text-[10px] uppercase tracking-wide text-gray-500">{valueLabel}</span>}
+    </div>
+    {items.length === 0 ? (
+      <div className="text-xs text-gray-500 flex-1 flex items-center justify-center">
+        Sem dados no periodo.
+      </div>
+    ) : (
+      <div className="space-y-2">
+        {items.map((item, index) => (
+          <div key={`${item.id || item.code || item.date || index}`} className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs text-gray-200 truncate">{item.title}</p>
+              {item.subtitle && (
+                <p className="text-[11px] text-gray-500 truncate">{item.subtitle}</p>
+              )}
+            </div>
+            <div className="text-xs font-semibold text-amber-300">
+              {item.value}
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
   </Card>
 );
 
@@ -6411,6 +6466,333 @@ safeCutting.forEach((c) => {
     0
   );
 
+  const periodDays = (() => {
+    const start = reportStartDate ? new Date(`${reportStartDate}T00:00:00`) : null;
+    const end = reportEndDate ? new Date(`${reportEndDate}T00:00:00`) : null;
+    if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 1;
+    const diff = Math.floor((end - start) / 86400000) + 1;
+    return Math.max(1, diff);
+  })();
+
+  const formatNum = (value, digits = 0) =>
+    Number(value || 0).toLocaleString('pt-BR', { maximumFractionDigits: digits });
+
+  const avgEntradaKg = stats.entradaKg / periodDays;
+  const avgCorteKg = stats.corteKg / periodDays;
+  const avgProdPcs = stats.prodPcs / periodDays;
+  const avgExpPcs = stats.expPcs / periodDays;
+  const saldoMpPeriodo = stats.entradaKg - stats.corteKg;
+  const expVsProdPct = stats.prodPcs > 0 ? (stats.expPcs / stats.prodPcs) * 100 : 0;
+
+  const parseDateTime = (value) => {
+    if (!value) return null;
+    if (value instanceof Date) return value;
+    if (typeof value === 'number') return new Date(value);
+    if (typeof value === 'string') {
+      const [datePart, timePart] = value.split(' ');
+      if (datePart && datePart.includes('/')) {
+        const parts = datePart.split('/');
+        if (parts.length === 3) {
+          const [dd, mm, yyyy] = parts;
+          const iso = `${yyyy}-${mm}-${dd}${timePart ? `T${timePart}` : ''}`;
+          const parsed = new Date(iso);
+          if (!Number.isNaN(parsed.getTime())) return parsed;
+        }
+      }
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+    return null;
+  };
+
+  const toISOFromValue = (value) => {
+    const parsed = parseDateTime(value);
+    if (!parsed) return '0000-00-00';
+    return parsed.toISOString().slice(0, 10);
+  };
+
+  const toDays = (ms) => ms / 86400000;
+
+  const motherEntryByCode = safeMother.reduce((acc, item) => {
+    const code = normalizeCode(item?.code);
+    if (!code) return acc;
+    const entry = parseDateTime(item?.entryDate || item?.date);
+    if (!entry) return acc;
+    if (!acc[code]) acc[code] = [];
+    acc[code].push(entry.getTime());
+    return acc;
+  }, {});
+
+  Object.values(motherEntryByCode).forEach((list) => list.sort((a, b) => a - b));
+
+  const leadMpToCut = [];
+  safeCutting.forEach((cut) => {
+    const cutDate = parseDateTime(cut?.date || cut?.timestamp);
+    if (!cutDate) return;
+    const iso = toISOFromValue(cut?.date || cut?.timestamp);
+    if (iso < reportStartDate || iso > reportEndDate) return;
+    const code = normalizeCode(cut?.motherCode);
+    const entries = motherEntryByCode[code];
+    if (!entries || !entries.length) return;
+    const cutMs = cutDate.getTime();
+    let chosen = null;
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      if (entries[i] <= cutMs) {
+        chosen = entries[i];
+        break;
+      }
+    }
+    if (chosen == null) return;
+    const delta = cutMs - chosen;
+    if (delta >= 0) leadMpToCut.push(delta);
+  });
+
+  const childById = safeChild.reduce((acc, item) => {
+    if (item?.id) acc[String(item.id)] = item;
+    return acc;
+  }, {});
+
+  const leadCutToProd = [];
+  safeProd.forEach((prod) => {
+    const prodDate = parseDateTime(prod?.date || prod?.timestamp);
+    if (!prodDate) return;
+    const iso = toISOFromValue(prod?.date || prod?.timestamp);
+    if (iso < reportStartDate || iso > reportEndDate) return;
+    const prodMs = prodDate.getTime();
+    const childIds = Array.isArray(prod?.childIds) ? prod.childIds : [];
+    childIds.forEach((childId) => {
+      const child = childById[String(childId)];
+      const created = parseDateTime(child?.createdAt || child?.date || child?.entryDate);
+      if (!created) return;
+      const delta = prodMs - created.getTime();
+      if (delta >= 0) leadCutToProd.push(delta);
+    });
+  });
+
+  const prodTimesByCode = safeProd.reduce((acc, item) => {
+    const code = normalizeCode(item?.productCode);
+    if (!code) return acc;
+    const time = parseDateTime(item?.date || item?.timestamp);
+    if (!time) return acc;
+    if (!acc[code]) acc[code] = [];
+    acc[code].push(time.getTime());
+    return acc;
+  }, {});
+
+  Object.values(prodTimesByCode).forEach((list) => list.sort((a, b) => a - b));
+
+  const leadProdToShip = [];
+  safeShipping.forEach((ship) => {
+    const shipDate = parseDateTime(ship?.date || ship?.timestamp);
+    if (!shipDate) return;
+    const iso = toISOFromValue(ship?.date || ship?.timestamp);
+    if (iso < reportStartDate || iso > reportEndDate) return;
+    const code = normalizeCode(ship?.productCode);
+    const list = prodTimesByCode[code];
+    if (!list || !list.length) return;
+    const shipMs = shipDate.getTime();
+    let chosen = null;
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      if (list[i] <= shipMs) {
+        chosen = list[i];
+        break;
+      }
+    }
+    if (chosen == null) return;
+    const delta = shipMs - chosen;
+    if (delta >= 0) leadProdToShip.push(delta);
+  });
+
+  const avgLeadMpToCut = leadMpToCut.length
+    ? toDays(leadMpToCut.reduce((acc, v) => acc + v, 0) / leadMpToCut.length)
+    : 0;
+  const avgLeadCutToProd = leadCutToProd.length
+    ? toDays(leadCutToProd.reduce((acc, v) => acc + v, 0) / leadCutToProd.length)
+    : 0;
+  const avgLeadProdToShip = leadProdToShip.length
+    ? toDays(leadProdToShip.reduce((acc, v) => acc + v, 0) / leadProdToShip.length)
+    : 0;
+
+  const mpNoMovement = mpSummaryList
+    .filter((item) => (Number(item.finalBalance) || 0) > 0 && (Number(item.periodIn) || 0) === 0 && (Number(item.periodOut) || 0) === 0)
+    .slice()
+    .sort((a, b) => (Number(b.finalBalance) || 0) - (Number(a.finalBalance) || 0))
+    .slice(0, 5)
+    .map((item) => ({
+      title: `${item.code} - ${item.desc || '-'}`,
+      subtitle: item.width ? `${item.width} mm` : null,
+      value: `${formatNum(item.finalBalance, 1)} kg`,
+    }));
+
+  const paOverstock = filteredProdSummaryList
+    .filter((item) => (Number(item.maxKg) || 0) > 0 && (Number(item.stockWeight) || 0) > (Number(item.maxKg) || 0))
+    .slice()
+    .sort((a, b) => (Number(b.stockWeight) || 0) - (Number(a.stockWeight) || 0))
+    .slice(0, 5)
+    .map((item) => ({
+      title: `${item.code} - ${item.name || '-'}`,
+      subtitle: `Excesso: ${formatNum((Number(item.stockWeight) || 0) - (Number(item.maxKg) || 0), 1)} kg`,
+      value: `${formatNum(item.stockWeight, 1)} / ${formatNum(item.maxKg, 1)} kg`,
+    }));
+
+  const b2LowStock = filteredProdSummaryList
+    .filter((item) => item.b2Code && (Number(item.b2StockWeight) || 0) <= 0 && ((Number(item.periodShippedQty) || 0) > 0 || (Number(item.producedQty) || 0) > 0))
+    .slice()
+    .sort((a, b) => (Number(b.periodShippedWeight) || 0) - (Number(a.periodShippedWeight) || 0))
+    .slice(0, 5)
+    .map((item) => ({
+      title: `${item.b2Code} - ${item.b2Name || '-'}`,
+      subtitle: `${item.code} - ${item.name || '-'}`,
+      value: 'Estoque 0',
+    }));
+
+  const slitterPeriodCuts = safeCutting.filter((cut) => {
+    const iso = toISOFromValue(cut?.date || cut?.timestamp);
+    return iso >= reportStartDate && iso <= reportEndDate;
+  });
+
+  const slitterTotals = slitterPeriodCuts.reduce(
+    (acc, cut) => {
+      acc.cuts += 1;
+      acc.inputKg += Number(cut?.inputWeight) || 0;
+      acc.scrapKg += Number(cut?.scrap ?? cut?.scrapWeight ?? 0) || 0;
+      acc.outputCount += Number(cut?.outputCount) || 0;
+      return acc;
+    },
+    { cuts: 0, inputKg: 0, scrapKg: 0, outputCount: 0 },
+  );
+
+  const slitterYieldPct =
+    slitterTotals.inputKg > 0
+      ? ((slitterTotals.inputKg - slitterTotals.scrapKg) / slitterTotals.inputKg) * 100
+      : 0;
+
+  const slitterScrapPct =
+    slitterTotals.inputKg > 0
+      ? (slitterTotals.scrapKg / slitterTotals.inputKg) * 100
+      : 0;
+
+  const slitterByMother = slitterPeriodCuts.reduce((acc, cut) => {
+    const code = String(cut?.motherCode || 'S/ COD');
+    if (!acc[code]) {
+      acc[code] = {
+        code,
+        material: cut?.motherMaterial || '-',
+        cuts: 0,
+        inputKg: 0,
+        outputCount: 0,
+        scrapKg: 0,
+      };
+    }
+    acc[code].cuts += 1;
+    acc[code].inputKg += Number(cut?.inputWeight) || 0;
+    acc[code].outputCount += Number(cut?.outputCount) || 0;
+    acc[code].scrapKg += Number(cut?.scrap ?? cut?.scrapWeight ?? 0) || 0;
+    return acc;
+  }, {});
+
+  const topSlitterByKg = Object.values(slitterByMother)
+    .sort((a, b) => b.inputKg - a.inputKg)
+    .slice(0, 5)
+    .map((item) => ({
+      title: `${item.code} - ${item.material || '-'}`,
+      subtitle: `${formatNum(item.cuts)} cortes | ${formatNum(item.outputCount)} tiras`,
+      value: `${formatNum(item.inputKg, 1)} kg`,
+    }));
+
+  const topSlitterByCuts = Object.values(slitterByMother)
+    .sort((a, b) => b.cuts - a.cuts)
+    .slice(0, 5)
+    .map((item) => ({
+      title: `${item.code} - ${item.material || '-'}`,
+      subtitle: `${formatNum(item.outputCount)} tiras`,
+      value: `${formatNum(item.cuts)} cortes`,
+    }));
+
+  const topSlitterScrap = slitterPeriodCuts
+    .slice()
+    .sort((a, b) => (Number(b.scrap ?? b.scrapWeight ?? 0) || 0) - (Number(a.scrap ?? a.scrapWeight ?? 0) || 0))
+    .slice(0, 5)
+    .map((cut) => ({
+      title: `${cut?.motherCode || '-'} - ${cut?.motherMaterial || '-'}`,
+      subtitle: `${formatNum(cut?.outputCount || 0)} tiras`,
+      value: `${formatNum(cut?.scrap ?? cut?.scrapWeight ?? 0, 1)} kg`,
+    }));
+
+  const slitterByDay = slitterPeriodCuts.reduce((acc, cut) => {
+    const key = toISOFromValue(cut?.date || cut?.timestamp);
+    if (!acc[key]) acc[key] = { date: cut?.date || key, inputKg: 0, cuts: 0 };
+    acc[key].inputKg += Number(cut?.inputWeight) || 0;
+    acc[key].cuts += 1;
+    return acc;
+  }, {});
+
+  const topSlitterDays = Object.values(slitterByDay)
+    .sort((a, b) => b.inputKg - a.inputKg)
+    .slice(0, 5)
+    .map((item) => ({
+      title: item.date,
+      subtitle: `${formatNum(item.cuts)} cortes`,
+      value: `${formatNum(item.inputKg, 1)} kg`,
+    }));
+
+  const topShippedProducts = filteredProdSummaryList
+    .filter((item) => (Number(item.periodShippedWeight) || 0) > 0)
+    .slice()
+    .sort((a, b) => (Number(b.periodShippedWeight) || 0) - (Number(a.periodShippedWeight) || 0))
+    .slice(0, 5)
+    .map((item) => ({
+      code: item.code,
+      title: `${item.code} - ${item.name || '-'}`,
+      subtitle: `${formatNum(item.periodShippedQty)} pcs`,
+      value: `${formatNum(item.periodShippedWeight, 1)} kg`,
+    }));
+
+  const topStockProducts = filteredProdSummaryList
+    .filter((item) => (Number(item.stockWeight) || 0) > 0)
+    .slice()
+    .sort((a, b) => (Number(b.stockWeight) || 0) - (Number(a.stockWeight) || 0))
+    .slice(0, 5)
+    .map((item) => ({
+      code: item.code,
+      title: `${item.code} - ${item.name || '-'}`,
+      subtitle: `${formatNum(item.stockQty)} pcs`,
+      value: `${formatNum(item.stockWeight, 1)} kg`,
+    }));
+
+  const topMpConsumption = mpSummaryList
+    .filter((item) => (Number(item.periodOut) || 0) > 0)
+    .slice()
+    .sort((a, b) => (Number(b.periodOut) || 0) - (Number(a.periodOut) || 0))
+    .slice(0, 5)
+    .map((item) => ({
+      code: item.code,
+      title: `${item.code} - ${item.desc || '-'}`,
+      subtitle: item.width ? `${item.width} mm` : null,
+      value: `${formatNum(item.periodOut, 1)} kg`,
+    }));
+
+  const topDays = (() => {
+    const dayTotals = {};
+    globalTimeline.forEach((group) => {
+      const key = group.isoDate || toISODate(group.date);
+      if (!dayTotals[key]) {
+        dayTotals[key] = { date: group.date || key, weight: 0, qty: 0 };
+      }
+      dayTotals[key].weight += Number(group.totalWeight) || 0;
+      dayTotals[key].qty += Number(group.totalQty) || 0;
+    });
+    return Object.values(dayTotals)
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 3)
+      .map((item) => ({
+        date: item.date,
+        title: item.date,
+        subtitle: `${formatNum(item.qty)} itens`,
+        value: `${formatNum(item.weight, 1)} kg`,
+      }));
+  })();
+
 
 // =================================================================================
   // 5. RENDERIZAÇÃO
@@ -6439,6 +6821,166 @@ safeCutting.forEach((c) => {
             getTypeColor={getTypeColor}
           />
         </>
+      )}
+
+      {reportViewMode === 'INSIGHTS' && (
+        <div className="space-y-6">
+          <Card className="border-t-4 border-amber-500">
+            <div className="flex flex-col gap-2">
+              <h3 className="text-xl font-bold text-amber-100">Insights do Período</h3>
+              <p className="text-sm text-amber-200/70">
+                Panorama do que foi realizado entre {reportStartDate || '-'} e {reportEndDate || '-'}.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+              <InsightCard
+                title="Saldo MP no período"
+                value={formatKg(saldoMpPeriodo)}
+                sub={`${formatNum(periodDays)} dias`}
+                tooltip="Entrada de MP menos consumo no Slitter no período."
+              />
+              <InsightCard
+                title="Entrada média/dia"
+                value={`${formatNum(avgEntradaKg, 0)} kg`}
+                sub="MP recebida"
+                tooltip="Média diária de entrada de matéria-prima no período."
+              />
+              <InsightCard
+                title="Consumo médio/dia"
+                value={`${formatNum(avgCorteKg, 0)} kg`}
+                sub="Slitter"
+                tooltip="Média diária de kg consumidos no Slitter no período."
+              />
+              <InsightCard
+                title="Expedição vs Produção"
+                value={`${formatNum(expVsProdPct, 0)}%`}
+                sub="pcs expedidas"
+                tooltip="Percentual de peças expedidas sobre as produzidas no período."
+              />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-6">
+              <InsightCard
+                title="Lead time MP → Corte"
+                value={`${formatNum(avgLeadMpToCut, 1)} dias`}
+                sub={`${leadMpToCut.length} registros`}
+                accent="text-sky-300"
+                tooltip="Média de dias entre entrada da MP e registro do corte."
+              />
+              <InsightCard
+                title="Lead time Corte → Produção"
+                value={`${formatNum(avgLeadCutToProd, 1)} dias`}
+                sub={`${leadCutToProd.length} registros`}
+                accent="text-indigo-300"
+                tooltip="Média de dias entre criação da B2 e produção de PA."
+              />
+              <InsightCard
+                title="Lead time Produção → Expedição"
+                value={`${formatNum(avgLeadProdToShip, 1)} dias`}
+                sub={`${leadProdToShip.length} registros`}
+                accent="text-emerald-300"
+                tooltip="Média de dias entre produção de PA e expedição."
+              />
+            </div>
+          </Card>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <InsightList title="Top produtos expedidos" valueLabel="kg" items={topShippedProducts} />
+            <InsightList title="Top estoque PA" valueLabel="kg" items={topStockProducts} />
+            <InsightList title="Top consumo de MP" valueLabel="kg" items={topMpConsumption} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <InsightList title="Dias com maior movimento" valueLabel="kg" items={topDays} />
+            <Card className="bg-gray-800/60 border border-white/5 p-4">
+              <h4 className="text-sm font-semibold text-gray-200 mb-3">Resumo rápido</h4>
+              <div className="grid grid-cols-2 gap-3 text-xs text-gray-300">
+                <div className="bg-gray-900/60 border border-gray-700 rounded-lg p-3">
+                  <p className="text-gray-500 text-[10px] uppercase">Produção no período</p>
+                  <p className="text-base font-bold text-emerald-300">{formatNum(stats.prodPcs)} pcs</p>
+                </div>
+                <div className="bg-gray-900/60 border border-gray-700 rounded-lg p-3">
+                  <p className="text-gray-500 text-[10px] uppercase">Expedição no período</p>
+                  <p className="text-base font-bold text-amber-300">{formatNum(stats.expPcs)} pcs</p>
+                </div>
+                <div className="bg-gray-900/60 border border-gray-700 rounded-lg p-3">
+                  <p className="text-gray-500 text-[10px] uppercase">Produção média/dia</p>
+                  <p className="text-base font-bold text-emerald-300">{formatNum(avgProdPcs)} pcs</p>
+                </div>
+                <div className="bg-gray-900/60 border border-gray-700 rounded-lg p-3">
+                  <p className="text-gray-500 text-[10px] uppercase">Expedição média/dia</p>
+                  <p className="text-base font-bold text-amber-300">{formatNum(avgExpPcs)} pcs</p>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <InsightList title="Alertas: MP sem movimento" valueLabel="kg" items={mpNoMovement} />
+            <InsightList title="Alertas: PA acima da meta" valueLabel="kg" items={paOverstock} />
+            <InsightList title="Alertas: B2 sem estoque" valueLabel="status" items={b2LowStock} />
+          </div>
+
+          <Card className="border-t-4 border-sky-500">
+            <div className="flex flex-col gap-2">
+              <h3 className="text-xl font-bold text-sky-100">Slitter em detalhes</h3>
+              <p className="text-sm text-sky-200/70">
+                Indicadores de corte no período selecionado.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mt-6">
+              <InsightCard
+                title="Cortes"
+                value={formatNum(slitterTotals.cuts)}
+                sub="registros"
+                accent="text-sky-300"
+                tooltip="Quantidade total de cortes registrados no período."
+              />
+              <InsightCard
+                title="Kg cortado"
+                value={`${formatNum(slitterTotals.inputKg, 1)} kg`}
+                sub="MP consumida"
+                accent="text-sky-300"
+                tooltip="Soma do peso de MP consumida em cortes no período."
+              />
+              <InsightCard
+                title="Sucata"
+                value={`${formatNum(slitterTotals.scrapKg, 1)} kg`}
+                sub={`${formatNum(slitterScrapPct, 1)}%`}
+                accent="text-rose-300"
+                tooltip="Peso e percentual de sucata gerada nos cortes."
+              />
+              <InsightCard
+                title="Rendimento"
+                value={`${formatNum(slitterYieldPct, 1)}%`}
+                sub="aproveitamento"
+                accent="text-emerald-300"
+                tooltip="Percentual de aproveitamento: (kg cortado - sucata) / kg cortado."
+              />
+              <InsightCard
+                title="Tiras"
+                value={formatNum(slitterTotals.outputCount)}
+                sub="total"
+                accent="text-indigo-300"
+                tooltip="Total de tiras geradas nos cortes do período."
+              />
+              <InsightCard
+                title="Kg por corte"
+                value={`${formatNum(slitterTotals.cuts ? slitterTotals.inputKg / slitterTotals.cuts : 0, 1)} kg`}
+                sub="média"
+                accent="text-amber-300"
+                tooltip="Média de kg consumidos por corte no período."
+              />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
+              <InsightList title="Top cortes por bobina mãe (kg)" valueLabel="kg" items={topSlitterByKg} />
+              <InsightList title="Top cortes por quantidade" valueLabel="cortes" items={topSlitterByCuts} />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+              <InsightList title="Cortes com maior sucata" valueLabel="kg" items={topSlitterScrap} />
+              <InsightList title="Dias com maior corte" valueLabel="kg" items={topSlitterDays} />
+            </div>
+          </Card>
+        </div>
       )}
 
       {/* ABA 2: EXTRATO MP */}
