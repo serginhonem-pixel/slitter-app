@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Package, Scissors, Factory, Download, History, Truck } from 'lucide-react';
+import { Package, Scissors, Factory, Download, History, Truck, Search, Eye } from 'lucide-react';
 import {
   MotherCoilStockList,
   ChildCoilStockList,
@@ -7,6 +7,7 @@ import {
   ShipmentList,
 } from './StockList';
 import { LatestMovementsPanel } from './LatestMovementsPanel';
+import PaginationControls from '../common/PaginationControls';
 
 const Card = ({ children, className = '' }) => (
   <div className={`bg-slate-900/50 backdrop-blur rounded-2xl shadow-xl shadow-black/20 border border-white/5 p-6 ${className}`}>
@@ -26,11 +27,113 @@ const TabButton = ({ active, label, icon: Icon, colorClass, onClick }) => (
   </button>
 );
 
+const NfSearchPanel = ({ records = [], onViewDetails }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12;
+
+  const filteredRecords = useMemo(() => {
+    const term = String(searchQuery || '').trim().toLowerCase();
+    if (!term) return records;
+    return records.filter((record) =>
+      [
+        record.nf,
+        record.code,
+        record.description,
+        record.typeLabel,
+        record.contextLabel,
+      ].some((value) => String(value || '').toLowerCase().includes(term)),
+    );
+  }, [records, searchQuery]);
+
+  const paginatedRecords = filteredRecords.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage,
+  );
+
+  return (
+    <div className="min-h-[360px] flex flex-col gap-3">
+      <div className="relative">
+        <input
+          type="text"
+          placeholder="Buscar NF, codigo, descricao..."
+          value={searchQuery}
+          onChange={(event) => {
+            setSearchQuery(event.target.value);
+            setCurrentPage(1);
+          }}
+          className="w-full border border-gray-700 rounded-lg p-3 pl-10 text-sm bg-gray-900 text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all placeholder-gray-600"
+        />
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+      </div>
+
+      <div className="flex-1 overflow-y-auto custom-scrollbar-dark min-h-[200px] max-h-[320px]">
+        <table className="w-full text-xs text-left text-gray-300">
+          <thead className="bg-gray-900 text-gray-400 sticky top-0">
+            <tr>
+              <th className="p-3">NF</th>
+              <th className="p-3">Tipo</th>
+              <th className="p-3">Codigo</th>
+              <th className="p-3">Descricao</th>
+              <th className="p-3 text-right">Peso (kg)</th>
+              <th className="p-3 text-right">Data</th>
+              <th className="p-3 text-center">Ver</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-700">
+            {paginatedRecords.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="text-center text-gray-500 py-4">
+                  Nenhum item encontrado.
+                </td>
+              </tr>
+            ) : (
+              paginatedRecords.map((record, index) => (
+                <tr key={record.id || `${record.context}-${record.code}-${index}`} className="hover:bg-gray-700/40">
+                  <td className="p-3 font-mono text-xs text-teal-300">{record.nf || '-'}</td>
+                  <td className="p-3 text-gray-300">{record.contextLabel || '-'}</td>
+                  <td className="p-3 font-mono text-xs text-gray-200">{record.code || '-'}</td>
+                  <td className="p-3 text-gray-200">{record.description || '-'}</td>
+                  <td className="p-3 text-right text-gray-200">
+                    {Number.isFinite(record.weight)
+                      ? record.weight.toLocaleString('pt-BR', { maximumFractionDigits: 1 })
+                      : '-'}
+                  </td>
+                  <td className="p-3 text-right text-gray-400">{record.date || '-'}</td>
+                  <td className="p-3 text-center">
+                    {onViewDetails && record.code && (
+                      <button
+                        onClick={() => onViewDetails(record.code, record.context)}
+                        className="p-1.5 text-gray-400 hover:text-teal-300 transition-colors"
+                        title="Ver detalhes"
+                      >
+                        <Eye size={16} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <PaginationControls
+        currentPage={currentPage}
+        totalItems={filteredRecords.length}
+        itemsPerPage={itemsPerPage}
+        onPageChange={setCurrentPage}
+      />
+    </div>
+  );
+};
+
 export const StockTabs = ({
   motherData,
   childData,
   finishedData,
   shipments = [],
+  nfRecords = [],
   statusByMotherCode,
   statusByChildCode,
   statusByFinishedCode,
@@ -153,6 +256,19 @@ export const StockTabs = ({
         ),
       },
       {
+        id: 'nf',
+        label: 'Pesquisa NF',
+        icon: Search,
+        color: 'text-teal-400',
+        disableExport: true,
+        render: () => (
+          <NfSearchPanel
+            records={nfRecords}
+            onViewDetails={(code, context) => onViewStockDetails?.(code, context)}
+          />
+        ),
+      },
+      {
         id: 'recent',
         label: 'Últimos Movimentos',
         icon: History,
@@ -193,6 +309,7 @@ export const StockTabs = ({
     onExportMotherPdf,
     productionLogs,
     shipments,
+    nfRecords,
   ],
   );
 

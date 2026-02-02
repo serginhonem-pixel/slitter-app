@@ -191,6 +191,58 @@ const Dashboard = ({
       );
   }, [shippingLogs, getUnitWeight]);
 
+  const nfRecords = useMemo(() => {
+    const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
+    const safeChild = Array.isArray(childCoils) ? childCoils : [];
+
+    const formatDate = (value) => {
+      if (!value) return '-';
+      return parseLogDate(value).toLocaleDateString('pt-BR');
+    };
+
+    const toTime = (value) => (value ? parseLogDate(value).getTime() : 0);
+
+    const motherRecords = safeMother
+      .filter((coil) => coil?.nf)
+      .map((coil, index) => {
+        const weight = Number(coil.remainingWeight ?? coil.weight ?? 0);
+        const rawDate = coil.entryDate || coil.date;
+        return {
+          id: coil.id || `mp-${coil.code}-${index}`,
+          nf: String(coil.nf),
+          code: coil.code || '-',
+          description: getCatalogDescription(coil.code, coil.material) || '-',
+          weight: Number.isFinite(weight) ? weight : null,
+          date: formatDate(rawDate),
+          sortTime: toTime(rawDate),
+          context: 'mother',
+          contextLabel: 'MP',
+          typeLabel: getCatalogType(coil.code, coil.type),
+        };
+      });
+
+    const childRecords = safeChild
+      .filter((coil) => coil?.nf)
+      .map((coil, index) => {
+        const weight = Number(coil.weight ?? 0);
+        const rawDate = coil.entryDate || coil.date;
+        return {
+          id: coil.id || `b2-${coil.b2Code || coil.code}-${index}`,
+          nf: String(coil.nf),
+          code: coil.b2Code || coil.code || '-',
+          description: getB2Description(coil.b2Code, coil.b2Name || coil.name) || '-',
+          weight: Number.isFinite(weight) ? weight : null,
+          date: formatDate(rawDate),
+          sortTime: toTime(rawDate),
+          context: 'b2',
+          contextLabel: 'B2',
+          typeLabel: getB2Type(coil.b2Code, coil.type),
+        };
+      });
+
+    return [...motherRecords, ...childRecords].sort((a, b) => b.sortTime - a.sortTime);
+  }, [motherCoils, childCoils, catalogByCode, b2CatalogByCode]);
+
   const fallbackEvents = useMemo(() => {
     return [
       ...cuttingLogs.map((log) => ({
@@ -687,6 +739,7 @@ const Dashboard = ({
         childData={childStockList}
         finishedData={finishedStockList}
         shipments={shipmentRows}
+        nfRecords={nfRecords}
         onExportMother={exportMother}
         onExportMotherPdf={exportMotherPdf}
         onExportChild={exportChild}

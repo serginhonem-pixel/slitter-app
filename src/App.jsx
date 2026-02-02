@@ -1584,6 +1584,7 @@ export default function App() {
   const [adminMotherFilter, setAdminMotherFilter] = useState('');
   const [adminB2Filter, setAdminB2Filter] = useState('');
   const [adminPaFilter, setAdminPaFilter] = useState('');
+  const [adminMovementsIdFilter, setAdminMovementsIdFilter] = useState('');
   const [adminStockTab, setAdminStockTab] = useState('mother');
   const [blockedCutModal, setBlockedCutModal] = useState(null);
   const [adminCatalogFilter, setAdminCatalogFilter] = useState('');
@@ -7315,10 +7316,16 @@ safeCutting.forEach((c) => {
       return dateB - dateA;
     });
 
+    const movementsFiltered = movements.filter((mov) => {
+      const search = normalizeSearch(adminMovementsIdFilter);
+      if (!search) return true;
+      return normalizeSearch(mov.id).includes(search);
+    });
+
     const motherPageData = paginateItems(motherFiltered, adminMotherPage);
     const childPageData = paginateItems(childFiltered, adminB2Page);
     const finishedPageData = paginateItems(finishedFiltered, adminPaPage);
-    const movementsPageData = paginateItems(movements, adminMovementsPage);
+    const movementsPageData = paginateItems(movementsFiltered, adminMovementsPage);
     const catalogPageData = paginateItems(catalogFiltered, adminCatalogPage);
     const motherCatalogPageData = paginateItems(motherCatalogFiltered, adminMotherCatalogPage);
 
@@ -8146,6 +8153,17 @@ safeCutting.forEach((c) => {
 
         <Card>
           <h3 className="text-lg font-bold text-white mb-4">Movimentações (apagar no Firebase)</h3>
+          <div className="mb-3 max-w-sm">
+            <Input
+              label="Buscar por ID"
+              value={adminMovementsIdFilter}
+              onChange={(e) => {
+                setAdminMovementsIdFilter(e.target.value);
+                setAdminMovementsPage(1);
+              }}
+              placeholder="ID da movimentacao..."
+            />
+          </div>
           <div className="overflow-auto max-h-[420px] custom-scrollbar-dark">
             <table className="w-full text-sm text-left text-gray-300">
               <thead className="bg-gray-900 text-gray-400 sticky top-0">
@@ -8957,9 +8975,11 @@ const renderB2DynamicReport = () => {
     return acc;
   }, {});
 
-  const groupsList = Object.values(groupedData).sort((a, b) =>
-    a.code.localeCompare(b.code)
-  );
+  const groupsList = Object.values(groupedData).sort((a, b) => {
+    const weightDiff = (Number(b.stockWeight) || 0) - (Number(a.stockWeight) || 0);
+    if (weightDiff !== 0) return weightDiff;
+    return String(a.code || '').localeCompare(String(b.code || ''));
+  });
 
   // Totais gerais
   const totalStockWeight = groupsList.reduce(
