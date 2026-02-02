@@ -1650,6 +1650,7 @@ export default function App() {
   const [adminMotherCatalogFilter, setAdminMotherCatalogFilter] = useState('');
   const [adminMotherCatalogPage, setAdminMotherCatalogPage] = useState(1);
   const [adminMotherCatalogEditForm, setAdminMotherCatalogEditForm] = useState(null);
+  const [adminMovementEditForm, setAdminMovementEditForm] = useState(null);
   const [adminMotherPage, setAdminMotherPage] = useState(1);
   const [adminB2Page, setAdminB2Page] = useState(1);
   const [adminPaPage, setAdminPaPage] = useState(1);
@@ -2631,6 +2632,140 @@ export default function App() {
         }
       } catch (reloadError) {
         console.error("Erro ao recarregar dados ap\u00f3s falha de exclus\u00e3o", reloadError);
+      }
+    }
+  };
+
+  const startEditAdminMovement = (mov) => {
+    if (!mov?.id || !mov?.collection) return;
+    let log = null;
+    if (mov.collection === 'cuttingLogs') {
+      log = cuttingLogs.find((entry) => String(entry.id) === String(mov.id));
+    }
+    if (mov.collection === 'productionLogs') {
+      log = productionLogs.find((entry) => String(entry.id) === String(mov.id));
+    }
+    if (mov.collection === 'shippingLogs') {
+      log = shippingLogs.find((entry) => String(entry.id) === String(mov.id));
+    }
+    if (!log) return;
+
+    if (mov.collection === 'cuttingLogs') {
+      setAdminMovementEditForm({
+        collection: mov.collection,
+        id: log.id,
+        date: log.date || log.timestamp || '',
+        motherCode: log.motherCode || '',
+        inputWeight: log.inputWeight ?? log.weight ?? '',
+        outputCount: log.outputCount ?? log.quantity ?? '',
+        scrap: log.scrap ?? '',
+        generatedItems: log.generatedItems || '',
+      });
+      return;
+    }
+
+    if (mov.collection === 'productionLogs') {
+      setAdminMovementEditForm({
+        collection: mov.collection,
+        id: log.id,
+        date: log.date || log.timestamp || '',
+        productCode: log.productCode || '',
+        productName: log.productName || '',
+        pieces: log.pieces ?? '',
+        weight: log.weight ?? '',
+        b2Code: log.b2Code || '',
+        motherCode: log.motherCode || '',
+        scrap: log.scrap ?? '',
+      });
+      return;
+    }
+
+    if (mov.collection === 'shippingLogs') {
+      setAdminMovementEditForm({
+        collection: mov.collection,
+        id: log.id,
+        date: log.date || log.timestamp || '',
+        productCode: log.productCode || '',
+        productName: log.productName || '',
+        quantity: log.quantity ?? '',
+        destination: log.destination || '',
+      });
+    }
+  };
+
+  const saveAdminMovementEdit = async () => {
+    if (!adminMovementEditForm) return;
+    const { collection, id } = adminMovementEditForm;
+    if (!collection || !id) return;
+
+    const normalizeDate = (value) => (value || '').trim();
+    const payloadByCollection = {
+      cuttingLogs: {
+        date: normalizeDate(adminMovementEditForm.date),
+        timestamp: normalizeDate(adminMovementEditForm.date),
+        motherCode: adminMovementEditForm.motherCode || '',
+        inputWeight: parseFloat(String(adminMovementEditForm.inputWeight || '').replace(',', '.')) || 0,
+        outputCount: parseInt(adminMovementEditForm.outputCount || '0', 10) || 0,
+        scrap: parseFloat(String(adminMovementEditForm.scrap || '').replace(',', '.')) || 0,
+        generatedItems: adminMovementEditForm.generatedItems || '',
+      },
+      productionLogs: {
+        date: normalizeDate(adminMovementEditForm.date),
+        timestamp: normalizeDate(adminMovementEditForm.date),
+        productCode: adminMovementEditForm.productCode || '',
+        productName: adminMovementEditForm.productName || '',
+        pieces: parseInt(adminMovementEditForm.pieces || '0', 10) || 0,
+        weight: parseFloat(String(adminMovementEditForm.weight || '').replace(',', '.')) || 0,
+        b2Code: adminMovementEditForm.b2Code || '',
+        motherCode: adminMovementEditForm.motherCode || '',
+        scrap: parseFloat(String(adminMovementEditForm.scrap || '').replace(',', '.')) || 0,
+      },
+      shippingLogs: {
+        date: normalizeDate(adminMovementEditForm.date),
+        timestamp: normalizeDate(adminMovementEditForm.date),
+        productCode: adminMovementEditForm.productCode || '',
+        productName: adminMovementEditForm.productName || '',
+        quantity: parseInt(adminMovementEditForm.quantity || '0', 10) || 0,
+        destination: adminMovementEditForm.destination || '',
+      },
+    };
+
+    const payload = payloadByCollection[collection];
+    if (!payload) return;
+
+    const updateState = (setter) => {
+      setter((prev) =>
+        prev.map((item) =>
+          String(item.id) === String(id) ? { ...item, ...payload } : item,
+        ),
+      );
+    };
+
+    if (collection === 'cuttingLogs') updateState(setCuttingLogs);
+    if (collection === 'productionLogs') updateState(setProductionLogs);
+    if (collection === 'shippingLogs') updateState(setShippingLogs);
+
+    if (USE_LOCAL_JSON) {
+      alert('Modo local: ediÃ§Ã£o aplicada apenas na tela.');
+      setAdminMovementEditForm(null);
+      return;
+    }
+
+    try {
+      await updateInDb(collection, id, payload);
+      setAdminMovementEditForm(null);
+    } catch (error) {
+      console.error('Erro ao editar movimentaÃ§Ã£o', error);
+      alert('NÃ£o consegui salvar no Firebase. Vou tentar recarregar os dados.');
+      try {
+        const refreshed = await loadFromDb(collection);
+        if (Array.isArray(refreshed)) {
+          if (collection === 'cuttingLogs') setCuttingLogs(refreshed);
+          if (collection === 'productionLogs') setProductionLogs(refreshed);
+          if (collection === 'shippingLogs') setShippingLogs(refreshed);
+        }
+      } catch (reloadError) {
+        console.error('Erro ao recarregar movimentaÃ§Ãµes apÃ³s falha de ediÃ§Ã£o', reloadError);
       }
     }
   };
@@ -8734,12 +8869,20 @@ safeCutting.forEach((c) => {
                       <td className="p-2 text-right font-mono">{mov.weight}</td>
                       <td className="p-2 font-mono text-[10px] text-gray-500">{mov.id}</td>
                       <td className="p-2 text-center">
-                        <button
-                          onClick={() => deleteAdminMovement(mov.collection, mov.id)}
-                          className="inline-flex items-center gap-2 px-2 py-1 text-xs rounded bg-red-600/20 text-red-200 hover:bg-red-600/40"
-                        >
-                          <Trash2 size={14} /> Apagar
-                        </button>
+                        <div className="inline-flex gap-2">
+                          <button
+                            onClick={() => startEditAdminMovement(mov)}
+                            className="inline-flex items-center gap-2 px-2 py-1 text-xs rounded bg-blue-600/20 text-blue-200 hover:bg-blue-600/40"
+                          >
+                            <Edit size={14} /> Editar
+                          </button>
+                          <button
+                            onClick={() => deleteAdminMovement(mov.collection, mov.id)}
+                            className="inline-flex items-center gap-2 px-2 py-1 text-xs rounded bg-red-600/20 text-red-200 hover:bg-red-600/40"
+                          >
+                            <Trash2 size={14} /> Apagar
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -10372,6 +10515,172 @@ const handleUploadJSONToFirebase = async (e) => {
             <div className="p-3 border-t border-gray-700 bg-gray-900/50 flex justify-end">
               <Button variant="secondary" onClick={() => setAdminUserMovementsModal(null)}>
                 Fechar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {adminMovementEditForm && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl">
+            <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+              <div>
+                <h3 className="text-white font-bold text-lg">Editar movimentaÃ§Ã£o</h3>
+                <p className="text-gray-400 text-sm">
+                  {adminMovementEditForm.collection} Â· {adminMovementEditForm.id}
+                </p>
+              </div>
+              <button
+                onClick={() => setAdminMovementEditForm(null)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 custom-scrollbar-dark">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  label="Data"
+                  value={adminMovementEditForm.date || ''}
+                  onChange={(e) =>
+                    setAdminMovementEditForm((prev) => ({ ...prev, date: e.target.value }))
+                  }
+                />
+
+                {adminMovementEditForm.collection === 'cuttingLogs' && (
+                  <>
+                    <Input
+                      label="MP"
+                      value={adminMovementEditForm.motherCode || ''}
+                      onChange={(e) =>
+                        setAdminMovementEditForm((prev) => ({ ...prev, motherCode: e.target.value }))
+                      }
+                    />
+                    <Input
+                      label="Peso (kg)"
+                      value={adminMovementEditForm.inputWeight || ''}
+                      onChange={(e) =>
+                        setAdminMovementEditForm((prev) => ({ ...prev, inputWeight: e.target.value }))
+                      }
+                    />
+                    <Input
+                      label="Qtd B2"
+                      value={adminMovementEditForm.outputCount || ''}
+                      onChange={(e) =>
+                        setAdminMovementEditForm((prev) => ({ ...prev, outputCount: e.target.value }))
+                      }
+                    />
+                    <Input
+                      label="Sucata (kg)"
+                      value={adminMovementEditForm.scrap || ''}
+                      onChange={(e) =>
+                        setAdminMovementEditForm((prev) => ({ ...prev, scrap: e.target.value }))
+                      }
+                    />
+                    <Input
+                      label="Itens gerados"
+                      value={adminMovementEditForm.generatedItems || ''}
+                      onChange={(e) =>
+                        setAdminMovementEditForm((prev) => ({ ...prev, generatedItems: e.target.value }))
+                      }
+                    />
+                  </>
+                )}
+
+                {adminMovementEditForm.collection === 'productionLogs' && (
+                  <>
+                    <Input
+                      label="CÃ³digo"
+                      value={adminMovementEditForm.productCode || ''}
+                      onChange={(e) =>
+                        setAdminMovementEditForm((prev) => ({ ...prev, productCode: e.target.value }))
+                      }
+                    />
+                    <Input
+                      label="DescriÃ§Ã£o"
+                      value={adminMovementEditForm.productName || ''}
+                      onChange={(e) =>
+                        setAdminMovementEditForm((prev) => ({ ...prev, productName: e.target.value }))
+                      }
+                    />
+                    <Input
+                      label="Qtd (pcs)"
+                      value={adminMovementEditForm.pieces || ''}
+                      onChange={(e) =>
+                        setAdminMovementEditForm((prev) => ({ ...prev, pieces: e.target.value }))
+                      }
+                    />
+                    <Input
+                      label="Peso (kg)"
+                      value={adminMovementEditForm.weight || ''}
+                      onChange={(e) =>
+                        setAdminMovementEditForm((prev) => ({ ...prev, weight: e.target.value }))
+                      }
+                    />
+                    <Input
+                      label="CÃ³digo B2"
+                      value={adminMovementEditForm.b2Code || ''}
+                      onChange={(e) =>
+                        setAdminMovementEditForm((prev) => ({ ...prev, b2Code: e.target.value }))
+                      }
+                    />
+                    <Input
+                      label="MP"
+                      value={adminMovementEditForm.motherCode || ''}
+                      onChange={(e) =>
+                        setAdminMovementEditForm((prev) => ({ ...prev, motherCode: e.target.value }))
+                      }
+                    />
+                    <Input
+                      label="Sucata (kg)"
+                      value={adminMovementEditForm.scrap || ''}
+                      onChange={(e) =>
+                        setAdminMovementEditForm((prev) => ({ ...prev, scrap: e.target.value }))
+                      }
+                    />
+                  </>
+                )}
+
+                {adminMovementEditForm.collection === 'shippingLogs' && (
+                  <>
+                    <Input
+                      label="CÃ³digo"
+                      value={adminMovementEditForm.productCode || ''}
+                      onChange={(e) =>
+                        setAdminMovementEditForm((prev) => ({ ...prev, productCode: e.target.value }))
+                      }
+                    />
+                    <Input
+                      label="DescriÃ§Ã£o"
+                      value={adminMovementEditForm.productName || ''}
+                      onChange={(e) =>
+                        setAdminMovementEditForm((prev) => ({ ...prev, productName: e.target.value }))
+                      }
+                    />
+                    <Input
+                      label="Qtd (pcs)"
+                      value={adminMovementEditForm.quantity || ''}
+                      onChange={(e) =>
+                        setAdminMovementEditForm((prev) => ({ ...prev, quantity: e.target.value }))
+                      }
+                    />
+                    <Input
+                      label="Destino"
+                      value={adminMovementEditForm.destination || ''}
+                      onChange={(e) =>
+                        setAdminMovementEditForm((prev) => ({ ...prev, destination: e.target.value }))
+                      }
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="p-3 border-t border-gray-700 bg-gray-900/50 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setAdminMovementEditForm(null)}>
+                Cancelar
+              </Button>
+              <Button variant="primary" onClick={saveAdminMovementEdit}>
+                Salvar
               </Button>
             </div>
           </div>
