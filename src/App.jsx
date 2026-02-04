@@ -7996,7 +7996,8 @@ safeCutting.forEach((c) => {
     const movementsFiltered = movements.filter((mov) => {
       const search = normalizeSearch(adminMovementsIdFilter);
       if (!search) return true;
-      return normalizeSearch(mov.id).includes(search);
+      const haystack = `${mov.id || ''} ${mov.desc || ''} ${mov.type || ''}`;
+      return normalizeSearch(haystack).includes(search);
     });
 
     const motherPageData = paginateItems(motherFiltered, adminMotherPage);
@@ -8832,13 +8833,13 @@ safeCutting.forEach((c) => {
           <h3 className="text-lg font-bold text-white mb-4">Movimentações (apagar no Firebase)</h3>
           <div className="mb-3 max-w-sm">
             <Input
-              label="Buscar por ID"
+              label="Buscar por cÃ³digo/descriÃ§Ã£o"
               value={adminMovementsIdFilter}
               onChange={(e) => {
                 setAdminMovementsIdFilter(e.target.value);
                 setAdminMovementsPage(1);
               }}
-              placeholder="ID da movimentacao..."
+              placeholder="CÃ³digo, descriÃ§Ã£o ou ID..."
             />
           </div>
           <div className="overflow-auto max-h-[420px] custom-scrollbar-dark">
