@@ -7887,13 +7887,61 @@ safeCutting.forEach((c) => {
 
     const parseDate = (value) => {
       if (!value) return null;
-      if (typeof value === 'string' && value.includes('/')) {
-        const [day, month, year] = value.split('/');
-        const parsed = new Date(`${year}-${month}-${day}`);
+
+      if (value instanceof Date) return value;
+      if (typeof value === 'number') {
+        const parsed = new Date(value);
         return Number.isNaN(parsed.getTime()) ? null : parsed;
       }
-      const parsed = new Date(value);
-      return Number.isNaN(parsed.getTime()) ? null : parsed;
+      if (typeof value === 'object') {
+        if (typeof value.toDate === 'function') {
+          const parsed = value.toDate();
+          return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+        if (typeof value.seconds === 'number') {
+          const parsed = new Date(value.seconds * 1000);
+          return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+      }
+
+      if (typeof value === 'string') {
+        const raw = value.trim();
+        if (!raw) return null;
+
+        // Strings com AM/PM ou vÃ­rgula costumam ser do locale do browser.
+        if (/[AP]M|,/.test(raw)) {
+          const parsed = new Date(raw);
+          if (!Number.isNaN(parsed.getTime())) return parsed;
+        }
+
+        if (raw.includes('/')) {
+          const [datePart, ...timeParts] = raw.split(' ');
+          const timePart = timeParts.join(' ').replace(',', '').trim();
+          const parts = datePart.split('/');
+          if (parts.length === 3) {
+            let [p1, p2, p3] = parts;
+            let year = p3.length === 2 ? `20${p3}` : p3;
+            let day = p1;
+            let month = p2;
+            const n1 = parseInt(p1, 10);
+            const n2 = parseInt(p2, 10);
+            // Se veio em formato MM/DD e o dia Ã© vÃ¡lido, inverte.
+            if (n1 <= 12 && n2 > 12) {
+              day = p2;
+              month = p1;
+            }
+            const iso = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}` +
+              (timePart ? `T${timePart}` : 'T12:00:00');
+            const parsed = new Date(iso);
+            return Number.isNaN(parsed.getTime()) ? null : parsed;
+          }
+        }
+
+        const parsed = new Date(raw);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+      }
+
+      return null;
     };
 
     const formatDate = (value) => {
@@ -7964,7 +8012,8 @@ safeCutting.forEach((c) => {
         id: log.id,
         collection: 'cuttingLogs',
         type: 'Corte',
-        date: log.timestamp || log.date,
+        date: log.date,
+        timestamp: log.timestamp,
         desc: `MP ${log.motherCode || '-'} -> B2 ${log.b2Code || '-'}`,
         qty: log.outputCount ?? log.quantity ?? '-',
         weight: log.inputWeight ?? log.weight ?? '-',
@@ -7973,7 +8022,8 @@ safeCutting.forEach((c) => {
         id: log.id,
         collection: 'productionLogs',
         type: 'Produção',
-        date: log.timestamp || log.date,
+        date: log.date,
+        timestamp: log.timestamp,
         desc: `${log.productCode || '-'} - ${log.productName || ''}`,
         qty: log.pieces ?? log.quantity ?? '-',
         weight: log.weight ?? '-',
@@ -7982,14 +8032,15 @@ safeCutting.forEach((c) => {
         id: log.id,
         collection: 'shippingLogs',
         type: 'Expedição',
-        date: log.timestamp || log.date,
+        date: log.date,
+        timestamp: log.timestamp,
         desc: `${log.productCode || '-'} - ${log.productName || ''}`,
         qty: log.quantity ?? '-',
         weight: log.weight ?? '-',
       })),
     ].sort((a, b) => {
-      const dateA = parseDate(a.date)?.getTime() || 0;
-      const dateB = parseDate(b.date)?.getTime() || 0;
+      const dateA = parseDate(a.timestamp)?.getTime() || parseDate(a.date)?.getTime() || 0;
+      const dateB = parseDate(b.timestamp)?.getTime() || parseDate(b.date)?.getTime() || 0;
       return dateB - dateA;
     });
 
@@ -8863,7 +8914,7 @@ safeCutting.forEach((c) => {
                 ) : (
                   movementsPageData.items.map((mov, idx) => (
                     <tr key={`${mov.collection}-${mov.id || idx}`} className="hover:bg-gray-800/40">
-                      <td className="p-2 text-xs text-gray-400">{formatDate(mov.date)}</td>
+                      <td className="p-2 text-xs text-gray-400">{formatDate(mov.timestamp || mov.date)}</td>
                       <td className="p-2 text-xs font-semibold">{mov.type}</td>
                       <td className="p-2">{mov.desc}</td>
                       <td className="p-2 text-right font-mono">{mov.qty}</td>
