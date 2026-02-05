@@ -39,21 +39,31 @@ const ProductionEventDetailsModal = ({
   const targetIds = Array.isArray(event?.targetIds) ? event.targetIds : [];
   const rawLogs = Array.isArray(event?.rawLogs) ? event.rawLogs : [];
   const lotBaseId = details.lotBaseId || event?.referenceId || '';
+  const expectedProductCode = details.productCode || event?.raw?.productCode || '';
 
   const logs = useMemo(() => {
-    if (rawLogs.length > 0) return rawLogs;
-    if (targetIds.length > 0) {
-      return targetIds
+    let baseLogs = [];
+    if (rawLogs.length > 0) {
+      baseLogs = rawLogs;
+    } else if (targetIds.length > 0) {
+      baseLogs = targetIds
         .map((id) => productionLogs.find((log) => String(log.id) === String(id)))
         .filter(Boolean);
-    }
-    if (lotBaseId) {
-      return productionLogs.filter(
+    } else if (lotBaseId) {
+      baseLogs = productionLogs.filter(
         (log) => String(log.trackingId || '').startsWith(String(lotBaseId)),
       );
     }
-    return [];
-  }, [rawLogs, targetIds, productionLogs, lotBaseId]);
+
+    if (!expectedProductCode) return baseLogs;
+
+    const hasProductCode = baseLogs.some((log) => log?.productCode);
+    if (!hasProductCode) return baseLogs;
+
+    return baseLogs.filter(
+      (log) => String(log?.productCode || '') === String(expectedProductCode),
+    );
+  }, [rawLogs, targetIds, productionLogs, lotBaseId, expectedProductCode]);
 
   const uniqueLogs = Array.from(
     logs.reduce((acc, log) => {
