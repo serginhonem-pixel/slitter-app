@@ -63,21 +63,17 @@ const CutEventDetailsModal = ({
   }, [event, motherCoils, sourceId, details]);
 
   const childItems = useMemo(() => {
-    if (targetIds.length > 0) {
-      return targetIds
-        .map((id) => childCoils.find((c) => String(c.id) === String(id)))
-        .filter(Boolean);
-    }
-    if (mother?.id) {
-      const eventDate = details.date || '';
-      return childCoils.filter((c) => {
-        if (String(c.motherId) !== String(mother.id)) return false;
-        if (!eventDate) return true;
-        return String(c.createdAt || c.date || '').includes(eventDate);
-      });
-    }
-    return [];
-  }, [childCoils, targetIds, mother, details]);
+    const explicitChildIds = [
+      ...targetIds,
+      ...(Array.isArray(details.childIds) ? details.childIds : []),
+    ].map(String);
+
+    if (explicitChildIds.length === 0) return [];
+
+    return explicitChildIds
+      .map((id) => childCoils.find((c) => String(c.id) === String(id)))
+      .filter(Boolean);
+  }, [childCoils, targetIds, details.childIds]);
 
   const generatedItems = useMemo(() => {
     const value = cutLog?.generatedItems || details.generatedItems;
