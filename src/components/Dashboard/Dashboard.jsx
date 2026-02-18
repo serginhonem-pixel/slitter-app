@@ -25,6 +25,199 @@ const Dashboard = ({
   eventLogsLoading = false,
   onViewEventDetails,
 }) => {
+  const [snapshotDate, setSnapshotDate] = useState('');
+
+  const parseLogDate = (rawValue) => {
+    if (!rawValue) return null;
+    if (rawValue instanceof Date) return rawValue;
+    if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+      const parsed = new Date(rawValue);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    if (typeof rawValue === 'string') {
+      const normalized = rawValue.replace(',', '').trim();
+      const ddmmyy =
+        normalized.match(
+          /(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/,
+        ) || normalized.match(/(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+      if (ddmmyy) {
+        const [, p1, p2, p3, hh = '00', mm = '00', ss = '00'] = ddmmyy;
+        const [year, month, day] =
+          normalized.includes('/') && !normalized.startsWith(p3)
+            ? [p3, p2, p1]
+            : [p1, p2, p3];
+        const iso = `${year}-${month}-${day}T${hh}:${mm}:${ss}`;
+        const parsed = new Date(iso);
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+      }
+      const parsed = new Date(normalized);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+    return null;
+  };
+
+  const formatSnapshotLabel = (isoDate) => {
+    if (!isoDate || !isoDate.includes('-')) return '';
+    const [yyyy, mm, dd] = isoDate.split('-');
+    return `${dd}/${mm}/${yyyy}`;
+  };
+
+  const snapshotData = useMemo(() => {
+    const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
+    const safeChild = Array.isArray(childCoils) ? childCoils : [];
+    const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
+    const safeShip = Array.isArray(shippingLogs) ? shippingLogs : [];
+    const safeCut = Array.isArray(cuttingLogs) ? cuttingLogs : [];
+    const safeEvents = Array.isArray(eventLogs) ? eventLogs : [];
+
+    if (!snapshotDate) {
+      return {
+        motherCoils: safeMother,
+        childCoils: safeChild,
+        productionLogs: safeProd,
+        shippingLogs: safeShip,
+        cuttingLogs: safeCut,
+        eventLogs: safeEvents,
+        snapshotActive: false,
+        snapshotLabel: '',
+      };
+    }
+
+    const snapshotEnd = new Date(`${snapshotDate}T23:59:59.999`);
+    const snapshotMs = snapshotEnd.getTime();
+    if (!Number.isFinite(snapshotMs)) {
+      return {
+        motherCoils: safeMother,
+        childCoils: safeChild,
+        productionLogs: safeProd,
+        shippingLogs: safeShip,
+        cuttingLogs: safeCut,
+        eventLogs: safeEvents,
+        snapshotActive: false,
+        snapshotLabel: '',
+      };
+    }
+
+    const toMs = (value) => parseLogDate(value)?.getTime() ?? null;
+    const isBeforeSnapshot = (value) => {
+      const time = toMs(value);
+      return time !== null && time <= snapshotMs;
+    };
+
+    const motherLastCutByRef = safeCut.reduce((acc, cut) => {
+      const cutMs = toMs(cut?.timestamp || cut?.date);
+      if (cutMs === null) return acc;
+      const keys = [cut?.motherId, cut?.motherCode]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+      keys.forEach((key) => {
+        const current = acc[key];
+        if (!current || cutMs > current) acc[key] = cutMs;
+      });
+      return acc;
+    }, {});
+
+    const childFirstProdById = safeProd.reduce((acc, prod) => {
+      const prodMs = toMs(prod?.timestamp || prod?.date);
+      if (prodMs === null) return acc;
+      const ids = Array.isArray(prod?.childIds) ? prod.childIds : [];
+      ids.forEach((childId) => {
+        const key = String(childId || '').trim();
+        if (!key) return;
+        const current = acc[key];
+        if (!current || prodMs < current) acc[key] = prodMs;
+      });
+      return acc;
+    }, {});
+
+    const motherSnapshot = safeMother
+      .map((coil) => {
+        const createdMs = toMs(coil?.entryDate || coil?.date || coil?.createdAt);
+        if (createdMs !== null && createdMs > snapshotMs) return null;
+
+        let status = coil?.status === 'stock' ? 'stock' : 'consumed';
+        if (status !== 'stock') {
+          const consumedMs =
+            toMs(coil?.consumedDate) ??
+            motherLastCutByRef[String(coil?.id || '').trim()] ??
+            motherLastCutByRef[String(coil?.code || '').trim()] ??
+            null;
+          if (consumedMs === null || consumedMs > snapshotMs) {
+            status = 'stock';
+          }
+        }
+
+        let remainingWeight = Number(coil?.remainingWeight);
+        if (status === 'stock' && (!Number.isFinite(remainingWeight) || remainingWeight <= 0)) {
+          const fallbackWeight = Number(coil?.originalWeight ?? coil?.weight ?? 0);
+          remainingWeight = Number.isFinite(fallbackWeight) ? fallbackWeight : 0;
+        }
+
+        return {
+          ...coil,
+          status,
+          remainingWeight,
+        };
+      })
+      .filter(Boolean);
+
+    const childSnapshot = safeChild
+      .map((coil) => {
+        const createdMs = toMs(coil?.createdAt || coil?.entryDate || coil?.date);
+        if (createdMs !== null && createdMs > snapshotMs) return null;
+
+        let status = coil?.status === 'stock' ? 'stock' : 'consumed';
+        if (status !== 'stock') {
+          const consumedMs =
+            toMs(coil?.consumedDate) ??
+            childFirstProdById[String(coil?.id || '').trim()] ??
+            null;
+          if (consumedMs === null || consumedMs > snapshotMs) {
+            status = 'stock';
+          }
+        }
+
+        let weight = Number(coil?.weight);
+        if (status === 'stock' && (!Number.isFinite(weight) || weight <= 0)) {
+          const fallbackWeight = Number(coil?.initialWeight ?? coil?.originalWeight ?? 0);
+          weight = Number.isFinite(fallbackWeight) ? fallbackWeight : 0;
+        }
+
+        return {
+          ...coil,
+          status,
+          weight,
+        };
+      })
+      .filter(Boolean);
+
+    return {
+      motherCoils: motherSnapshot,
+      childCoils: childSnapshot,
+      productionLogs: safeProd.filter((log) => isBeforeSnapshot(log?.timestamp || log?.date)),
+      shippingLogs: safeShip.filter((log) => isBeforeSnapshot(log?.timestamp || log?.date)),
+      cuttingLogs: safeCut.filter((log) => isBeforeSnapshot(log?.timestamp || log?.date)),
+      eventLogs: safeEvents.filter((event) => isBeforeSnapshot(event?.timestamp || event?.date || event?.createdAt)),
+      snapshotActive: true,
+      snapshotLabel: formatSnapshotLabel(snapshotDate),
+    };
+  }, [
+    childCoils,
+    cuttingLogs,
+    eventLogs,
+    motherCoils,
+    productionLogs,
+    shippingLogs,
+    snapshotDate,
+  ]);
+
+  const sourceMotherCoils = snapshotData.motherCoils;
+  const sourceChildCoils = snapshotData.childCoils;
+  const sourceProductionLogs = snapshotData.productionLogs;
+  const sourceShippingLogs = snapshotData.shippingLogs;
+  const sourceCuttingLogs = snapshotData.cuttingLogs;
+  const sourceEventLogs = snapshotData.eventLogs;
+
   const {
     motherStockList,
     childStockList,
@@ -34,10 +227,10 @@ const Dashboard = ({
     rawMotherCoils,
     rawChildCoils,
   } = useStockData({
-    motherCoils,
-    childCoils,
-    productionLogs,
-    shippingLogs,
+    motherCoils: sourceMotherCoils,
+    childCoils: sourceChildCoils,
+    productionLogs: sourceProductionLogs,
+    shippingLogs: sourceShippingLogs,
     motherCatalog,
     productCatalog,
   });
@@ -57,9 +250,9 @@ const Dashboard = ({
       finishedStockList,
       rawMotherCoils,
       rawChildCoils,
-      productionLogs,
-      shippingLogs,
-      cuttingLogs,
+      productionLogs: sourceProductionLogs,
+      shippingLogs: sourceShippingLogs,
+      cuttingLogs: sourceCuttingLogs,
       params: statusParams,
     });
 
@@ -128,40 +321,12 @@ const Dashboard = ({
     return Number((unit * (count || 0)).toFixed(2));
   };
 
-  const parseLogDate = (rawValue) => {
-    if (!rawValue) return new Date();
-    if (rawValue instanceof Date) return rawValue;
-    if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
-      return new Date(rawValue);
-    }
-    if (typeof rawValue === 'string') {
-      const normalized = rawValue.replace(',', '').trim();
-      const ddmmyy =
-        normalized.match(
-          /(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/,
-        ) || normalized.match(/(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
-      if (ddmmyy) {
-        const [, p1, p2, p3, hh = '00', mm = '00', ss = '00'] = ddmmyy;
-        const [year, month, day] =
-          normalized.includes('/') && !normalized.startsWith(p3)
-            ? [p3, p2, p1]
-            : [p1, p2, p3];
-        const iso = `${year}-${month}-${day}T${hh}:${mm}:${ss}`;
-        const parsed = new Date(iso);
-        if (!Number.isNaN(parsed.getTime())) return parsed;
-      }
-      const parsed = new Date(normalized);
-      if (!Number.isNaN(parsed.getTime())) return parsed;
-    }
-    return new Date();
-  };
-
   const normalizeTimestamp = (timestamp, date) => {
-    return parseLogDate(timestamp || date).toISOString();
+    return (parseLogDate(timestamp || date) || new Date()).toISOString();
   };
 
   const shipmentRows = useMemo(() => {
-    const safeShipments = Array.isArray(shippingLogs) ? shippingLogs : [];
+    const safeShipments = Array.isArray(sourceShippingLogs) ? sourceShippingLogs : [];
     return safeShipments
       .map((log) => {
         const quantity = Number(log.quantity) || 0;
@@ -189,11 +354,11 @@ const Dashboard = ({
           new Date(b.timestamp || b.date || 0).getTime() -
           new Date(a.timestamp || a.date || 0).getTime(),
       );
-  }, [shippingLogs, getUnitWeight]);
+  }, [sourceShippingLogs, getUnitWeight]);
 
   const nfRecords = useMemo(() => {
-    const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
-    const safeChild = Array.isArray(childCoils) ? childCoils : [];
+    const safeMother = Array.isArray(sourceMotherCoils) ? sourceMotherCoils : [];
+    const safeChild = Array.isArray(sourceChildCoils) ? sourceChildCoils : [];
 
     const formatDate = (value) => {
       if (!value) return '-';
@@ -241,11 +406,11 @@ const Dashboard = ({
       });
 
     return [...motherRecords, ...childRecords].sort((a, b) => b.sortTime - a.sortTime);
-  }, [motherCoils, childCoils, catalogByCode, b2CatalogByCode]);
+  }, [sourceMotherCoils, sourceChildCoils, catalogByCode, b2CatalogByCode]);
 
   const fallbackEvents = useMemo(() => {
     return [
-      ...cuttingLogs.map((log) => ({
+      ...sourceCuttingLogs.map((log) => ({
         id: `cut-${log.id}`,
         eventType: EVENT_TYPES.B2_CUT,
         timestamp: normalizeTimestamp(log.timestamp, log.date),
@@ -259,7 +424,7 @@ const Dashboard = ({
         },
         raw: log,
       })),
-      ...productionLogs.map((log) => ({
+      ...sourceProductionLogs.map((log) => ({
         id: `prod-${log.id}`,
         eventType: EVENT_TYPES.PA_PRODUCTION,
         timestamp: normalizeTimestamp(log.timestamp, log.date),
@@ -273,7 +438,7 @@ const Dashboard = ({
         },
         raw: log,
       })),
-      ...shippingLogs.map((log) => ({
+      ...sourceShippingLogs.map((log) => ({
         id: `ship-${log.id}`,
         eventType: EVENT_TYPES.PA_SHIPPING,
         timestamp: normalizeTimestamp(log.timestamp, log.date),
@@ -287,7 +452,7 @@ const Dashboard = ({
         raw: log,
       })),
     ];
-  }, [cuttingLogs, productionLogs, shippingLogs]);
+  }, [sourceCuttingLogs, sourceProductionLogs, sourceShippingLogs]);
 
   const derivedEventLogs = useMemo(() => {
     const ensureString = (value) => {
@@ -308,13 +473,13 @@ const Dashboard = ({
       const withId = (value) => ensureString(value) || undefined;
 
       const matchMother = (codeOrId) =>
-        motherCoils.find(
+        sourceMotherCoils.find(
           (coil) =>
             withId(coil.id) === withId(codeOrId) || withId(coil.code) === withId(codeOrId),
         );
 
       const matchChild = (codeOrId) =>
-        childCoils.find(
+        sourceChildCoils.find(
           (coil) =>
             withId(coil.id) === withId(codeOrId) ||
             withId(coil.b2Code) === withId(codeOrId) ||
@@ -322,7 +487,7 @@ const Dashboard = ({
         );
 
       const matchProduction = (idOrProduct) =>
-        productionLogs.find(
+        sourceProductionLogs.find(
           (log) =>
             withId(log.id) === withId(idOrProduct) ||
             withId(log.productCode) === withId(idOrProduct) ||
@@ -330,7 +495,7 @@ const Dashboard = ({
         );
 
       const matchShipping = (idOrProduct) =>
-        shippingLogs.find(
+        sourceShippingLogs.find(
           (log) =>
             withId(log.id) === withId(idOrProduct) || withId(log.productCode) === withId(idOrProduct),
         );
@@ -360,8 +525,8 @@ const Dashboard = ({
         case EVENT_TYPES.B2_CUT: {
           const target = matchMother(baseDetails.motherCode || event.sourceId);
           const log =
-            cuttingLogs.find((cLog) => withId(cLog.id) === withId(event.targetIds?.[0])) ||
-            cuttingLogs.find((cLog) => withId(cLog.motherCode) === withId(target?.code));
+            sourceCuttingLogs.find((cLog) => withId(cLog.id) === withId(event.targetIds?.[0])) ||
+            sourceCuttingLogs.find((cLog) => withId(cLog.motherCode) === withId(target?.code));
 
           if (target) {
             baseDetails.motherCode = target.code;
@@ -414,7 +579,7 @@ const Dashboard = ({
       };
     };
 
-    const baseEvents = eventLogs && eventLogs.length > 0 ? eventLogs : fallbackEvents;
+    const baseEvents = sourceEventLogs && sourceEventLogs.length > 0 ? sourceEventLogs : fallbackEvents;
 
     return baseEvents
       .map((event, index) =>
@@ -431,17 +596,17 @@ const Dashboard = ({
       )
       .slice(0, 25);
   }, [
-    childCoils,
-    cuttingLogs,
-    eventLogs,
+    sourceChildCoils,
+    sourceCuttingLogs,
+    sourceEventLogs,
     fallbackEvents,
-    motherCoils,
-    productionLogs,
-    shippingLogs,
+    sourceMotherCoils,
+    sourceProductionLogs,
+    sourceShippingLogs,
   ]);
 
   const exportMother = () => {
-    const stockRows = motherCoils.filter((coil) => coil.status === 'stock');
+    const stockRows = sourceMotherCoils.filter((coil) => coil.status === 'stock');
 
     const summaryMap = new Map();
     stockRows.forEach((coil) => {
@@ -505,7 +670,7 @@ const Dashboard = ({
   };
 
   const exportMotherPdf = () => {
-    const stockRows = motherCoils.filter((coil) => coil.status === 'stock');
+    const stockRows = sourceMotherCoils.filter((coil) => coil.status === 'stock');
     if (!stockRows.length) {
       alert('Nenhuma bobina em estoque.');
       return;
@@ -645,7 +810,7 @@ const Dashboard = ({
   };
 
   const exportChild = () => {
-    const stockRows = childCoils.filter((coil) => coil.status === 'stock');
+    const stockRows = sourceChildCoils.filter((coil) => coil.status === 'stock');
     const summaryMap = new Map();
 
     stockRows.forEach((coil) => {
@@ -718,7 +883,7 @@ const Dashboard = ({
   };
 
   const exportShipments = () => {
-    const dataToExport = (Array.isArray(shippingLogs) ? shippingLogs : []).map((log) => ({
+    const dataToExport = (Array.isArray(sourceShippingLogs) ? sourceShippingLogs : []).map((log) => ({
       ID: log.id,
       Codigo_PA: log.productCode,
       Nome_PA: log.productName,
@@ -732,6 +897,37 @@ const Dashboard = ({
 
   return (
     <div className="space-y-6">
+      <div className="bg-slate-900/40 border border-white/5 rounded-2xl px-4 py-3 flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+            Fotografia de Estoque
+          </p>
+          <p className="text-xs text-gray-500">
+            Selecione uma data para visualizar o saldo daquele dia.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={snapshotDate}
+            onChange={(e) => setSnapshotDate(e.target.value)}
+            className="bg-gray-900 text-white border border-gray-700 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+          />
+          <button
+            type="button"
+            onClick={() => setSnapshotDate('')}
+            className="text-xs px-3 py-2 rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
+          >
+            Atual
+          </button>
+          {snapshotData.snapshotActive && (
+            <span className="text-xs text-cyan-300 font-semibold">
+              {snapshotData.snapshotLabel}
+            </span>
+          )}
+        </div>
+      </div>
+
       <StockSummary totals={totals} />
 
       <StockTabs
@@ -753,7 +949,7 @@ const Dashboard = ({
         eventLogs={derivedEventLogs}
         eventLogsLoading={eventLogsLoading}
         onViewEventDetails={onViewEventDetails}
-        productionLogs={productionLogs}
+        productionLogs={sourceProductionLogs}
         statusByMotherCode={motherStatusByCode}
         statusByChildCode={childStatusByCode}
         statusByFinishedCode={finishedStatusByCode}

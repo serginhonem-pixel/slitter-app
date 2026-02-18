@@ -1560,6 +1560,7 @@ export default function App() {
   const [b2ReportSearch, setB2ReportSearch] = useState('');
   const [b2ReportStatus, setB2ReportStatus] = useState('ALL'); // 'ALL', 'STOCK', 'CONSUMED'
   const [expandedGroupCode, setExpandedGroupCode] = useState(null);; // Qual linha está aberta
+  const [b2ReportSnapshotDate, setB2ReportSnapshotDate] = useState('');
   const [b2ThicknessFilter, setB2ThicknessFilter] = useState('');
   const [mpFilterThickness, setMpFilterThickness] = useState('all');
   const [mpFilterType, setMpFilterType] = useState('all');
@@ -1757,6 +1758,11 @@ export default function App() {
   const USE_LOCAL_JSON = isLocalHost();
   // true no npm run dev, false no build/Vercel
   const ADMIN_EMAIL = 'pcp@metalosa.com.br';
+  const LOCAL_DEV_USER = {
+    uid: 'LOCALHOST-DEV',
+    email: ADMIN_EMAIL,
+    displayName: 'Dev Local',
+  };
   const isAdminUser = user?.email?.toLowerCase() === ADMIN_EMAIL;
   const ADMIN_PAGE_SIZE = 20;
 
@@ -1924,6 +1930,12 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (USE_LOCAL_JSON) {
+      setUser(LOCAL_DEV_USER);
+      setAuthLoading(false);
+      return undefined;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       setAuthLoading(false);
@@ -1940,7 +1952,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [USE_LOCAL_JSON]);
 
   useEffect(() => {
     if (activeTab === 'admin' && !isAdminUser) {
@@ -9460,6 +9472,39 @@ const renderB2DynamicReport = () => {
   const mergedMotherCatalog = [...motherCatalogFallback, ...motherCatalogRuntime];
 
   const safeMotherCatalog = mergedMotherCatalog;
+  const snapshotDateEnd = b2ReportSnapshotDate
+    ? new Date(`${b2ReportSnapshotDate}T23:59:59.999`)
+    : null;
+  const snapshotDateEndMs = snapshotDateEnd?.getTime() ?? null;
+  const hasSnapshotDate = Number.isFinite(snapshotDateEndMs);
+  const formatSnapshotLabel = (isoDate) => {
+    if (!isoDate || !isoDate.includes('-')) return '-';
+    const [yyyy, mm, dd] = isoDate.split('-');
+    if (!yyyy || !mm || !dd) return '-';
+    return `${dd}/${mm}/${yyyy}`;
+  };
+
+  const getB2EffectiveStatus = (item) => {
+    if (!hasSnapshotDate) {
+      return item.status === "stock" ? "stock" : "consumed";
+    }
+
+    const entryDate = parseMovementDate(
+      item?.createdAt || item?.entryDate || item?.date
+    );
+    if (!entryDate || entryDate.getTime() > snapshotDateEndMs) {
+      return "not_created";
+    }
+
+    const consumedAt = parseMovementDate(
+      item?.consumptionDate || item?.consumptionTimestamp
+    );
+    if (consumedAt && consumedAt.getTime() <= snapshotDateEndMs) {
+      return "consumed";
+    }
+
+    return "stock";
+  };
 
   const motherCatalogByCode = safeMotherCatalog.reduce((acc, item) => {
     const code = String(item?.code || '').trim();
@@ -9511,9 +9556,14 @@ const renderB2DynamicReport = () => {
         entryDate: "-",
       };
 
-    const prodLog = safeProd.find(
-      (log) => Array.isArray(log.childIds) && log.childIds.includes(b2.id)
-    );
+    const prodLogsForChild = safeProd
+      .filter((log) => Array.isArray(log.childIds) && log.childIds.includes(b2.id))
+      .sort((a, b) => {
+        const dateA = parseMovementDate(a?.date || a?.timestamp)?.getTime() || 0;
+        const dateB = parseMovementDate(b?.date || b?.timestamp)?.getTime() || 0;
+        return dateA - dateB;
+      });
+    const prodLog = prodLogsForChild[0] || null;
 
     const motherCatalogMatch = safeMotherCatalog.find(
       (m) => String(m.code) === String(b2.motherCode)
@@ -9530,7 +9580,8 @@ const renderB2DynamicReport = () => {
       motherWidth: motherCatalogMatch?.width ?? mother.width ?? null,
       motherThickness: motherCatalogMatch?.thickness ?? mother.thickness ?? null,
       motherEntryDate: mother.entryDate || mother.date,
-      consumptionDate: prodLog ? prodLog.date : null,
+      consumptionDate: prodLog ? prodLog.date || prodLog.timestamp : null,
+      consumptionTimestamp: prodLog ? prodLog.timestamp || prodLog.date : null,
       productFinal: prodLog
         ? `${prodLog.productCode} - ${prodLog.productName}`
         : null,
@@ -9659,6 +9710,9 @@ const renderB2DynamicReport = () => {
   const search = (b2ReportSearch || "").toLowerCase();
 
   const filteredRaw = enrichedData.filter((item) => {
+    const effectiveStatus = getB2EffectiveStatus(item);
+    if (effectiveStatus === "not_created") return false;
+
     const matchesSearch =
       item.b2Code?.toLowerCase().includes(search) ||
       item.b2Name?.toLowerCase().includes(search) ||
@@ -9700,8 +9754,9 @@ const renderB2DynamicReport = () => {
     acc[code].items.push(item);
     acc[code].totalItems++;
 
+    const effectiveStatus = getB2EffectiveStatus(item);
     const w = Number(item.weight) || 0;
-    if (item.status === "stock") {
+    if (effectiveStatus === "stock") {
       acc[code].stockCount++;
       acc[code].stockWeight += w;
     } else {
@@ -9745,6 +9800,16 @@ const renderB2DynamicReport = () => {
         </div>
 
         <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto md:items-center">
+          <div className="md:w-40">
+            <input
+              type="date"
+              value={b2ReportSnapshotDate}
+              onChange={(e) => setB2ReportSnapshotDate(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
+              title="Data-base do estoque"
+            />
+          </div>
+
           {/* Busca */}
           <div className="relative flex-1 md:w-64">
             <Search
@@ -9806,7 +9871,9 @@ const renderB2DynamicReport = () => {
       <div className="grid grid-cols-2 gap-4">
         <Card className="bg-emerald-900/20 border-emerald-500/30 py-3 px-4">
           <span className="text-xs text-emerald-400 font-bold uppercase">
-            Saldo em Estoque
+            {hasSnapshotDate
+              ? `Saldo em Estoque (${formatSnapshotLabel(b2ReportSnapshotDate)})`
+              : "Saldo em Estoque"}
           </span>
           <div className="text-2xl font-bold text-white">
             {totalStockWeight.toLocaleString("pt-BR")}{" "}
@@ -9815,7 +9882,9 @@ const renderB2DynamicReport = () => {
         </Card>
         <Card className="bg-gray-700/20 border-gray-600/30 py-3 px-4">
           <span className="text-xs text-gray-400 font-bold uppercase">
-            Total Consumido (Filtrado)
+            {hasSnapshotDate
+              ? `Consumido até ${formatSnapshotLabel(b2ReportSnapshotDate)}`
+              : "Total Consumido (Filtrado)"}
           </span>
           <div className="text-2xl font-bold text-gray-300">
             {totalConsumedWeight.toLocaleString("pt-BR")}{" "}
@@ -9920,57 +9989,61 @@ const renderB2DynamicReport = () => {
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-gray-800">
-                                {group.items.map((item, idx) => (
-                                  <tr
-                                    key={idx}
-                                    className="hover:bg-gray-800/50"
-                                  >
-                                    <td className="py-2">
-                                      {item.createdAt}
-                                    </td>
-                                    <td className="py-2">
-                                      <div className="font-bold text-gray-300">
-                                        {item.motherCode}
-                                      </div>
-                                      <div className="text-[10px] truncate max-w-[200px]">
-                                        {item.motherMaterial}
-                                      </div>
-                                    </td>
-                                    <td className="py-2 font-mono text-indigo-200">
-                                      {item.id}
-                                    </td>
-                                    <td className="py-2 text-right font-bold text-white">
-                                      {item.weight} kg
-                                    </td>
-                                    <td className="py-2 text-center">
-                                      {item.status === "stock" ? (
-                                        <span className="text-emerald-500 font-bold">
-                                          ESTOQUE
-                                        </span>
-                                      ) : (
-                                        <span className="text-gray-600">
-                                          BAIXADO
-                                        </span>
-                                      )}
-                                    </td>
-                                    <td className="py-2">
-                                      {item.status === "consumed" ? (
-                                        <div>
-                                          <div className="text-white font-bold">
-                                            {item.consumptionDate}
-                                          </div>
-                                          <div className="text-indigo-300 truncate max-w-[250px]">
-                                            {item.productFinal}
-                                          </div>
+                                {group.items.map((item, idx) => {
+                                  const effectiveStatus = getB2EffectiveStatus(item);
+                                  const isConsumed = effectiveStatus === "consumed";
+                                  return (
+                                    <tr
+                                      key={idx}
+                                      className="hover:bg-gray-800/50"
+                                    >
+                                      <td className="py-2">
+                                        {item.createdAt}
+                                      </td>
+                                      <td className="py-2">
+                                        <div className="font-bold text-gray-300">
+                                          {item.motherCode}
                                         </div>
-                                      ) : (
-                                        <span className="text-gray-600 italic">
-                                          -
-                                        </span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))}
+                                        <div className="text-[10px] truncate max-w-[200px]">
+                                          {item.motherMaterial}
+                                        </div>
+                                      </td>
+                                      <td className="py-2 font-mono text-indigo-200">
+                                        {item.id}
+                                      </td>
+                                      <td className="py-2 text-right font-bold text-white">
+                                        {item.weight} kg
+                                      </td>
+                                      <td className="py-2 text-center">
+                                        {isConsumed ? (
+                                          <span className="text-gray-600">
+                                            BAIXADO
+                                          </span>
+                                        ) : (
+                                          <span className="text-emerald-500 font-bold">
+                                            ESTOQUE
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="py-2">
+                                        {isConsumed ? (
+                                          <div>
+                                            <div className="text-white font-bold">
+                                              {item.consumptionDate}
+                                            </div>
+                                            <div className="text-indigo-300 truncate max-w-[250px]">
+                                              {item.productFinal}
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <span className="text-gray-600 italic">
+                                            -
+                                          </span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
                               </tbody>
                             </table>
                           </div>
@@ -10097,6 +10170,9 @@ const handleUploadJSONToFirebase = async (e) => {
 };
 
   const handleLogout = async () => {
+    if (USE_LOCAL_JSON) {
+      return;
+    }
     try {
       await logoutUser();
     } catch (error) {
@@ -10114,7 +10190,7 @@ const handleUploadJSONToFirebase = async (e) => {
     );
   }
 
-  if (!user) {
+  if (!USE_LOCAL_JSON && !user) {
     return <Login onLoginSuccess={setUser} />;
   }
 
