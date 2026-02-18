@@ -9778,6 +9778,10 @@ const renderB2DynamicReport = () => {
     (acc, g) => acc + (Number(g.stockWeight) || 0),
     0
   );
+  const totalStockCount = groupsList.reduce(
+    (acc, g) => acc + (Number(g.stockCount) || 0),
+    0
+  );
   const totalConsumedWeight = groupsList.reduce(
     (acc, g) => acc + (Number(g.consumedWeight) || 0),
     0
@@ -9878,6 +9882,9 @@ const renderB2DynamicReport = () => {
           <div className="text-2xl font-bold text-white">
             {totalStockWeight.toLocaleString("pt-BR")}{" "}
             <span className="text-sm font-normal text-gray-400">kg</span>
+          </div>
+          <div className="text-xs text-emerald-300 mt-1">
+            {totalStockCount.toLocaleString("pt-BR")} bobinas disponiveis
           </div>
         </Card>
         <Card className="bg-gray-700/20 border-gray-600/30 py-3 px-4">

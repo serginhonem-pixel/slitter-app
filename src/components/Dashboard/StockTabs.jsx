@@ -161,13 +161,15 @@ export const StockTabs = ({
     return data.filter((item) => statusMap[item.code]?.status === statusFilter);
   };
 
-  const getStatusCounts = (data, statusMap) => {
+  const getStatusCounts = (data, statusMap, options = {}) => {
+    const { useItemCount = false } = options;
     const counts = { ALL: 0, CRITICO: 0, SEM_GIRO: 0, USAR: 0, OK: 0 };
     if (!Array.isArray(data) || !statusMap) return counts;
     data.forEach((item) => {
       const status = statusMap[item.code]?.status || 'OK';
-      counts.ALL += 1;
-      counts[status] = (counts[status] || 0) + 1;
+      const itemCount = useItemCount ? Math.max(1, Number(item?.count) || 0) : 1;
+      counts.ALL += itemCount;
+      counts[status] = (counts[status] || 0) + itemCount;
     });
     return counts;
   };
@@ -330,7 +332,9 @@ export const StockTabs = ({
         : activeTabDefinition.id === 'finished'
           ? finishedData
           : [];
-  const statusCounts = getStatusCounts(activeData, activeStatusMap);
+  const statusCounts = getStatusCounts(activeData, activeStatusMap, {
+    useItemCount: ['mother', 'child'].includes(activeTabDefinition.id),
+  });
   const showStatusFilters = ['mother', 'child', 'finished'].includes(activeTabDefinition.id);
 
   return (
