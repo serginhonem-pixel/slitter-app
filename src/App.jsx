@@ -9424,15 +9424,27 @@ const normalizeCode = (value) => String(value || '').trim().toUpperCase();
 const parseMovementDate = (value) => {
   if (!value) return null;
   if (value instanceof Date) return value;
-  const raw = String(value).trim();
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  const raw = String(value).replace(',', '').trim();
   if (!raw) return null;
-  if (raw.includes('/')) {
-    const [day, month, year] = raw.split('/');
-    const parsed = new Date(`${year}-${month}-${day}`);
+  const matched =
+    raw.match(/(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/) ||
+    raw.match(/(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (matched) {
+    const [, p1, p2, p3, hh = '00', mm = '00', ss = '00'] = matched;
+    const [year, month, day] =
+      raw.includes('/') && !raw.startsWith(p3)
+        ? [p3, p2, p1]
+        : [p1, p2, p3];
+    const iso = `${year}-${month}-${day}T${hh}:${mm}:${ss}`;
+    const parsed = new Date(iso);
     if (!Number.isNaN(parsed.getTime())) return parsed;
   }
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  const fallback = new Date(raw);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
 };
 
 const formatPcs = (pcs) => {
@@ -9497,7 +9509,9 @@ const renderB2DynamicReport = () => {
     }
 
     const consumedAt = parseMovementDate(
-      item?.consumptionDate || item?.consumptionTimestamp
+      item?.consumptionDate ||
+      item?.consumptionTimestamp ||
+      item?.consumedDate
     );
     if (consumedAt && consumedAt.getTime() <= snapshotDateEndMs) {
       return "consumed";
@@ -9617,7 +9631,7 @@ const renderB2DynamicReport = () => {
     const search = (b2ReportSearch || "").toLowerCase();
     const filteredCatalog = catalogB2List.filter((item) => {
       const matchesSearch =
-        item.b2Code?.toLowerCase().includes(search) ||
+        (item.b2Code || item.code || "").toLowerCase().includes(search) ||
         item.b2Name?.toLowerCase().includes(search) ||
         String(item.motherCode || "").includes(search);
 
@@ -9714,7 +9728,7 @@ const renderB2DynamicReport = () => {
     if (effectiveStatus === "not_created") return false;
 
     const matchesSearch =
-      item.b2Code?.toLowerCase().includes(search) ||
+      (item.b2Code || item.code || "").toLowerCase().includes(search) ||
       item.b2Name?.toLowerCase().includes(search) ||
       String(item.motherCode || "").includes(search);
 
@@ -9733,13 +9747,13 @@ const renderB2DynamicReport = () => {
 
   // --- 5. AGRUPAMENTO POR CÓDIGO B2 ---
   const groupedData = filteredRaw.reduce((acc, item) => {
-    const code = item.b2Code;
+    const code = item.b2Code || item.code;
     if (!code) return acc;
 
     if (!acc[code]) {
       acc[code] = {
         code: code,
-        name: item.b2Name,
+        name: item.b2Name || item.name || '-',
         b2Type: item.b2Type ?? null,
         b2Thickness: item.b2Thickness ?? null,
         totalItems: 0,
