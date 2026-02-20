@@ -38,6 +38,8 @@ import {
   Scissors,
   ScrollText,
   Search,
+  Camera,
+  ScanLine,
   Shield,
   Trash2,
   TrendingUp,
@@ -1831,6 +1833,17 @@ export default function App() {
   const [opsShowAllB2, setOpsShowAllB2] = useState(false);
   const [opsLastAction, setOpsLastAction] = useState(null); // {type, message, timestamp}
   const [opsTimerTick, setOpsTimerTick] = useState(Date.now()); // tick para esconder botão apagar após tempo
+  const [consultQrInput, setConsultQrInput] = useState('');
+  const [consultResult, setConsultResult] = useState(null);
+  const [consultError, setConsultError] = useState('');
+  const [consultSearchCode, setConsultSearchCode] = useState('');
+  const [consultSearchId, setConsultSearchId] = useState('');
+  const [consultSearchType, setConsultSearchType] = useState('all');
+  const [consultCameraOn, setConsultCameraOn] = useState(false);
+  const [consultCameraError, setConsultCameraError] = useState('');
+  const consultVideoRef = useRef(null);
+  const consultStreamRef = useRef(null);
+  const consultScanTimerRef = useRef(null);
   // Junto com os outros useState
 
   // --- ESTADOS DE RELATÓRIOS ---
@@ -1941,6 +1954,17 @@ export default function App() {
   useEffect(() => {
     const interval = setInterval(() => setOpsTimerTick(Date.now()), 30000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (consultScanTimerRef.current) {
+        clearInterval(consultScanTimerRef.current);
+      }
+      if (consultStreamRef.current) {
+        consultStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -5021,7 +5045,7 @@ export default function App() {
         )}
 
         {/* ============ SELETOR DE OPERAÇÃO (BOTÕES BEM GRANDES) ============ */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button
             onClick={() => setOpsMode('entrada')}
             className={`flex flex-col items-center justify-center gap-3 p-6 rounded-2xl font-bold transition-all border-2 ${
@@ -5045,6 +5069,18 @@ export default function App() {
             <Scissors size={36} />
             <span className="text-lg tracking-wide">CORTE DE BOBINA 2</span>
             <span className="text-xs font-normal opacity-70">Vai cortar tiras? Clique aqui</span>
+          </button>
+          <button
+            onClick={() => setOpsMode('consulta')}
+            className={`flex flex-col items-center justify-center gap-3 p-6 rounded-2xl font-bold transition-all border-2 ${
+              opsMode === 'consulta'
+                ? 'bg-cyan-600 text-white border-cyan-400 shadow-xl shadow-cyan-600/30 scale-[1.02]'
+                : 'bg-gray-800/80 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white hover:border-gray-500'
+            }`}
+          >
+            <ScanLine size={36} />
+            <span className="text-lg tracking-wide">CONSULTA QR</span>
+            <span className="text-xs font-normal opacity-70">Leia e consulte dados completos</span>
           </button>
         </div>
 
@@ -5564,6 +5600,11 @@ export default function App() {
                 <p className="text-sm mt-1 opacity-70">Toque na bobina que está na máquina</p>
               </div>
             )}
+          </div>
+        )}
+        {opsMode === 'consulta' && (
+          <div className="space-y-5">
+            {renderQrConsultPanel()}
           </div>
         )}
       </div>
@@ -11182,6 +11223,383 @@ const handleUploadJSONToFirebase = async (e) => {
       setActiveTab(tab);
       setSidebarOpen(false);
     };
+
+    const parseQrPayload = (rawValue) => {
+      const raw = String(rawValue || '').trim();
+      if (!raw) return null;
+
+      if (raw.startsWith('{') && raw.endsWith('}')) {
+        try {
+          const data = JSON.parse(raw);
+          return {
+            raw,
+            format: 'json',
+            id: String(data?.id || '').trim(),
+            code: String(data?.code || data?.b2Code || data?.productCode || '').trim(),
+            quantity: String(data?.qtd || data?.quantity || '').trim(),
+          };
+        } catch (error) {
+          // tenta outros formatos
+        }
+      }
+
+      const parts = raw.split('|').map((part) => part.trim());
+      if (parts.length >= 4 && parts[0].toLowerCase() === 'v1') {
+        return {
+          raw,
+          format: 'v1',
+          id: parts[1],
+          code: parts[2],
+          quantity: parts.slice(3).join('|'),
+        };
+      }
+
+      return { raw, format: 'plain', id: '', code: raw, quantity: '' };
+    };
+
+    const formatConsultDate = (value) => {
+      if (!value) return '-';
+      const parsed = parseMovementDate(value);
+      if (!parsed) return String(value);
+      return parsed.toLocaleString('pt-BR');
+    };
+
+    const resolveConsultResult = ({ qrId = '', qrCode = '', preferredType = 'all', parsed = null } = {}) => {
+      const safeId = String(qrId || '').trim();
+      const safeCode = normalizeCode(qrCode);
+      const typeFilter = String(preferredType || 'all').toLowerCase();
+
+      const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
+      const safeChild = Array.isArray(childCoils) ? childCoils : [];
+      const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
+      const safeShip = Array.isArray(shippingLogs) ? shippingLogs : [];
+      const safeCut = Array.isArray(cuttingLogs) ? cuttingLogs : [];
+
+      const motherHit = safeMother.find((m) =>
+        (safeId && String(m.id) === safeId) ||
+        (safeCode && normalizeCode(m.code) === safeCode)
+      ) || null;
+
+      const childHit = safeChild.find((c) =>
+        (safeId && String(c.id) === safeId) ||
+        (safeCode && normalizeCode(c.b2Code || c.code) === safeCode)
+      ) || null;
+
+      const prodByIdOrCode = safeProd.find((p) =>
+        (safeId && String(p.id) === safeId) ||
+        (safeCode && normalizeCode(p.productCode) === safeCode) ||
+        (safeCode && normalizeCode(p.trackingId) === safeCode)
+      ) || null;
+
+      const prodByChild = childHit
+        ? safeProd
+          .filter((p) => Array.isArray(p.childIds) && p.childIds.map(String).includes(String(childHit.id)))
+          .sort((a, b) => (parseMovementDate(a?.date || a?.timestamp)?.getTime() || 0) - (parseMovementDate(b?.date || b?.timestamp)?.getTime() || 0))[0] || null
+        : null;
+
+      const productionHit = prodByIdOrCode || prodByChild;
+
+      const shippingHit = safeShip.find((s) =>
+        (safeId && String(s.id) === safeId) ||
+        (safeCode && normalizeCode(s.productCode) === safeCode) ||
+        (safeCode && normalizeCode(s.trackingId) === safeCode)
+      ) || null;
+
+      const motherFromChild = childHit
+        ? safeMother.find((m) =>
+          String(m.id) === String(childHit.motherId) ||
+          String(m.code) === String(childHit.motherCode)
+        ) || null
+        : null;
+
+      const cuttingHit = childHit
+        ? safeCut
+          .filter((c) => Array.isArray(c.childIds) && c.childIds.map(String).includes(String(childHit.id)))
+          .sort((a, b) => (parseMovementDate(a?.date || a?.timestamp)?.getTime() || 0) - (parseMovementDate(b?.date || b?.timestamp)?.getTime() || 0))[0] || null
+        : null;
+
+      const resultType = motherHit
+        ? 'mother'
+        : childHit
+          ? 'b2'
+          : (productionHit || shippingHit)
+            ? 'product'
+            : null;
+
+      if (!resultType) return null;
+      if (typeFilter !== 'all' && resultType !== typeFilter) return null;
+
+      return {
+        parsed: parsed || { raw: safeCode || safeId || '-' },
+        type: resultType,
+        mother: motherHit || motherFromChild || null,
+        child: childHit || null,
+        production: productionHit || null,
+        shipping: shippingHit || null,
+        cutting: cuttingHit || null,
+      };
+    };
+
+    const handleConsultQr = (rawValue = consultQrInput) => {
+      const parsed = parseQrPayload(rawValue);
+      if (!parsed) {
+        setConsultResult(null);
+        setConsultError('Informe ou leia um QR code.');
+        return;
+      }
+
+      const result = resolveConsultResult({
+        qrId: parsed.id,
+        qrCode: parsed.code,
+        preferredType: consultSearchType,
+        parsed,
+      });
+
+      if (!result) {
+        setConsultResult(null);
+        setConsultError('Nao encontrei esse QR nos registros atuais.');
+        return;
+      }
+
+      setConsultError('');
+      setConsultResult(result);
+    };
+
+    const handleConsultByInputs = () => {
+      const byId = String(consultSearchId || '').trim();
+      const byCode = String(consultSearchCode || '').trim();
+      if (!byId && !byCode) {
+        setConsultResult(null);
+        setConsultError('Informe ID ou Codigo para pesquisar.');
+        return;
+      }
+
+      const result = resolveConsultResult({
+        qrId: byId,
+        qrCode: byCode,
+        preferredType: consultSearchType,
+        parsed: { raw: `${byId || '-'}|${byCode || '-'}` },
+      });
+
+      if (!result) {
+        setConsultResult(null);
+        setConsultError('Nao encontrei registros com esses filtros.');
+        return;
+      }
+
+      setConsultError('');
+      setConsultResult(result);
+    };
+
+    const stopConsultCamera = () => {
+      if (consultScanTimerRef.current) {
+        clearInterval(consultScanTimerRef.current);
+        consultScanTimerRef.current = null;
+      }
+      if (consultStreamRef.current) {
+        consultStreamRef.current.getTracks().forEach((track) => track.stop());
+        consultStreamRef.current = null;
+      }
+      if (consultVideoRef.current) {
+        consultVideoRef.current.srcObject = null;
+      }
+      setConsultCameraOn(false);
+    };
+
+    const startConsultCamera = async () => {
+      setConsultCameraError('');
+      if (!('BarcodeDetector' in window)) {
+        setConsultCameraError('Leitura por camera nao suportada neste navegador.');
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false,
+        });
+        consultStreamRef.current = stream;
+        if (consultVideoRef.current) {
+          consultVideoRef.current.srcObject = stream;
+          await consultVideoRef.current.play();
+        }
+        const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+        consultScanTimerRef.current = setInterval(async () => {
+          if (!consultVideoRef.current) return;
+          try {
+            const codes = await detector.detect(consultVideoRef.current);
+            if (codes && codes.length > 0) {
+              const value = codes[0]?.rawValue || '';
+              if (value) {
+                setConsultQrInput(value);
+                handleConsultQr(value);
+                stopConsultCamera();
+              }
+            }
+          } catch (error) {
+            // ignora frame inválido
+          }
+        }, 450);
+        setConsultCameraOn(true);
+      } catch (error) {
+        setConsultCameraError('Nao foi possivel acessar a camera.');
+      }
+    };
+
+    const renderQrConsultPanel = () => (
+      <div className="space-y-5">
+        <Card className="border border-cyan-500/30">
+          <div className="flex items-center gap-3 mb-4">
+            <ScanLine className="text-cyan-300" size={22} />
+            <h3 className="text-white font-black text-lg">Consulta QR</h3>
+          </div>
+
+          <p className="text-sm text-gray-400 mb-3">
+            Leia com leitor de codigo ou cole o conteudo do QR.
+          </p>
+
+          <div className="flex flex-col md:flex-row gap-2">
+            <input
+              className="flex-1 p-3 border border-gray-700 rounded-lg bg-gray-900 text-white outline-none focus:ring-2 focus:ring-cyan-500"
+              placeholder="Cole aqui o conteudo do QR"
+              value={consultQrInput}
+              onChange={(e) => setConsultQrInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleConsultQr();
+              }}
+            />
+            <Button onClick={() => handleConsultQr()} variant="primary">
+              <Search size={16} /> Consultar
+            </Button>
+            <Button
+              onClick={() => (consultCameraOn ? stopConsultCamera() : startConsultCamera())}
+              variant={consultCameraOn ? "warning" : "secondary"}
+            >
+              <Camera size={16} /> {consultCameraOn ? 'Parar Camera' : 'Ler com Camera'}
+            </Button>
+            <Button
+              onClick={() => {
+                setConsultQrInput('');
+                setConsultResult(null);
+                setConsultError('');
+                setConsultSearchCode('');
+                setConsultSearchId('');
+                setConsultSearchType('all');
+                stopConsultCamera();
+              }}
+              variant="secondary"
+            >
+              <X size={16} /> Limpar
+            </Button>
+          </div>
+
+          {consultCameraOn && (
+            <div className="mt-3 rounded-lg border border-cyan-500/30 bg-black/40 p-2">
+              <video ref={consultVideoRef} className="w-full max-h-[260px] rounded object-cover" playsInline muted />
+            </div>
+          )}
+          {consultCameraError && (
+            <p className="mt-2 text-xs text-amber-300 font-semibold">{consultCameraError}</p>
+          )}
+
+          <div className="mt-4 border-t border-gray-700 pt-4">
+            <p className="text-xs uppercase tracking-wide text-gray-500 font-bold mb-2">Pesquisa por Inputs</p>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+              <input
+                className="p-3 border border-gray-700 rounded-lg bg-gray-900 text-white outline-none focus:ring-2 focus:ring-cyan-500"
+                placeholder="ID"
+                value={consultSearchId}
+                onChange={(e) => setConsultSearchId(e.target.value)}
+              />
+              <input
+                className="p-3 border border-gray-700 rounded-lg bg-gray-900 text-white outline-none focus:ring-2 focus:ring-cyan-500"
+                placeholder="Codigo"
+                value={consultSearchCode}
+                onChange={(e) => setConsultSearchCode(e.target.value)}
+              />
+              <select
+                className="p-3 border border-gray-700 rounded-lg bg-gray-900 text-white outline-none focus:ring-2 focus:ring-cyan-500"
+                value={consultSearchType}
+                onChange={(e) => setConsultSearchType(e.target.value)}
+              >
+                <option value="all">Todos</option>
+                <option value="mother">Bobina Mae</option>
+                <option value="b2">Bobina 2</option>
+                <option value="product">Produto</option>
+              </select>
+              <Button onClick={handleConsultByInputs} variant="primary">
+                <Search size={16} /> Pesquisar
+              </Button>
+            </div>
+          </div>
+        </Card>
+
+        {consultError && (
+          <Card className="border border-red-500/40 bg-red-900/20">
+            <p className="text-red-200 font-bold">{consultError}</p>
+          </Card>
+        )}
+
+        {consultResult && (
+          <Card className="border border-emerald-500/30">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 text-sm">
+              <div className="bg-gray-900/50 rounded-lg p-3 border border-gray-700">
+                <p className="text-xs uppercase text-gray-500 font-bold mb-1">Tipo</p>
+                <p className="text-white font-black">
+                  {consultResult.type === 'mother' ? 'Bobina Mae' : consultResult.type === 'b2' ? 'Bobina 2' : 'Produto Acabado'}
+                </p>
+                <p className="text-xs text-gray-500 mt-2">QR: {consultResult.parsed.raw}</p>
+              </div>
+
+              {consultResult.mother && (
+                <div className="bg-gray-900/50 rounded-lg p-3 border border-gray-700">
+                  <p className="text-xs uppercase text-gray-500 font-bold mb-1">Bobina Mae</p>
+                  <p className="text-white font-black">{consultResult.mother.code}</p>
+                  <p className="text-gray-300 truncate">{consultResult.mother.material || '-'}</p>
+                  <p className="text-gray-400 mt-1">Data entrada: {formatConsultDate(consultResult.mother.entryDate || consultResult.mother.date || consultResult.mother.createdAt)}</p>
+                  <p className="text-gray-400">Peso atual: {(Number(consultResult.mother.remainingWeight ?? consultResult.mother.weight) || 0).toLocaleString('pt-BR')} kg</p>
+                </div>
+              )}
+
+              {consultResult.child && (
+                <div className="bg-gray-900/50 rounded-lg p-3 border border-gray-700">
+                  <p className="text-xs uppercase text-gray-500 font-bold mb-1">Bobina 2</p>
+                  <p className="text-white font-black">{consultResult.child.b2Code || consultResult.child.code || '-'}</p>
+                  <p className="text-gray-300 truncate">{consultResult.child.b2Name || '-'}</p>
+                  <p className="text-gray-400 mt-1">Data corte: {formatConsultDate(consultResult.cutting?.date || consultResult.cutting?.timestamp || consultResult.child.createdAt)}</p>
+                  <p className="text-gray-400">Espessura: {consultResult.child.thickness || '-'}</p>
+                  <p className="text-gray-400">Tipo: {consultResult.child.type || '-'}</p>
+                </div>
+              )}
+            </div>
+
+            {(consultResult.production || consultResult.shipping) && (
+              <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm">
+                {consultResult.production && (
+                  <div className="bg-gray-900/50 rounded-lg p-3 border border-gray-700">
+                    <p className="text-xs uppercase text-gray-500 font-bold mb-1">Producao</p>
+                    <p className="text-white font-black">
+                      {(consultResult.production.productCode || '-') + ' - ' + (consultResult.production.productName || '-')}
+                    </p>
+                    <p className="text-gray-400 mt-1">Data producao: {formatConsultDate(consultResult.production.date || consultResult.production.timestamp)}</p>
+                    <p className="text-gray-400">Quantidade: {consultResult.production.pieces ?? '-'}</p>
+                  </div>
+                )}
+
+                {consultResult.shipping && (
+                  <div className="bg-gray-900/50 rounded-lg p-3 border border-gray-700">
+                    <p className="text-xs uppercase text-gray-500 font-bold mb-1">Expedicao</p>
+                    <p className="text-white font-black">{consultResult.shipping.productCode || '-'}</p>
+                    <p className="text-gray-300 truncate">{consultResult.shipping.productName || '-'}</p>
+                    <p className="text-gray-400 mt-1">Data expedicao: {formatConsultDate(consultResult.shipping.date || consultResult.shipping.timestamp)}</p>
+                    <p className="text-gray-400">Destino: {consultResult.shipping.destination || '-'}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+        )}
+      </div>
+    );
 
   return (
 
