@@ -11408,11 +11408,11 @@ const handleUploadJSONToFirebase = async (e) => {
 
     const startConsultCamera = async () => {
       setConsultCameraError('');
-      if (!('BarcodeDetector' in window)) {
-        setConsultCameraError('Leitura por camera nao suportada neste navegador.');
-        return;
-      }
       try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setConsultCameraError('Seu navegador nao suporta acesso a camera.');
+          return;
+        }
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' } },
           audio: false,
@@ -11422,26 +11422,30 @@ const handleUploadJSONToFirebase = async (e) => {
           consultVideoRef.current.srcObject = stream;
           await consultVideoRef.current.play();
         }
-        const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-        consultScanTimerRef.current = setInterval(async () => {
-          if (!consultVideoRef.current) return;
-          try {
-            const codes = await detector.detect(consultVideoRef.current);
-            if (codes && codes.length > 0) {
-              const value = codes[0]?.rawValue || '';
-              if (value) {
-                setConsultQrInput(value);
-                handleConsultQr(value);
-                stopConsultCamera();
+        if ('BarcodeDetector' in window) {
+          const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+          consultScanTimerRef.current = setInterval(async () => {
+            if (!consultVideoRef.current) return;
+            try {
+              const codes = await detector.detect(consultVideoRef.current);
+              if (codes && codes.length > 0) {
+                const value = codes[0]?.rawValue || '';
+                if (value) {
+                  setConsultQrInput(value);
+                  handleConsultQr(value);
+                  stopConsultCamera();
+                }
               }
+            } catch (error) {
+              // ignora frame invalido
             }
-          } catch (error) {
-            // ignora frame inválido
-          }
-        }, 450);
+          }, 450);
+        } else {
+          setConsultCameraError('Camera aberta. Este navegador nao le QR automaticamente; use leitor externo ou cole o codigo.');
+        }
         setConsultCameraOn(true);
       } catch (error) {
-        setConsultCameraError('Nao foi possivel acessar a camera.');
+        setConsultCameraError('Nao foi possivel acessar a camera. No celular, use HTTPS/localhost e permita permissao.');
       }
     };
 
