@@ -563,23 +563,32 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [], p
     return '-';
   };
 
-  const buildQrPayload = ({ item, name, code, quantity, date, id, isProduct, width, thickness, coilType }) => {
-    const payload = {
-      id,
-      code,
-      desc: name || '',
-      qtd: quantity,
-      w: width === '-' ? null : width ?? null,
-      t: thickness,
-      type: coilType === '-' ? '' : (coilType || ''),
-      date,
-    };
+  const getB2ProfileDisplay = (description) => {
+    const text = String(description || '').trim();
+    if (!text) return '-';
 
-    if (!isProduct && item.motherCode) {
-      payload.mother = item.motherCode;
-    }
+    const match = text.match(/(\d+(?:[.,]\d+)?(?:\s*[xX]\s*\d+(?:[.,]\d+)?){2,3})/);
+    if (!match) return text;
 
-    return payload;
+    const parts = match[1]
+      .split(/[xX]/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    const profileParts = parts.length >= 4 ? parts.slice(0, 3) : parts.slice(0, 3);
+    return profileParts.join('x');
+  };
+
+  const buildQrPayload = ({ code, quantity, id }) => `v1|${id}|${code}|${quantity}`;
+
+  const getAdaptiveFontSize = (
+    value,
+    { max = 14, min = 8, baseChars = 6, step = 0.8 } = {},
+  ) => {
+    const len = String(value ?? '').trim().length;
+    if (len <= baseChars) return max;
+    const size = max - (len - baseChars) * step;
+    return Math.max(min, Math.round(size * 10) / 10);
   };
 
   return (
@@ -605,10 +614,10 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [], p
                 name = item.productName || item.name;
                 code = item.productCode || item.code;
                 labelTitle = 'Produto Final';
-            } else if (item.b2Name) {
+            } else if (item.b2Code || item.b2Name) {
                 name = item.b2Name || getMotherDescription(item);
-                code = item.b2Code;
-                labelTitle = 'Bobina Slitter';
+                code = item.b2Code || item.code;
+                labelTitle = 'Bobina 2';
             } else {
                 name = getMotherDescription(item) || `Bobina ${item.code}`;
                 code = item.code;
@@ -616,73 +625,97 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [], p
             }
 
             const quantity = type === 'product_stock' ? `${item.count} PÇS` : (isProduct ? `${item.pieces} PÇS` : `${item.weight} KG`);
-            const date = item.date || new Date().toLocaleDateString();
             const id = item.id || 'ESTOQUE';
             const widthDisplay = isB2 ? getB2WidthDisplay(item) : (item.width || '-');
             const thicknessDisplay = isB2 ? getB2ThicknessDisplay(item) : getThicknessDisplay(item);
             const typeDisplay = isB2 ? getB2TypeDisplay(item) : (item.type || '-');
+            const firstDetailDisplay = isB2 ? getB2ProfileDisplay(name) : widthDisplay;
             const qrPayload = buildQrPayload({
-              item,
-              name,
               code,
               quantity,
-              date,
               id,
-              isProduct,
-              width: widthDisplay,
-              thickness: thicknessDisplay,
-              coilType: typeDisplay,
             });
 
             return (
-                  
-              <div key={index} className="bg-white text-black border-2 border-black p-4 mb-8 page-break-after-always flex flex-col justify-between h-[15cm] w-[10cm] shadow-2xl print:shadow-none print:mb-0 print:mx-auto">
-                 <div className="flex justify-between items-start border-b-2 border-black pb-2 mb-2">
-                  
-                   <div>
-                     <h1 className="text-2xl font-black tracking-tighter">METALOSA</h1>
-                     <p className="text-xs font-bold">INDÚSTRIA METALÚRGICA</p>
-                   </div>
-                   <div className="text-right">
-                     <p className="text-[10px] font-mono">{date}</p>
-                     <p className="text-[10px] font-mono">{new Date().toLocaleTimeString()}</p>
-                   </div>
-                 </div>
-                 <div className="flex-1 flex flex-col justify-center gap-2">
-                   <div>
-                     <p className="text-xs font-bold uppercase">{labelTitle}</p>
-                     {/* Aqui vai aparecer a Descrição agora */}
-                     <h2 className="text-lg font-bold leading-tight">{name}</h2>
-                   </div>
-                   <div className="grid grid-cols-1 gap-2 mt-2">
-                      <div className="border border-black p-2 text-center">
-                        <p className="text-[10px] font-bold uppercase">Código</p>
-                        {/* Aqui vai aparecer o Código agora */}
-                        <p className="text-3xl font-black">{code}</p>
+              <div key={index} className="bg-white text-black mb-2 page-break-after-always h-[3cm] w-[11cm] shadow-2xl print:shadow-none print:mb-0 print:mx-auto overflow-hidden">
+                <div className="h-[2.8cm] w-[10.6cm] mx-auto my-[1mm] grid grid-cols-[1fr_2.8cm] gap-1">
+                  <div className="min-w-0 flex flex-col justify-between">
+                    <div className="min-w-0 flex items-start justify-between gap-1">
+                      <div className="min-w-0">
+                        <p className="text-[8px] font-bold uppercase leading-none">{labelTitle}</p>
+                        <h2
+                          className="font-black leading-tight truncate"
+                          style={{ fontSize: `${getAdaptiveFontSize(name, { max: 24, min: 10, baseChars: 16, step: 0.9 })}px` }}
+                        >
+                          {name}
+                        </h2>
                       </div>
-                      <div className="border border-black p-2 text-center">
-                        <p className="text-[10px] font-bold uppercase">{isProduct ? 'Quantidade' : 'Peso Líquido'}</p>
-                        <p className="text-4xl font-black">{quantity}</p>
+                      <img src="/logo.png" alt="Metalosa" className="h-[26px] w-auto object-contain shrink-0" />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-0.5 mt-0.5">
+                      <div className="border border-black px-1 py-0.5 text-center min-w-0">
+                        <p className="text-[7px] font-bold uppercase leading-none">Codigo</p>
+                        <p
+                          className="font-black leading-none truncate"
+                          style={{ fontSize: `${getAdaptiveFontSize(code, { max: 28, min: 14, baseChars: 6, step: 1.0 })}px` }}
+                        >
+                          {code}
+                        </p>
                       </div>
-                   </div>
-                   {!isProduct && (
-                     <div className="grid grid-cols-3 gap-1 mt-2 text-center">
-                        <div className="bg-gray-200 p-1"><p className="text-[8px] font-bold">LARGURA</p><p className="font-bold text-sm">{widthDisplay} mm</p></div>
-                        <div className="bg-gray-200 p-1"><p className="text-[8px] font-bold">ESPESSURA</p><p className="font-bold text-sm">{thicknessDisplay}</p></div>
-                        <div className="bg-gray-200 p-1"><p className="text-[8px] font-bold">TIPO</p><p className="font-bold text-sm">{typeDisplay}</p></div>
-                     </div>
-                   )}
-                 </div>
-                 <div className="flex flex-col items-center mt-4 pt-2 border-t-2 border-black gap-2">
-                    <QRCodeSVG value={JSON.stringify(qrPayload)} size={100} />
-                    <div className="text-[10px] text-center w-full"><p className="font-mono truncate w-full">{id}</p></div>
-                 </div>
+                      <div className="border border-black px-1 py-0.5 text-center min-w-0">
+                        <p className="text-[7px] font-bold uppercase leading-none">{isProduct ? 'Quantidade' : 'Peso'}</p>
+                        <p
+                          className="font-black leading-none truncate"
+                          style={{ fontSize: `${getAdaptiveFontSize(quantity, { max: 28, min: 13, baseChars: 8, step: 1.0 })}px` }}
+                        >
+                          {quantity}
+                        </p>
+                      </div>
+                    </div>
+
+                    {!isProduct && (
+                      <div className="grid grid-cols-[1.7fr_0.8fr_0.5fr] gap-0.5 text-center mt-0.5">
+                        <div className="bg-gray-200 px-0.5 py-0.5 min-w-0">
+                          <p
+                            className="font-black leading-none truncate"
+                            style={{ fontSize: `${getAdaptiveFontSize(firstDetailDisplay, { max: 22, min: 11, baseChars: 7, step: 1.0 })}px` }}
+                          >
+                            {firstDetailDisplay}
+                          </p>
+                        </div>
+                        <div className="bg-gray-200 px-0.5 py-0.5 min-w-0">
+                          <p
+                            className="font-black leading-none truncate"
+                            style={{ fontSize: `${getAdaptiveFontSize(thicknessDisplay, { max: 28, min: 15, baseChars: 6, step: 0.9 })}px` }}
+                          >
+                            {thicknessDisplay}
+                          </p>
+                        </div>
+                        <div className="bg-gray-200 px-0.5 py-0.5 min-w-0">
+                          <p
+                            className="font-black leading-none truncate"
+                            style={{ fontSize: `${getAdaptiveFontSize(typeDisplay, { max: 18, min: 10, baseChars: 4, step: 1.0 })}px` }}
+                          >
+                            {typeDisplay}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-l border-black pl-0.5 flex items-center justify-center min-w-0">
+                    <div className="bg-white p-[2px]">
+                      <QRCodeSVG value={qrPayload} size={98} includeMargin={false} level="L" />
+                    </div>
+                  </div>
+                </div>
               </div>
             );
           })}
         </div>
       </div>
-      <style>{`@media print { body * { visibility: hidden; } .fixed.inset-0.bg-black\\/90.z-\\[60\\] { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 9999; display: block; } .fixed.inset-0.bg-black\\/90.z-\\[60\\] .print\\:block { visibility: visible; width: 100%; } .fixed.inset-0.bg-black\\/90.z-\\[60\\] .print\\:block * { visibility: visible; } .print\\:hidden { display: none !important; } .page-break-after-always { break-after: always; page-break-after: always; } }`}</style>
+      <style>{`@media print { @page { size: 11cm 3cm; margin: 0; } body * { visibility: hidden; } .fixed.inset-0.bg-black\\/90.z-\\[60\\] { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 9999; display: block; } .fixed.inset-0.bg-black\\/90.z-\\[60\\] .print\\:block { visibility: visible; width: 100%; } .fixed.inset-0.bg-black\\/90.z-\\[60\\] .print\\:block * { visibility: visible; } .print\\:hidden { display: none !important; } .page-break-after-always { break-after: always; page-break-after: always; } }`}</style>
     </div>
   );
 };
@@ -699,14 +732,14 @@ const ReportGroupModal = ({ group, onClose }) => {
         <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-900 rounded-t-xl">
           <div>
              <h3 className="text-white font-bold text-lg flex items-center gap-2">
-                Detalhes: {group.type} 
+                Detalhes: {group.type}
                 <span className="text-sm font-normal text-gray-400">({group.date})</span>
              </h3>
              <p className="text-xs text-gray-500">{group.items.length} registros encontrados</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20}/></button>
         </div>
-        
+
         <div className="p-0 overflow-y-auto custom-scrollbar-dark flex-1">
              <table className="w-full text-sm text-left text-gray-300">
                 <thead className="bg-gray-800 text-gray-400 sticky top-0 shadow-md">
@@ -714,9 +747,9 @@ const ReportGroupModal = ({ group, onClose }) => {
                     <th className="p-3">Data</th>
                     <th className="p-3">Movimento</th>
                     <th className="p-3">Movimento ID</th>
-                    <th className="p-3">Hist\u00f3rico / Documento</th>
+                    <th className="p-3">Histórico / Documento</th>
                     <th className="p-3 text-right text-emerald-400">Entrada</th>
-                    <th className="p-3 text-right text-red-400">Sa\u00edda</th>
+                    <th className="p-3 text-right text-red-400">Saída</th>
                     <th className="p-3 text-right font-bold text-white bg-gray-800 border-l border-gray-700">Saldo Acumulado</th>
                   </tr>
                 </thead>
