@@ -44,7 +44,10 @@ import {
   Truck,
   Upload,
   User,
-  X
+  X,
+  Zap,
+  CheckCircle,
+  AlertTriangle
 } from 'lucide-react';
 
 
@@ -592,7 +595,7 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [], p
   };
 
   return (
-    <div className="fixed inset-0 bg-black/90 z-[60] flex flex-col items-center justify-center overflow-hidden">
+    <div className="fixed inset-0 bg-black/90 z-[60] flex flex-col items-center justify-center overflow-hidden print:overflow-visible print:h-auto print:static">
         <div className="bg-gray-900 w-full p-4 border-b border-gray-700 flex justify-between items-center print:hidden">
         <h3 className="text-white font-bold text-lg">Imprimir Etiquetas ({items.length})</h3>
         <div className="flex gap-2">
@@ -600,7 +603,7 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [], p
           <Button onClick={onClose} variant="secondary"><X size={18} /> Fechar</Button>
         </div>
       </div>
-      <div className="flex-1 w-full overflow-y-auto bg-gray-800 p-8 print:p-0 print:bg-white print:overflow-visible flex flex-col items-center">
+      <div className="flex-1 w-full overflow-y-auto bg-gray-800 p-8 print:p-0 print:bg-white print:overflow-visible print:h-auto flex flex-col items-center">
         <div className="print:block w-full flex flex-col items-center">
           {items.map((item, index) => {
             const isProduct = type === 'product' || type === 'product_stock';
@@ -715,7 +718,48 @@ const PrintLabelsModal = ({ items, onClose, type = 'coil', motherCatalog = [], p
           })}
         </div>
       </div>
-      <style>{`@media print { @page { size: 11cm 3cm; margin: 0; } body * { visibility: hidden; } .fixed.inset-0.bg-black\\/90.z-\\[60\\] { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 9999; display: block; } .fixed.inset-0.bg-black\\/90.z-\\[60\\] .print\\:block { visibility: visible; width: 100%; } .fixed.inset-0.bg-black\\/90.z-\\[60\\] .print\\:block * { visibility: visible; } .print\\:hidden { display: none !important; } .page-break-after-always { break-after: always; page-break-after: always; } }`}</style>
+      <style>{`
+        @media print {
+          @page { size: 11cm 3cm; margin: 0; }
+          body, html { margin: 0; padding: 0; }
+          body * { visibility: hidden; }
+          .fixed.inset-0.bg-black\\/90.z-\\[60\\],
+          .fixed.inset-0.bg-black\\/90.z-\\[60\\] * {
+            visibility: visible;
+          }
+          .fixed.inset-0.bg-black\\/90.z-\\[60\\] {
+            position: absolute !important;
+            top: 0; left: 0;
+            width: 100% !important;
+            height: auto !important;
+            overflow: visible !important;
+            background: white !important;
+            z-index: 9999;
+            display: block !important;
+          }
+          .fixed.inset-0.bg-black\\/90.z-\\[60\\] > div {
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
+            position: static !important;
+          }
+          .fixed.inset-0.bg-black\\/90.z-\\[60\\] .print\\:block {
+            display: block !important;
+            width: 100%;
+            overflow: visible !important;
+          }
+          .print\\:hidden { display: none !important; }
+          .page-break-after-always {
+            break-after: always;
+            page-break-after: always;
+            overflow: visible !important;
+          }
+          .page-break-after-always:last-child {
+            break-after: auto;
+            page-break-after: auto;
+          }
+        }
+      `}</style>
     </div>
   );
 };
@@ -1613,7 +1657,10 @@ export default function App() {
       width: '', 
       thickness: '', 
       type: '',
-      entryDate: new Date().toISOString().split('T')[0] 
+      entryDate: new Date().toISOString().split('T')[0],
+      usina: '',
+      usinaOutro: '',
+      filialDestino: '',
   });
   const [showB2PurchaseForm, setShowB2PurchaseForm] = useState(false);
   const [newB2Purchase, setNewB2Purchase] = useState({
@@ -1770,6 +1817,20 @@ export default function App() {
   const [showAllB2Profiles, setShowAllB2Profiles] = useState(false);
   // Junto com os outros useState
   const [cuttingDate, setCuttingDate] = useState(new Date().toISOString().split('T')[0]);
+  // --- ESTADOS DO PAINEL DE OPERAÇÕES ---
+  const [opsMode, setOpsMode] = useState('entrada'); // 'entrada' | 'corte'
+  const [opsEntryForm, setOpsEntryForm] = useState({ code: '', nf: '', weight: '', material: '', thickness: '', type: '', entryDate: new Date().toISOString().split('T')[0], usina: '', usinaOutro: '', filialDestino: '' });
+  const [opsSelectedMother, setOpsSelectedMother] = useState('');
+  const [opsMotherSearch, setOpsMotherSearch] = useState('');
+  const [opsTempCuts, setOpsTempCuts] = useState([]);
+  const [opsTargetB2, setOpsTargetB2] = useState('');
+  const [opsCutWeight, setOpsCutWeight] = useState('');
+  const [opsCutQty, setOpsCutQty] = useState('');
+  const [opsCutDate, setOpsCutDate] = useState(new Date().toISOString().split('T')[0]);
+  const [opsCutScrap, setOpsCutScrap] = useState('');
+  const [opsShowAllB2, setOpsShowAllB2] = useState(false);
+  const [opsLastAction, setOpsLastAction] = useState(null); // {type, message, timestamp}
+  const [opsTimerTick, setOpsTimerTick] = useState(Date.now()); // tick para esconder botão apagar após tempo
   // Junto com os outros useState
 
   // --- ESTADOS DE RELATÓRIOS ---
@@ -1875,6 +1936,12 @@ export default function App() {
       raw: group.reference,
     }));
   };
+
+  // Timer para esconder botão de apagar após 10 min
+  useEffect(() => {
+    const interval = setInterval(() => setOpsTimerTick(Date.now()), 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (newMotherCoil.code && motherCatalog.length > 0) {
@@ -2239,6 +2306,8 @@ export default function App() {
   // 3) Gera um ID Temporário para mostrar na tela agora
   const tempId = Date.now().toString();
 
+  const usinaFinal = newMotherCoil.usina === 'Outro' ? newMotherCoil.usinaOutro : newMotherCoil.usina;
+
   const newCoil = {
     id: tempId, // ID PROVISÓRIO
     ...newMotherCoil,
@@ -2249,6 +2318,8 @@ export default function App() {
     remainingWeight: parseFloat(newMotherCoil.weight),
     status: "stock",
     date: formattedDate,
+    usina: usinaFinal || '',
+    filialDestino: newMotherCoil.filialDestino || '',
   };
 
   // 4) Atualiza otimista no front
@@ -2269,6 +2340,9 @@ export default function App() {
     inoxGrade: "",
     qty: "",
     length: "",
+    usina: "",
+    usinaOutro: "",
+    filialDestino: "",
   });
 
   try {
@@ -4686,6 +4760,816 @@ export default function App() {
 
   // --- RENDERS ---
 
+  // =====================================================
+  // PAINEL DE OPERAÇÕES (Entrada + Corte com Impressão)
+  // =====================================================
+  const opsAddEntry = async () => {
+    const { code, nf, weight, material, thickness, type, entryDate } = opsEntryForm;
+    if (!code) return alert("Preencha o código do lote.");
+    if (!weight) return alert("Preencha o peso.");
+
+    const isoDate = entryDate || new Date().toISOString().split("T")[0];
+    const dateParts = isoDate.split("-");
+    const formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+
+    const tempId = Date.now().toString();
+    const usinaFinal = opsEntryForm.usina === 'Outro' ? opsEntryForm.usinaOutro : opsEntryForm.usina;
+    const newCoil = {
+      id: tempId,
+      code, nf, material, thickness, type,
+      weight: parseFloat(weight),
+      originalWeight: parseFloat(weight),
+      width: 1200,
+      remainingWeight: parseFloat(weight),
+      status: "stock",
+      date: formattedDate,
+      createdAt: Date.now(),
+      usina: usinaFinal || '',
+      filialDestino: opsEntryForm.filialDestino || '',
+    };
+
+    setMotherCoils((prev) => [...prev, newCoil]);
+    setOpsEntryForm({ code: '', nf: '', weight: '', material: '', thickness: '', type: '', entryDate: new Date().toISOString().split('T')[0], usina: '', usinaOutro: '', filialDestino: '' });
+
+    // Imprime etiqueta imediatamente (mesmo no localhost)
+    setItemsToPrint([{ ...newCoil, material, thickness, type, code }]);
+    setPrintType('coil');
+    setShowPrintModal(true);
+
+    if (USE_LOCAL_JSON) {
+      setOpsLastAction({ type: 'success', message: `Bobina ${code} registrada localmente! (${formattedDate}) — Modo offline, não salvou na nuvem.`, timestamp: Date.now() });
+      return;
+    }
+
+    try {
+      const { id, ...coilDataToSend } = newCoil;
+      const savedItem = await saveToDb("motherCoils", coilDataToSend);
+      await logUserAction('ENTRADA_MP', { motherCode: coilDataToSend.code, weight: coilDataToSend.weight, nf: coilDataToSend.nf });
+      await logMotherCoilEntry(savedItem, user?.uid || 'local-dev', { userEmail: user?.email || 'offline@local' });
+
+      setMotherCoils((prev) => prev.map((item) => item.id === tempId ? { ...item, id: savedItem.id } : item));
+
+      // Atualiza etiqueta com ID real
+      setItemsToPrint([{ ...savedItem, material, thickness, type, code }]);
+      
+      setOpsLastAction({ type: 'success', message: `Bobina ${code} registrada e salva na nuvem! (${formattedDate})`, timestamp: Date.now() });
+    } catch (error) {
+      console.error("Erro ao salvar bobina:", error);
+      setOpsLastAction({ type: 'error', message: `Erro ao salvar bobina ${code} na nuvem. Ela aparece na tela mas pode sumir se recarregar.`, timestamp: Date.now() });
+    }
+  };
+
+  const opsAddTempCut = () => {
+    if (!opsTargetB2 || !opsCutWeight || !opsCutQty) return alert("Preencha todos os campos.");
+
+    const b2Data = INITIAL_PRODUCT_CATALOG.find(p => p.b2Code === opsTargetB2);
+    if (!b2Data) return alert("Produto não encontrado no catálogo.");
+
+    const parseW = (val) => parseFloat(String(val).replace(',', '.').trim()) || 0;
+    const totalWeight = parseW(opsCutWeight);
+    const qtd = parseInt(opsCutQty);
+    if (qtd <= 0) return alert("Qtd deve ser maior que 0");
+
+    const individualWeight = totalWeight / qtd;
+    const newItems = [];
+    for (let i = 0; i < qtd; i++) {
+      newItems.push({
+        b2Code: b2Data.b2Code, b2Name: b2Data.b2Name,
+        width: parseFloat(b2Data.width), thickness: b2Data.thickness, type: b2Data.type,
+        weight: individualWeight, id: Date.now() + Math.random()
+      });
+    }
+    setOpsTempCuts([...opsTempCuts, ...newItems]);
+    setOpsCutWeight(''); setOpsCutQty('');
+  };
+
+  const opsConfirmCut = async () => {
+    const mother = motherCoils.find(m => m.id === opsSelectedMother);
+    if (!mother) return;
+    if (opsTempCuts.length === 0) return alert("Adicione ao menos uma tira.");
+
+    const dateParts = opsCutDate.split('-');
+    const dateNow = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+    const totalCutsWeight = opsTempCuts.reduce((acc, curr) => acc + curr.weight, 0);
+    const manualScrap = opsCutScrap ? parseFloat(String(opsCutScrap).replace(',', '.').trim()) : 0;
+    const totalConsumed = totalCutsWeight + manualScrap;
+
+    if (totalConsumed > mother.remainingWeight) {
+      if (!window.confirm(`Peso excedido (${totalConsumed.toFixed(1)}kg). Continuar?`)) return;
+    }
+
+    const remaining = Math.max(0, mother.remainingWeight - totalConsumed);
+    const isTotalConsumption = remaining < 10;
+
+    if (!isTotalConsumption) {
+      if (!window.confirm(`Vai sobrar ${remaining.toFixed(1)}kg na bobina. Confirmar?`)) return;
+    }
+
+    const itemsSummary = opsTempCuts.map(t => `${t.b2Code} - ${t.b2Name} (${t.weight.toFixed(0)}kg)`).join(', ');
+
+    const prevMothers = [...motherCoils];
+    const prevLogs = [...cuttingLogs];
+    const prevChildren = [...childCoils];
+
+    const tempLogId = `TEMP-LOG-${Date.now()}`;
+    const newCutLog = {
+      id: tempLogId, date: dateNow, motherCode: mother.code, motherMaterial: mother.material,
+      inputWeight: totalConsumed, outputCount: opsTempCuts.length, scrap: manualScrap,
+      generatedItems: itemsSummary, timestamp: new Date().toLocaleString()
+    };
+
+    const tempNewChildren = opsTempCuts.map((temp, index) => ({
+      id: `TEMP-CHILD-${Date.now()}-${index}`,
+      motherId: mother.id, motherCode: mother.code,
+      b2Code: temp.b2Code, b2Name: temp.b2Name, width: temp.width, thickness: temp.thickness,
+      type: mother.type, weight: temp.weight, initialWeight: temp.weight, status: 'stock', createdAt: dateNow
+    }));
+
+    const motherUpdateData = {
+      remainingWeight: remaining,
+      status: isTotalConsumption ? 'consumed' : 'stock',
+      cutWaste: (mother.cutWaste || 0) + manualScrap,
+      ...(isTotalConsumption ? { consumedDate: dateNow, consumptionDetail: mother.consumptionDetail ? mother.consumptionDetail + ' + ' + itemsSummary : itemsSummary } : {}),
+    };
+
+    setMotherCoils(prev => prev.map(m => m.id === mother.id ? { ...m, ...motherUpdateData } : m));
+    setCuttingLogs(prev => [newCutLog, ...prev]);
+    setChildCoils(prev => [...prev, ...tempNewChildren]);
+    setOpsTempCuts([]); setOpsCutScrap(''); setOpsSelectedMother(''); setOpsMotherSearch('');
+
+    // Imprime etiquetas imediatamente (mesmo no localhost)
+    setItemsToPrint(tempNewChildren);
+    setPrintType('coil');
+    setShowPrintModal(true);
+
+    if (USE_LOCAL_JSON) {
+      setOpsLastAction({ type: 'success', message: `Corte de ${mother.code} registrado localmente! ${tempNewChildren.length} tiras. — Modo offline, não salvou na nuvem.`, timestamp: Date.now() });
+      return;
+    }
+
+    try {
+      await updateInDb('motherCoils', mother.id, motherUpdateData);
+      const { id: logTempId, ...logData } = newCutLog;
+      const savedLog = await saveToDb('cuttingLogs', logData);
+
+      const savedChildrenReal = [];
+      for (const childTemp of tempNewChildren) {
+        const { id: childTempId, ...childData } = childTemp;
+        const savedChild = await saveToDb('childCoils', childData);
+        savedChildrenReal.push(savedChild);
+      }
+
+      setCuttingLogs(prev => prev.map(l => l.id === tempLogId ? { ...l, id: savedLog.id } : l));
+      setChildCoils(prev => {
+        const others = prev.filter(c => !tempNewChildren.some(t => t.id === c.id));
+        return [...others, ...savedChildrenReal];
+      });
+
+      // Atualiza etiquetas com IDs reais
+      setItemsToPrint(savedChildrenReal);
+
+      await logUserAction('CORTE', { motherCode: mother.code, newChildCount: savedChildrenReal.length, childCodes: savedChildrenReal.map(c => c.b2Code), scrapKg: manualScrap });
+      await logCut(mother.id, savedChildrenReal.map(c => c.id), user?.uid || 'local-dev', {
+        totalWeight: totalCutsWeight, inputWeight: totalCutsWeight, scrap: manualScrap, date: opsCutDate,
+        motherCode: mother.code, motherMaterial: mother.material, originalWeight: mother.originalWeight || mother.weight,
+        remainingWeight: motherUpdateData.remainingWeight, generatedItems: newCutLog.generatedItems,
+        cuttingLogId: savedLog.id, childCount: savedChildrenReal.length, userEmail: user?.email || 'offline@local',
+      });
+
+      setOpsLastAction({ type: 'success', message: `Corte de ${mother.code} salvo na nuvem! ${savedChildrenReal.length} tiras geradas.`, timestamp: Date.now() });
+    } catch (error) {
+      console.error("Erro no corte:", error);
+      setMotherCoils(prevMothers); setCuttingLogs(prevLogs); setChildCoils(prevChildren);
+      setOpsLastAction({ type: 'error', message: `Erro ao salvar corte de ${mother.code} na nuvem. Os dados podem sumir se recarregar.`, timestamp: Date.now() });
+    }
+  };
+
+  const renderOperationsPanel = () => {
+    // --- Filtros para corte ---
+    const availableMothers = motherCoils.filter(m => m.status === 'stock');
+    const filteredOpsMothers = availableMothers.filter(m => {
+      if (!opsMotherSearch) return true;
+      const search = opsMotherSearch.toLowerCase();
+      return (String(m.code).toLowerCase().includes(search) || String(m.material).toLowerCase().includes(search));
+    });
+
+    const selectedOpsMother = motherCoils.find(m => m.id === opsSelectedMother);
+
+    const cleanNum = (val) => { if (!val) return 0; return parseFloat(String(val).replace(',', '.').replace('mm', '').trim()); };
+    const uniqueByB2 = (items) => { const map = new Map(); items.forEach((p) => { if (!map.has(p.b2Code)) map.set(p.b2Code, p); }); return Array.from(map.values()).sort((a, b) => a.b2Name.localeCompare(b.b2Name)); };
+
+    const allB2Types = uniqueByB2(INITIAL_PRODUCT_CATALOG);
+    let filteredB2ForOps = [];
+    if (selectedOpsMother) {
+      const motherThick = cleanNum(selectedOpsMother.thickness);
+      const targetCode = String(selectedOpsMother.code).trim();
+      const filtered = INITIAL_PRODUCT_CATALOG.filter(p => {
+        if (p.motherCode && String(p.motherCode).trim() === targetCode) return true;
+        const prodThick = cleanNum(p.thickness);
+        if (Math.abs(prodThick - motherThick) < 0.05) return true;
+        return false;
+      });
+      filteredB2ForOps = uniqueByB2(filtered);
+    }
+    const availableB2ForOps = opsShowAllB2 ? allB2Types : filteredB2ForOps;
+
+    // --- Cálculos ---
+    const opsCutTotal = opsTempCuts.reduce((a, b) => a + b.weight, 0);
+    const opsScrapVal = parseFloat(opsCutScrap) || 0;
+    const opsRemaining = selectedOpsMother ? (selectedOpsMother.remainingWeight - opsCutTotal - opsScrapVal) : 0;
+
+    // --- Helpers visuais ---
+    const StepNumber = ({ n, done }) => (
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-lg shrink-0 border-2 transition-all ${done ? 'bg-emerald-600 border-emerald-400 text-white' : 'bg-gray-800 border-gray-600 text-gray-400'}`}>
+        {done ? <CheckCircle size={22} /> : n}
+      </div>
+    );
+
+    const entryStep1Done = !!opsEntryForm.code;
+    const entryStep2Done = !!opsEntryForm.weight;
+    const entryReady = entryStep1Done && entryStep2Done;
+
+    const cutStep1Done = !!opsSelectedMother;
+    const cutStep2Done = opsTempCuts.length > 0;
+
+    return (
+      <div className="space-y-5">
+
+        {/* ============ BARRA DE SUCESSO / ERRO (BEM GRANDE) ============ */}
+        {opsLastAction && (Date.now() - opsLastAction.timestamp < 60000) && (
+          <div
+            className={`flex items-center gap-4 p-5 rounded-2xl border-2 animate-pulse ${
+              opsLastAction.type === 'success'
+                ? 'bg-emerald-900/40 border-emerald-400 text-emerald-100'
+                : 'bg-red-900/40 border-red-400 text-red-100'
+            }`}
+          >
+            {opsLastAction.type === 'success'
+              ? <CheckCircle size={36} className="text-emerald-400 shrink-0" />
+              : <AlertTriangle size={36} className="text-red-400 shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <p className="font-black text-lg">{opsLastAction.type === 'success' ? 'TUDO CERTO!' : 'DEU ERRO!'}</p>
+              <p className="text-base font-medium">{opsLastAction.message}</p>
+            </div>
+            <button
+              onClick={() => setOpsLastAction(null)}
+              className="p-2 rounded-xl hover:bg-white/10 transition-colors shrink-0"
+            >
+              <X size={24} />
+            </button>
+          </div>
+        )}
+
+        {/* ============ SELETOR DE OPERAÇÃO (BOTÕES BEM GRANDES) ============ */}
+        <div className="grid grid-cols-2 gap-4">
+          <button
+            onClick={() => setOpsMode('entrada')}
+            className={`flex flex-col items-center justify-center gap-3 p-6 rounded-2xl font-bold transition-all border-2 ${
+              opsMode === 'entrada'
+                ? 'bg-blue-600 text-white border-blue-400 shadow-xl shadow-blue-600/30 scale-[1.02]'
+                : 'bg-gray-800/80 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white hover:border-gray-500'
+            }`}
+          >
+            <ScrollText size={36} />
+            <span className="text-lg tracking-wide">ENTRADA DE BOBINA</span>
+            <span className="text-xs font-normal opacity-70">Recebeu bobina nova? Clique aqui</span>
+          </button>
+          <button
+            onClick={() => setOpsMode('corte')}
+            className={`flex flex-col items-center justify-center gap-3 p-6 rounded-2xl font-bold transition-all border-2 ${
+              opsMode === 'corte'
+                ? 'bg-purple-600 text-white border-purple-400 shadow-xl shadow-purple-600/30 scale-[1.02]'
+                : 'bg-gray-800/80 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white hover:border-gray-500'
+            }`}
+          >
+            <Scissors size={36} />
+            <span className="text-lg tracking-wide">CORTE DE BOBINA 2</span>
+            <span className="text-xs font-normal opacity-70">Vai cortar tiras? Clique aqui</span>
+          </button>
+        </div>
+
+        {/* ================================================================= */}
+        {/* MODO: ENTRADA DE BOBINA — Passo a Passo                          */}
+        {/* ================================================================= */}
+        {opsMode === 'entrada' && (
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            {/* --- FORMULÁRIO (3 colunas) --- */}
+            <div className="lg:col-span-3">
+              <Card className="border-2 border-blue-500/20">
+                <div className="flex items-center gap-4 mb-6 pb-4 border-b border-gray-700">
+                  <div className="w-14 h-14 bg-blue-500/15 text-blue-400 rounded-2xl flex items-center justify-center border border-blue-500/30">
+                    <Plus size={28} />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-black text-white">ENTRADA DE BOBINA</h2>
+                    <p className="text-gray-400 text-sm">Preencha e clique no botão verde para salvar e imprimir</p>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  {/* PASSO 1: QUAL BOBINA */}
+                  <div className="flex items-start gap-4">
+                    <StepNumber n="1" done={entryStep1Done} />
+                    <div className="flex-1">
+                      <label className="block text-sm font-black text-blue-300 uppercase tracking-wide mb-2">
+                        Qual é a bobina?
+                      </label>
+                      <select
+                        className="w-full p-4 border-2 border-gray-600 rounded-xl bg-gray-900 text-white outline-none text-base font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        value={opsEntryForm.code}
+                        onChange={(e) => {
+                          const code = e.target.value;
+                          const item = INITIAL_MOTHER_CATALOG.find(m => m.code === code);
+                          if (item) {
+                            setOpsEntryForm(prev => ({ ...prev, code, material: item.description, thickness: item.thickness, type: item.type }));
+                          } else {
+                            setOpsEntryForm(prev => ({ ...prev, code, material: '', thickness: '', type: '' }));
+                          }
+                        }}
+                      >
+                        <option value="">👆 Toque aqui para escolher...</option>
+                        {INITIAL_MOTHER_CATALOG.map(m => (
+                          <option key={m.code} value={m.code}>{m.code} — {m.description}</option>
+                        ))}
+                      </select>
+
+                      {opsEntryForm.code && opsEntryForm.material && (
+                        <div className="mt-3 bg-blue-900/30 p-3 rounded-xl border border-blue-500/30 flex items-center gap-3">
+                          <CheckCircle size={18} className="text-blue-400 shrink-0" />
+                          <div>
+                            <p className="text-white font-bold text-sm">{opsEntryForm.material}</p>
+                            <p className="text-blue-300 text-xs">Espessura: {opsEntryForm.thickness || '-'} | Tipo: {opsEntryForm.type || '-'}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* PASSO 2: PESO E NF */}
+                  <div className="flex items-start gap-4">
+                    <StepNumber n="2" done={entryStep2Done} />
+                    <div className="flex-1">
+                      <label className="block text-sm font-black text-blue-300 uppercase tracking-wide mb-2">
+                        Peso e Nota Fiscal
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">PESO (kg) *</label>
+                          <input
+                            type="number"
+                            value={opsEntryForm.weight}
+                            onChange={(e) => setOpsEntryForm(prev => ({ ...prev, weight: e.target.value }))}
+                            placeholder="Ex: 8500"
+                            className="w-full p-4 border-2 border-gray-600 rounded-xl bg-gray-900 text-white outline-none text-xl font-bold text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder-gray-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">NF (opcional)</label>
+                          <input
+                            type="text"
+                            value={opsEntryForm.nf}
+                            onChange={(e) => setOpsEntryForm(prev => ({ ...prev, nf: e.target.value }))}
+                            placeholder="Nota Fiscal"
+                            className="w-full p-4 border-2 border-gray-600 rounded-xl bg-gray-900 text-white outline-none text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder-gray-600"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Data (já vem preenchida hoje) */}
+                      <div className="mt-3">
+                        <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">DATA DA ENTRADA</label>
+                        <input
+                          type="date"
+                          value={opsEntryForm.entryDate}
+                          onChange={(e) => setOpsEntryForm(prev => ({ ...prev, entryDate: e.target.value }))}
+                          className="w-full p-3 border border-gray-700 rounded-xl bg-gray-900 text-white outline-none text-sm"
+                        />
+                      </div>
+
+                      {/* Usina e Filial */}
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">USINA</label>
+                          <select
+                            value={opsEntryForm.usina}
+                            onChange={(e) => setOpsEntryForm(prev => ({ ...prev, usina: e.target.value, usinaOutro: e.target.value !== 'Outro' ? '' : prev.usinaOutro }))}
+                            className="w-full p-3 border border-gray-700 rounded-xl bg-gray-900 text-white outline-none text-sm"
+                          >
+                            <option value="">Selecionar...</option>
+                            <option value="Usiminas">Usiminas</option>
+                            <option value="Arcelor">Arcelor</option>
+                            <option value="CSN">CSN</option>
+                            <option value="Outro">Outro...</option>
+                          </select>
+                          {opsEntryForm.usina === 'Outro' && (
+                            <input
+                              type="text"
+                              value={opsEntryForm.usinaOutro}
+                              onChange={(e) => setOpsEntryForm(prev => ({ ...prev, usinaOutro: e.target.value }))}
+                              placeholder="Nome da usina"
+                              className="w-full mt-2 p-3 border border-gray-700 rounded-xl bg-gray-900 text-white outline-none text-sm placeholder-gray-600"
+                            />
+                          )}
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">FILIAL DESTINO</label>
+                          <input
+                            type="text"
+                            value={opsEntryForm.filialDestino}
+                            onChange={(e) => setOpsEntryForm(prev => ({ ...prev, filialDestino: e.target.value }))}
+                            placeholder="Ex: Filial SP"
+                            className="w-full p-3 border border-gray-700 rounded-xl bg-gray-900 text-white outline-none text-sm placeholder-gray-600"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* PASSO 3: BOTÃO GRANDE DE CONFIRMAR */}
+                  <div className="flex items-start gap-4">
+                    <StepNumber n="3" done={false} />
+                    <div className="flex-1">
+                      <button
+                        onClick={opsAddEntry}
+                        disabled={!entryReady}
+                        className={`w-full flex items-center justify-center gap-4 px-8 py-6 rounded-2xl font-black text-xl transition-all ${
+                          entryReady
+                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-xl shadow-emerald-600/30 hover:scale-[1.01] cursor-pointer'
+                            : 'bg-gray-800 text-gray-600 border-2 border-dashed border-gray-700 cursor-not-allowed'
+                        }`}
+                      >
+                        {entryReady ? (
+                          <>
+                            <Printer size={28} />
+                            SALVAR E IMPRIMIR ETIQUETA
+                          </>
+                        ) : (
+                          <>
+                            <AlertTriangle size={24} />
+                            Preencha os campos acima
+                          </>
+                        )}
+                      </button>
+                      {entryReady && (
+                        <p className="text-center text-emerald-400/70 text-xs font-medium mt-2 animate-pulse">
+                          Aperte o botão verde para registrar a bobina e imprimir a etiqueta
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            {/* --- ÚLTIMAS ENTRADAS (2 colunas) --- */}
+            <div className="lg:col-span-2">
+              <Card className="flex flex-col h-full">
+                <h3 className="font-black text-gray-200 flex items-center gap-2 mb-4 text-base">
+                  <History size={20} className="text-blue-400" /> BOBINAS NO ESTOQUE
+                </h3>
+                <div className="flex-1 overflow-y-auto space-y-2 max-h-[600px] custom-scrollbar-dark">
+                  {motherCoils
+                    .filter(m => m.status === 'stock')
+                    .sort((a, b) => {
+                      const parseDate = (d) => {
+                        if (!d) return 0;
+                        if (d.includes('/')) { const [dd, mm, yy] = d.split('/'); return new Date(`${yy}-${mm}-${dd}`).getTime(); }
+                        return new Date(d).getTime();
+                      };
+                      return parseDate(b.date) - parseDate(a.date);
+                    })
+                    .slice(0, 20)
+                    .map(m => (
+                      <div key={m.id} className="bg-gray-900/60 p-3 rounded-xl border border-gray-700 flex justify-between items-center hover:bg-gray-800/70 transition-colors group">
+                        <div className="min-w-0 flex-1">
+                          <span className="font-black text-white text-base">{m.code}</span>
+                          <div className="flex gap-3 mt-0.5 text-xs text-gray-500">
+                            <span>{m.type}</span>
+                            <span>{m.date}</span>
+                            {m.nf && <span>NF {m.nf}</span>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-right mr-1">
+                            <p className="font-black text-blue-400 text-xl leading-none">{(Number(m.remainingWeight ?? m.weight) || 0).toFixed(0)}</p>
+                            <p className="text-[10px] text-gray-500 font-bold">KG</p>
+                          </div>
+                          <button
+                            onClick={() => { setItemsToPrint([m]); setPrintType('coil'); setShowPrintModal(true); }}
+                            className="p-3 rounded-xl bg-gray-800 hover:bg-blue-600 text-gray-500 hover:text-white transition-all border border-gray-700 hover:border-blue-400"
+                            title="Reimprimir Etiqueta"
+                          >
+                            <Printer size={20} />
+                          </button>
+                          {m.createdAt && (opsTimerTick - m.createdAt < 10 * 60 * 1000) && (
+                            <button
+                              onClick={() => deleteMotherCoil(m.id)}
+                              className="p-3 rounded-xl bg-gray-800 hover:bg-red-600 text-gray-500 hover:text-white transition-all border border-gray-700 hover:border-red-400 animate-pulse"
+                              title={`Apagar bobina (disponível por ${Math.max(0, Math.ceil((10 * 60 * 1000 - (opsTimerTick - m.createdAt)) / 60000))} min)`}
+                            >
+                              <Trash2 size={20} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  }
+                  {motherCoils.filter(m => m.status === 'stock').length === 0 && (
+                    <div className="text-center text-gray-500 py-10 text-base">Nenhuma bobina em estoque.</div>
+                  )}
+                </div>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* MODO: CORTE DE BOBINA 2 — Passo a Passo                          */}
+        {/* ================================================================= */}
+        {opsMode === 'corte' && (
+          <div className="space-y-5">
+            {/* --- PASSO 1: ESCOLHER BOBINA MÃE --- */}
+            <Card className={`border-2 transition-all ${cutStep1Done ? 'border-emerald-500/30' : 'border-purple-500/30'}`}>
+              <div className="flex items-center gap-4 mb-4">
+                <StepNumber n="1" done={cutStep1Done} />
+                <div>
+                  <h3 className="font-black text-white text-lg">ESCOLHA A BOBINA QUE VAI CORTAR</h3>
+                  <p className="text-gray-400 text-sm">Toque na bobina que está na máquina</p>
+                </div>
+              </div>
+
+              {/* Busca */}
+              <div className="relative mb-3">
+                <Search className="absolute left-4 top-4 text-gray-500" size={20} />
+                <input
+                  type="text"
+                  placeholder="Digite o código para buscar..."
+                  className="w-full pl-12 p-4 border-2 border-gray-600 rounded-xl bg-gray-900 text-white outline-none text-base font-medium focus:ring-2 focus:ring-purple-500"
+                  value={opsMotherSearch}
+                  onChange={e => { setOpsMotherSearch(e.target.value); setOpsSelectedMother(''); }}
+                />
+              </div>
+
+              {/* Lista de bobinas — Grid horizontal */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 max-h-[240px] overflow-y-auto custom-scrollbar-dark">
+                {filteredOpsMothers.map(m => (
+                  <div
+                    key={m.id}
+                    onClick={() => { setOpsSelectedMother(m.id); setOpsTempCuts([]); setOpsTargetB2(''); setOpsCutWeight(''); setOpsCutQty(''); }}
+                    className={`p-4 rounded-xl cursor-pointer border-2 transition-all select-none ${
+                      opsSelectedMother === m.id
+                        ? 'bg-purple-900/30 border-purple-400 shadow-lg shadow-purple-600/20 ring-1 ring-purple-400'
+                        : 'bg-gray-900 border-gray-700 hover:border-purple-500/60 hover:bg-gray-800 active:scale-95'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <span className="font-black text-white text-lg">{m.code}</span>
+                      {opsSelectedMother === m.id && <CheckCircle size={18} className="text-purple-400 shrink-0" />}
+                    </div>
+                    <div className="flex justify-between items-end mt-1">
+                      <span className="text-xs text-gray-500">{m.type} {m.thickness && `| ${m.thickness}`}</span>
+                      <span className="font-black text-purple-400 text-lg">{(Number(m.remainingWeight ?? m.weight) || 0).toFixed(0)} <span className="text-xs font-normal text-gray-500">kg</span></span>
+                    </div>
+                  </div>
+                ))}
+                {filteredOpsMothers.length === 0 && (
+                  <div className="col-span-full text-center text-gray-600 py-8 text-base">Nenhuma bobina disponível</div>
+                )}
+              </div>
+
+              {/* Info da bobina selecionada — destaque */}
+              {selectedOpsMother && (
+                <div className="mt-4 bg-gradient-to-r from-purple-900/40 to-indigo-900/30 p-4 rounded-xl border border-purple-500/30 flex justify-between items-center">
+                  <div>
+                    <p className="text-xs text-purple-300 font-bold uppercase">Bobina selecionada</p>
+                    <p className="text-white font-black text-2xl">{selectedOpsMother.code}</p>
+                    <p className="text-gray-400 text-sm">{selectedOpsMother.material}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-white font-black text-4xl leading-none">{(Number(selectedOpsMother.remainingWeight) || 0).toFixed(0)}</p>
+                    <p className="text-purple-300 text-sm font-bold">kg disponível</p>
+                  </div>
+                </div>
+              )}
+            </Card>
+
+            {/* --- PASSO 2: ADICIONAR TIRAS --- */}
+            {selectedOpsMother && (
+              <Card className={`border-2 transition-all ${cutStep2Done ? 'border-emerald-500/30' : 'border-purple-500/20'}`}>
+                <div className="flex items-center gap-4 mb-5">
+                  <StepNumber n="2" done={cutStep2Done} />
+                  <div>
+                    <h3 className="font-black text-white text-lg">QUAIS TIRAS VAI CORTAR?</h3>
+                    <p className="text-gray-400 text-sm">Escolha o perfil, informe o peso e a quantidade</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Lado esquerdo: formulário de adição */}
+                  <div className="space-y-4">
+                    {/* Tipo B2 */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm font-black text-purple-300 uppercase">Qual perfil vai sair?</label>
+                        <button
+                          type="button"
+                          onClick={() => setOpsShowAllB2(prev => !prev)}
+                          className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition ${opsShowAllB2 ? 'bg-amber-900/30 text-amber-300 border-amber-500/40' : 'bg-gray-900 text-gray-400 border-gray-700 hover:text-gray-200'}`}
+                        >
+                          {opsShowAllB2 ? '✓ Mostrando todos' : 'Mostrar todos os perfis'}
+                        </button>
+                      </div>
+                      <select
+                        className="w-full p-4 border-2 border-gray-600 rounded-xl bg-gray-900 text-white outline-none text-base font-medium focus:ring-2 focus:ring-purple-500"
+                        value={opsTargetB2}
+                        onChange={e => setOpsTargetB2(e.target.value)}
+                      >
+                        <option value="">👆 Toque aqui para escolher o perfil...</option>
+                        {availableB2ForOps.map(t => (
+                          <option key={t.code} value={t.b2Code}>{t.b2Code} — {t.b2Name} — {t.width}mm</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Peso e Qtd */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">PESO TOTAL (kg)</label>
+                        <input
+                          type="number"
+                          value={opsCutWeight}
+                          onChange={e => setOpsCutWeight(e.target.value)}
+                          placeholder="Ex: 3000"
+                          className="w-full p-4 border-2 border-gray-600 rounded-xl bg-gray-900 text-white outline-none text-xl font-bold text-center focus:ring-2 focus:ring-purple-500 placeholder-gray-600"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">QUANTAS TIRAS?</label>
+                        <input
+                          type="number"
+                          value={opsCutQty}
+                          onChange={e => setOpsCutQty(e.target.value)}
+                          placeholder="Ex: 3"
+                          className="w-full p-4 border-2 border-gray-600 rounded-xl bg-gray-900 text-white outline-none text-xl font-bold text-center focus:ring-2 focus:ring-purple-500 placeholder-gray-600"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Preview do peso individual */}
+                    {opsTargetB2 && opsCutWeight && opsCutQty && parseInt(opsCutQty) > 0 && (
+                      <div className="bg-purple-900/20 p-3 rounded-xl border border-purple-500/20 text-center">
+                        <p className="text-purple-300 text-sm font-bold">
+                          Cada tira vai ter <span className="text-white text-lg font-black">{(parseFloat(opsCutWeight) / parseInt(opsCutQty)).toFixed(0)} kg</span>
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Botão Adicionar */}
+                    <button
+                      onClick={opsAddTempCut}
+                      disabled={!opsTargetB2 || !opsCutWeight || !opsCutQty}
+                      className={`w-full flex items-center justify-center gap-3 px-6 py-5 rounded-xl font-black text-base transition-all ${
+                        opsTargetB2 && opsCutWeight && opsCutQty
+                          ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/20 hover:scale-[1.01]'
+                          : 'bg-gray-800 text-gray-600 border-2 border-dashed border-gray-700 cursor-not-allowed'
+                      }`}
+                    >
+                      <Plus size={24} /> ADICIONAR ESTAS TIRAS
+                    </button>
+                  </div>
+
+                  {/* Lado direito: lista de tiras adicionadas */}
+                  <div className="bg-gray-900/40 rounded-xl border border-gray-700 p-4 flex flex-col">
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="font-black text-gray-300 text-sm uppercase">Tiras já adicionadas</h4>
+                      <span className={`text-sm font-black px-3 py-1 rounded-full ${opsTempCuts.length > 0 ? 'bg-purple-900/40 text-purple-300' : 'bg-gray-800 text-gray-600'}`}>
+                        {opsTempCuts.length} {opsTempCuts.length === 1 ? 'tira' : 'tiras'}
+                      </span>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto space-y-2 max-h-[280px] custom-scrollbar-dark">
+                      {opsTempCuts.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-10 text-gray-600">
+                          <Scissors size={40} className="mb-2 opacity-30" />
+                          <p className="font-medium text-sm">Nenhuma tira ainda</p>
+                          <p className="text-xs">Use o formulário ao lado para adicionar</p>
+                        </div>
+                      ) : (
+                        opsTempCuts.map((item, idx) => (
+                          <div key={idx} className="bg-gray-800 p-3 rounded-xl border border-gray-600 flex justify-between items-center">
+                            <div className="flex-1 min-w-0 pr-2">
+                              <p className="font-bold text-white text-sm truncate">{item.b2Name}</p>
+                              <p className="text-purple-400 text-xs font-bold">{item.b2Code}</p>
+                            </div>
+                            <div className="flex items-center gap-3 shrink-0">
+                              <span className="font-black text-white text-lg">{item.weight.toFixed(0)} <span className="text-xs text-gray-500">kg</span></span>
+                              <button
+                                onClick={() => setOpsTempCuts(opsTempCuts.filter((_, i) => i !== idx))}
+                                className="p-2 rounded-lg text-red-500 hover:text-white hover:bg-red-600 transition-all border border-transparent hover:border-red-400"
+                                title="Remover esta tira"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Peso total das tiras */}
+                    {opsTempCuts.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-700 flex justify-between items-center">
+                        <span className="text-gray-500 text-xs font-bold uppercase">Peso das tiras</span>
+                        <span className="text-white font-black text-lg">{opsCutTotal.toFixed(0)} kg</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* --- PASSO 3: FINALIZAR E IMPRIMIR --- */}
+            {selectedOpsMother && opsTempCuts.length > 0 && (
+              <Card className="border-2 border-emerald-500/30">
+                <div className="flex items-center gap-4 mb-5">
+                  <StepNumber n="3" done={false} />
+                  <div>
+                    <h3 className="font-black text-white text-lg">FINALIZAR CORTE</h3>
+                    <p className="text-gray-400 text-sm">Confira os dados e aperte o botão para salvar</p>
+                  </div>
+                </div>
+
+                {/* Resumo visual grande */}
+                <div className="grid grid-cols-3 gap-4 mb-5">
+                  <div className="bg-gray-900 p-4 rounded-xl border border-gray-700 text-center">
+                    <p className="text-xs text-gray-500 font-bold uppercase mb-1">Bobina</p>
+                    <p className="text-white font-black text-2xl">{selectedOpsMother.code}</p>
+                    <p className="text-purple-400 text-sm font-bold">{(Number(selectedOpsMother.remainingWeight) || 0).toFixed(0)} kg</p>
+                  </div>
+                  <div className="bg-gray-900 p-4 rounded-xl border border-gray-700 text-center">
+                    <p className="text-xs text-gray-500 font-bold uppercase mb-1">Saindo</p>
+                    <p className="text-purple-400 font-black text-2xl">{opsTempCuts.length}</p>
+                    <p className="text-gray-400 text-sm font-bold">{opsCutTotal.toFixed(0)} kg em tiras</p>
+                  </div>
+                  <div className={`p-4 rounded-xl border text-center ${opsRemaining >= 0 ? 'bg-emerald-900/20 border-emerald-500/30' : 'bg-red-900/20 border-red-500/30'}`}>
+                    <p className="text-xs text-gray-500 font-bold uppercase mb-1">Vai sobrar</p>
+                    <p className={`font-black text-2xl ${opsRemaining >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{opsRemaining.toFixed(0)} kg</p>
+                    {opsRemaining < 0 && <p className="text-red-400 text-xs font-bold">⚠ Peso excedido!</p>}
+                  </div>
+                </div>
+
+                {/* Data e Sucata */}
+                <div className="grid grid-cols-2 gap-4 mb-5">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">DATA DO CORTE</label>
+                    <input
+                      type="date"
+                      value={opsCutDate}
+                      onChange={e => setOpsCutDate(e.target.value)}
+                      className="w-full p-3 border border-gray-700 rounded-xl bg-gray-900 text-white outline-none text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">SUCATA / PERDA (kg)</label>
+                    <input
+                      type="number"
+                      value={opsCutScrap}
+                      onChange={e => setOpsCutScrap(e.target.value)}
+                      placeholder="0"
+                      className="w-full p-3 border border-gray-700 rounded-xl bg-gray-900 text-white outline-none text-sm text-center placeholder-gray-600"
+                    />
+                    <p className="text-gray-600 text-[10px] mt-1 ml-1">Se não teve sucata, deixe vazio</p>
+                  </div>
+                </div>
+
+                {/* BOTÃO GIGANTE FINAL */}
+                <button
+                  onClick={opsConfirmCut}
+                  className="w-full flex items-center justify-center gap-4 px-8 py-7 rounded-2xl font-black text-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-xl shadow-emerald-600/30 hover:scale-[1.01] transition-all active:scale-95"
+                >
+                  <Printer size={32} />
+                  CONFIRMAR CORTE E IMPRIMIR ETIQUETAS
+                </button>
+                <p className="text-center text-emerald-400/60 text-xs font-medium mt-2 animate-pulse">
+                  As etiquetas de todas as tiras vão ser impressas automaticamente
+                </p>
+              </Card>
+            )}
+
+            {/* Mensagem se nada selecionado */}
+            {!selectedOpsMother && (
+              <div className="flex flex-col items-center justify-center py-16 text-gray-600">
+                <Scissors size={64} className="mb-4 opacity-20" />
+                <p className="text-xl font-bold">Selecione a bobina acima para começar</p>
+                <p className="text-sm mt-1 opacity-70">Toque na bobina que está na máquina</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderMotherCoilForm = () => {
   // --- Define se estamos cadastrando bobina "normal" ou blank inox ---
   const family = (newMotherCoil?.family || "").toUpperCase();
@@ -5093,6 +5977,43 @@ export default function App() {
                           entryDate: e.target.value,
                         })
                       }
+                    />
+                  </div>
+                </div>
+
+                {/* --- USINA E FILIAL DESTINO --- */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-blue-400/70 uppercase mb-1">Usina</label>
+                    <select
+                      value={newMotherCoil.usina}
+                      onChange={(e) => setNewMotherCoil({ ...newMotherCoil, usina: e.target.value, usinaOutro: e.target.value !== 'Outro' ? '' : newMotherCoil.usinaOutro })}
+                      className="w-full p-3 border border-gray-700 rounded-lg bg-gray-900 text-white outline-none text-sm"
+                    >
+                      <option value="">Selecionar...</option>
+                      <option value="Usiminas">Usiminas</option>
+                      <option value="Arcelor">Arcelor</option>
+                      <option value="CSN">CSN</option>
+                      <option value="Outro">Outro...</option>
+                    </select>
+                    {newMotherCoil.usina === 'Outro' && (
+                      <input
+                        type="text"
+                        value={newMotherCoil.usinaOutro}
+                        onChange={(e) => setNewMotherCoil({ ...newMotherCoil, usinaOutro: e.target.value })}
+                        placeholder="Nome da usina"
+                        className="w-full mt-2 p-2 border border-gray-700 rounded-lg bg-gray-900 text-white outline-none text-sm placeholder-gray-600"
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-blue-400/70 uppercase mb-1">Filial Destino</label>
+                    <input
+                      type="text"
+                      value={newMotherCoil.filialDestino}
+                      onChange={(e) => setNewMotherCoil({ ...newMotherCoil, filialDestino: e.target.value })}
+                      placeholder="Ex: Filial SP"
+                      className="w-full p-3 border border-gray-700 rounded-lg bg-gray-900 text-white outline-none text-sm placeholder-gray-600"
                     />
                   </div>
                 </div>
@@ -10309,6 +11230,10 @@ const handleUploadJSONToFirebase = async (e) => {
            
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mt-8 mb-4">Operacional</p>
            
+           <button onClick={() => handleSidebarNavigate('operations')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'operations' ? 'bg-emerald-600/15 text-emerald-200 border border-emerald-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+             <Zap size={20} className={activeTab === 'operations' ? "text-emerald-300" : "group-hover:text-emerald-300 transition-colors"}/> <span className="font-medium">Painel Operação</span>
+           </button>
+
            <button onClick={() => handleSidebarNavigate('mother')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'mother' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <ScrollText size={20} className={activeTab === 'mother' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">Entrada de MP</span>
            </button>
@@ -10451,6 +11376,7 @@ const handleUploadJSONToFirebase = async (e) => {
               <div>
                 <h2 className="text-lg md:text-2xl font-bold text-white tracking-tight truncate">
                   {activeTab === 'dashboard' && "Dashboard"}
+                  {activeTab === 'operations' && "Painel de Operação"}
                   {activeTab === 'mother' && "Entrada de MP"}
                   {activeTab === 'cutting' && "Corte Slitter"}
                   {activeTab === 'production' && "Apontamento"}
@@ -10482,6 +11408,7 @@ const handleUploadJSONToFirebase = async (e) => {
          <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar-dark">
             <div className="max-w-7xl mx-auto pb-20 md:pb-0">
               {activeTab === 'dashboard' && renderDashboard()}
+              {activeTab === 'operations' && renderOperationsPanel()}
               {activeTab === 'mother' && renderMotherCoilForm()}
               {activeTab === 'cutting' && renderCuttingProcess()}
               {activeTab === 'production' && renderProduction()}
