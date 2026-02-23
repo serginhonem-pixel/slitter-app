@@ -7,7 +7,9 @@ import PaginationControls from './components/common/PaginationControls';
 import Dashboard from './components/Dashboard/Dashboard';
 import Login from './components/Login';
 import IndicatorsDashboard from './components/modals/IndicatorsDashboard.jsx';
+
 import Button from './components/ui/Button';
+import QrCameraModal from './components/modals/QrCameraModal';
 
 import { auth, db, deleteFromDb, isLocalHost, loadFromDb, logoutUser, saveToDb, updateInDb } from './services/api'; // Certifique-se de exportar 'db' no seu arquivo de configuração
 
@@ -1841,6 +1843,7 @@ export default function App() {
   const [consultSearchType, setConsultSearchType] = useState('all');
   const [consultCameraOn, setConsultCameraOn] = useState(false);
   const [consultCameraError, setConsultCameraError] = useState('');
+  const [showQrCameraModal, setShowQrCameraModal] = useState(false);
   const consultVideoRef = useRef(null);
   const consultStreamRef = useRef(null);
   const consultScanTimerRef = useRef(null);
@@ -11406,46 +11409,20 @@ const handleUploadJSONToFirebase = async (e) => {
       setConsultCameraOn(false);
     };
 
-    const startConsultCamera = async () => {
-      setConsultCameraError('');
-      try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          setConsultCameraError('Seu navegador nao suporta acesso a camera.');
-          return;
-        }
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-          audio: false,
-        });
-        consultStreamRef.current = stream;
-        if (consultVideoRef.current) {
-          consultVideoRef.current.srcObject = stream;
-          await consultVideoRef.current.play();
-        }
-        if ('BarcodeDetector' in window) {
-          const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-          consultScanTimerRef.current = setInterval(async () => {
-            if (!consultVideoRef.current) return;
-            try {
-              const codes = await detector.detect(consultVideoRef.current);
-              if (codes && codes.length > 0) {
-                const value = codes[0]?.rawValue || '';
-                if (value) {
-                  setConsultQrInput(value);
-                  handleConsultQr(value);
-                  stopConsultCamera();
-                }
-              }
-            } catch (error) {
-              // ignora frame invalido
-            }
-          }, 450);
-        } else {
-          setConsultCameraError('Camera aberta. Este navegador nao le QR automaticamente; use leitor externo ou cole o codigo.');
-        }
-        setConsultCameraOn(true);
-      } catch (error) {
-        setConsultCameraError('Nao foi possivel acessar a camera. No celular, use HTTPS/localhost e permita permissao.');
+    // Nova função para abrir modal
+    const startConsultCamera = () => {
+      setShowQrCameraModal(true);
+    };
+
+    // Função para lidar com leitura do modal
+    const handleQrCameraDetect = (value, errorMsg) => {
+      if (value) {
+        setConsultQrInput(value);
+        handleConsultQr(value);
+        setShowQrCameraModal(false);
+        setConsultCameraError('');
+      } else if (errorMsg) {
+        setConsultCameraError(errorMsg);
       }
     };
 
@@ -11475,10 +11452,10 @@ const handleUploadJSONToFirebase = async (e) => {
               <Search size={16} /> Consultar
             </Button>
             <Button
-              onClick={() => (consultCameraOn ? stopConsultCamera() : startConsultCamera())}
-              variant={consultCameraOn ? "warning" : "secondary"}
+              onClick={() => setShowQrCameraModal(true)}
+              variant={showQrCameraModal ? "warning" : "secondary"}
             >
-              <Camera size={16} /> {consultCameraOn ? 'Parar Camera' : 'Ler com Camera'}
+              <Camera size={16} /> {showQrCameraModal ? 'Fechar Câmera' : 'Ler com Câmera'}
             </Button>
             <Button
               onClick={() => {
@@ -11496,11 +11473,13 @@ const handleUploadJSONToFirebase = async (e) => {
             </Button>
           </div>
 
-          {consultCameraOn && (
-            <div className="mt-3 rounded-lg border border-cyan-500/30 bg-black/40 p-2">
-              <video ref={consultVideoRef} className="w-full max-h-[260px] rounded object-cover" playsInline muted />
-            </div>
-          )}
+          {/* Modal de câmera para QRCode */}
+          <QrCameraModal
+            open={showQrCameraModal}
+            onClose={() => setShowQrCameraModal(false)}
+            onDetect={handleQrCameraDetect}
+            error={consultCameraError}
+          />
           {consultCameraError && (
             <p className="mt-2 text-xs text-amber-300 font-semibold">{consultCameraError}</p>
           )}
