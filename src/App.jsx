@@ -491,6 +491,89 @@ const CutConsumptionStatusModal = ({ data, onClose }) => {
   const rows = Array.isArray(data.rows) ? data.rows : [];
   const isLoading = Boolean(data.loading);
   const errorMessage = data.error || '';
+  const canExport = !isLoading && !errorMessage && rows.length > 0;
+
+  const handleExportExcel = () => {
+    if (!canExport) return;
+    const headers = [
+      'B2 ID',
+      'Codigo',
+      'Descricao',
+      'Peso',
+      'Status',
+      'Consumo em PA',
+      'Quem apontou',
+      'Quando apontou',
+      'Data apontamento',
+    ];
+    const escapeCell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const body = rows.map((row) => ([
+      row.childId,
+      row.b2Code,
+      row.b2Name,
+      row.weightLabel,
+      row.isConsumed ? 'CONSUMIDA' : 'EM ESTOQUE',
+      row.productionLabel || '-',
+      row.userLabel || '-',
+      row.pointedAtLabel || '-',
+      row.pointedDateLabel || '-',
+    ]));
+    const csvContent = [headers, ...body]
+      .map((line) => line.map(escapeCell).join(';'))
+      .join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const cutId = String(data.cutLog?.id || 'corte');
+    link.href = url;
+    link.download = `consumo_b2_${cutId}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportPdf = () => {
+    if (!canExport) return;
+    const doc = new jsPDF('l', 'mm', 'a4');
+    const cutId = String(data.cutLog?.id || '-');
+    const mp = String(data.cutLog?.motherCode || '-');
+    const date = String(data.cutLog?.date || '-');
+    doc.setFontSize(13);
+    doc.text(`Consumo das B2 geradas no corte`, 14, 14);
+    doc.setFontSize(9);
+    doc.text(`Corte: ${cutId} | MP: ${mp} | Data: ${date}`, 14, 20);
+
+    autoTable(doc, {
+      startY: 24,
+      head: [[
+        'B2 ID',
+        'Codigo',
+        'Descricao',
+        'Peso',
+        'Status',
+        'Consumo em PA',
+        'Quem apontou',
+        'Quando apontou',
+        'Data apontamento',
+      ]],
+      body: rows.map((row) => ([
+        row.childId,
+        row.b2Code || '-',
+        row.b2Name || '-',
+        row.weightLabel,
+        row.isConsumed ? 'CONSUMIDA' : 'EM ESTOQUE',
+        row.productionLabel || '-',
+        row.userLabel || '-',
+        row.pointedAtLabel || '-',
+        row.pointedDateLabel || '-',
+      ])),
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [31, 41, 55] },
+    });
+
+    doc.save(`consumo_b2_${cutId}.pdf`);
+  };
 
   return (
     <div className="fixed inset-0 bg-black/80 z-[95] flex items-center justify-center p-4">
@@ -557,7 +640,15 @@ const CutConsumptionStatusModal = ({ data, onClose }) => {
           )}
         </div>
 
-        <div className="p-3 border-t border-gray-700 bg-gray-900/50 flex justify-end">
+        <div className="p-3 border-t border-gray-700 bg-gray-900/50 flex justify-between items-center">
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={handleExportExcel} disabled={!canExport}>
+              <Download size={14} /> Excel
+            </Button>
+            <Button variant="secondary" onClick={handleExportPdf} disabled={!canExport}>
+              <Download size={14} /> PDF
+            </Button>
+          </div>
           <Button variant="secondary" onClick={onClose}>Fechar</Button>
         </div>
       </div>
@@ -1949,6 +2040,7 @@ export default function App() {
   const [reportStartDate, setReportStartDate] = useState(new Date().toISOString().split('T')[0]); // Hoje
   const [reportEndDate, setReportEndDate] = useState(new Date().toISOString().split('T')[0]);   // Hoje
   const [reportSearch, setReportSearch] = useState('');
+  const [dailyB2AuditDate, setDailyB2AuditDate] = useState(new Date().toISOString().split('T')[0]);
   const [viewingProdDetails, setViewingProdDetails] = useState(null); // <--- ADICIONE ESSA LINHA
   const [expandedProdSummaryCode, setExpandedProdSummaryCode] = useState(null);
   const [showProdSuggestionModal, setShowProdSuggestionModal] = useState(false);
@@ -7278,6 +7370,7 @@ const handleOpenCutConsumption = (eventItem) => {
     : [];
   const safeShipping = Array.isArray(shippingLogs) ? shippingLogs : [];
   const safeChild = Array.isArray(childCoils) ? childCoils : [];
+  const safeEvents = Array.isArray(eventLogs) ? eventLogs : [];
 
   // =================================================================================
   // 2. EXTRATO MP (KARDEX)
@@ -7884,6 +7977,155 @@ safeCutting.forEach((c) => {
     return parsed.toISOString().slice(0, 10);
   };
 
+  const dailyAuditProdEvents = safeEvents
+    .filter((event) => event?.eventType === EVENT_TYPES.PA_PRODUCTION)
+    .slice();
+
+  const dailyAuditChildById = safeChild.reduce((acc, item) => {
+    if (item?.id) acc[String(item.id)] = item;
+    return acc;
+  }, {});
+
+  const dailyB2AuditRows = safeProd
+    .filter((prod) => Array.isArray(prod?.childIds) && prod.childIds.length > 0)
+    .filter((prod) => toISOFromValue(prod?.date || prod?.timestamp) === dailyB2AuditDate)
+    .flatMap((prod) => {
+      const prodId = String(prod?.id || '');
+      const uniqueChildIds = [...new Set((prod?.childIds || []).map((id) => String(id)))];
+      const prodEvent = dailyAuditProdEvents.find((event) => {
+        const eventChildIds = Array.isArray(event?.details?.childIds)
+          ? event.details.childIds.map(String)
+          : [];
+        const eventTargetIds = Array.isArray(event?.targetIds)
+          ? event.targetIds.map(String)
+          : [];
+        const byProdId = prodId && eventTargetIds.includes(prodId);
+        const byChild = uniqueChildIds.some((childId) => eventChildIds.includes(childId));
+        return byProdId || byChild;
+      });
+
+      return uniqueChildIds.map((childId) => {
+        const child = dailyAuditChildById[childId] || null;
+        const launchTimestamp = parseDateTime(
+          prodEvent?.timestamp || prod?.timestamp || prodEvent?.details?.date || prod?.date,
+        );
+        return {
+          prodId: prodId || '-',
+          productCode: prod?.productCode || '-',
+          productName: prod?.productName || '-',
+          pieces: Number(prod?.pieces) || 0,
+          childId,
+          b2Code: child?.b2Code || child?.code || '-',
+          b2Name: child?.b2Name || child?.name || '-',
+          b2Weight: Number(child?.weight) || 0,
+          status: child?.status || '-',
+          launchDate: prod?.date || prodEvent?.details?.date || '-',
+          launchAtLabel: launchTimestamp ? launchTimestamp.toLocaleString('pt-BR') : '-',
+          launchAtTs: launchTimestamp?.getTime() || 0,
+          userEmail:
+            prodEvent?.details?.userEmail ||
+            prodEvent?.userEmail ||
+            prod?.userEmail ||
+            prodEvent?.userId ||
+            '-',
+        };
+      });
+    })
+    .sort((a, b) => {
+      if (b.launchAtTs !== a.launchAtTs) return b.launchAtTs - a.launchAtTs;
+      return String(a.prodId).localeCompare(String(b.prodId));
+    });
+
+  const dailyB2AuditSummary = dailyB2AuditRows.reduce(
+    (acc, row) => {
+      acc.totalB2 += 1;
+      acc.totalWeight += Number(row.b2Weight) || 0;
+      if (!acc.prodIds.has(row.prodId)) {
+        acc.prodIds.add(row.prodId);
+        acc.totalLaunches += 1;
+      }
+      return acc;
+    },
+    { totalB2: 0, totalWeight: 0, totalLaunches: 0, prodIds: new Set() },
+  );
+
+  const handleExportDailyB2AuditExcel = () => {
+    if (!dailyB2AuditRows.length) {
+      alert('Nenhum consumo de B2 para exportar na data selecionada.');
+      return;
+    }
+    const data = dailyB2AuditRows.map((row) => ({
+      DataFiltro: dailyB2AuditDate,
+      DataApontamento: row.launchDate,
+      LoteId: row.prodId,
+      Produto: row.productCode,
+      DescricaoProduto: row.productName,
+      Pecas: row.pieces,
+      B2Id: row.childId,
+      B2Codigo: row.b2Code,
+      B2Descricao: row.b2Name,
+      B2PesoKg: Number(row.b2Weight || 0).toLocaleString('pt-BR', {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      }),
+      StatusAtualB2: row.status,
+      QuemApontou: row.userEmail,
+      QuandoApontou: row.launchAtLabel,
+    }));
+    exportToCSV(data, `auditoria_b2_${dailyB2AuditDate}`);
+  };
+
+  const handleExportDailyB2AuditPdf = () => {
+    if (!dailyB2AuditRows.length) {
+      alert('Nenhum consumo de B2 para exportar na data selecionada.');
+      return;
+    }
+    const doc = new jsPDF('l', 'mm', 'a4');
+    doc.setFontSize(13);
+    doc.text('Auditoria diaria - consumo de B2', 14, 14);
+    doc.setFontSize(9);
+    doc.text(
+      `Data: ${dailyB2AuditDate} | Lancamentos: ${dailyB2AuditSummary.totalLaunches} | B2 consumidas: ${dailyB2AuditSummary.totalB2}`,
+      14,
+      20,
+    );
+    autoTable(doc, {
+      startY: 24,
+      head: [[
+        'Data apont.',
+        'Lote',
+        'Produto',
+        'Pecas',
+        'B2 ID',
+        'B2 codigo',
+        'B2 descricao',
+        'Peso (kg)',
+        'Status',
+        'Quem apontou',
+        'Quando apontou',
+      ]],
+      body: dailyB2AuditRows.map((row) => ([
+        row.launchDate,
+        row.prodId,
+        `${row.productCode} - ${row.productName}`,
+        String(row.pieces),
+        row.childId,
+        row.b2Code,
+        row.b2Name,
+        Number(row.b2Weight || 0).toLocaleString('pt-BR', {
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        }),
+        row.status || '-',
+        row.userEmail || '-',
+        row.launchAtLabel || '-',
+      ])),
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [31, 41, 55] },
+    });
+    doc.save(`auditoria_b2_${dailyB2AuditDate}.pdf`);
+  };
+
   const toDays = (ms) => ms / 86400000;
 
   const motherEntryByCode = safeMother.reduce((acc, item) => {
@@ -8193,6 +8435,108 @@ safeCutting.forEach((c) => {
             onViewDetail={handleGlobalDetail}
             getTypeColor={getTypeColor}
           />
+          <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-t-4 border-indigo-600">
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4 pb-4 border-b border-gray-700">
+              <div>
+                <h3 className="font-bold text-gray-200">Conferencia diaria de consumo B2</h3>
+                <p className="text-xs text-gray-400">
+                  Filtre a data e veja todos os apontamentos de producao que consumiram bobina 2.
+                </p>
+              </div>
+              <div className="flex items-end gap-2">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Data</label>
+                  <input
+                    type="date"
+                    value={dailyB2AuditDate}
+                    onChange={(e) => setDailyB2AuditDate(e.target.value)}
+                    className="bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <Button variant="secondary" onClick={handleExportDailyB2AuditExcel} disabled={!dailyB2AuditRows.length}>
+                  <Download size={14} /> Excel
+                </Button>
+                <Button variant="secondary" onClick={handleExportDailyB2AuditPdf} disabled={!dailyB2AuditRows.length}>
+                  <Download size={14} /> PDF
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-3">
+                <p className="text-[11px] uppercase text-gray-500">Lancamentos no dia</p>
+                <p className="text-lg font-bold text-indigo-300">{dailyB2AuditSummary.totalLaunches}</p>
+              </div>
+              <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-3">
+                <p className="text-[11px] uppercase text-gray-500">Bobinas B2 consumidas</p>
+                <p className="text-lg font-bold text-amber-300">{dailyB2AuditSummary.totalB2}</p>
+              </div>
+              <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-3">
+                <p className="text-[11px] uppercase text-gray-500">Peso total B2</p>
+                <p className="text-lg font-bold text-emerald-300">
+                  {dailyB2AuditSummary.totalWeight.toLocaleString('pt-BR', {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1,
+                  })} kg
+                </p>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-auto custom-scrollbar-dark">
+              <table className="w-full text-sm text-left text-gray-300">
+                <thead className="bg-gray-900 text-gray-400 sticky top-0 z-10">
+                  <tr>
+                    <th className="p-2">Data apont.</th>
+                    <th className="p-2">Lote ID</th>
+                    <th className="p-2">Produto</th>
+                    <th className="p-2 text-right">Pecas</th>
+                    <th className="p-2">B2 ID</th>
+                    <th className="p-2">B2 codigo</th>
+                    <th className="p-2">B2 descricao</th>
+                    <th className="p-2 text-right">Peso</th>
+                    <th className="p-2">Status B2</th>
+                    <th className="p-2">Quem apontou</th>
+                    <th className="p-2">Quando apontou</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {dailyB2AuditRows.length === 0 ? (
+                    <tr>
+                      <td colSpan="11" className="p-8 text-center text-gray-500">
+                        Nenhum consumo de B2 encontrado na data {dailyB2AuditDate || '-'}.
+                      </td>
+                    </tr>
+                  ) : (
+                    dailyB2AuditRows.map((row) => (
+                      <tr key={`${row.prodId}-${row.childId}`} className="hover:bg-gray-700/40">
+                        <td className="p-2 text-xs">{row.launchDate || '-'}</td>
+                        <td className="p-2 font-mono text-[11px] text-blue-300">{row.prodId}</td>
+                        <td className="p-2 text-xs">
+                          <div>{row.productCode || '-'}</div>
+                          <div className="text-gray-500">{row.productName || '-'}</div>
+                        </td>
+                        <td className="p-2 text-right">{row.pieces}</td>
+                        <td className="p-2 font-mono text-[11px] text-blue-300">{row.childId}</td>
+                        <td className="p-2 font-mono text-xs">{row.b2Code || '-'}</td>
+                        <td className="p-2 text-xs">{row.b2Name || '-'}</td>
+                        <td className="p-2 text-right font-mono">
+                          {(Number(row.b2Weight) || 0).toLocaleString('pt-BR', {
+                            minimumFractionDigits: 1,
+                            maximumFractionDigits: 1,
+                          })} kg
+                        </td>
+                        <td className="p-2 text-xs">
+                          {String(row.status || '-').toLowerCase() === 'consumed' ? 'CONSUMIDA' : row.status}
+                        </td>
+                        <td className="p-2 text-xs">{row.userEmail || '-'}</td>
+                        <td className="p-2 text-xs text-gray-400">{row.launchAtLabel || '-'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         </>
       )}
 
