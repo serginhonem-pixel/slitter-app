@@ -2041,6 +2041,8 @@ export default function App() {
   const [reportEndDate, setReportEndDate] = useState(new Date().toISOString().split('T')[0]);   // Hoje
   const [reportSearch, setReportSearch] = useState('');
   const [dailyB2AuditDate, setDailyB2AuditDate] = useState(new Date().toISOString().split('T')[0]);
+  const [dailyB2CorrectionModal, setDailyB2CorrectionModal] = useState(null);
+  const [dailyB2CorrectionSaving, setDailyB2CorrectionSaving] = useState(false);
   const [viewingProdDetails, setViewingProdDetails] = useState(null); // <--- ADICIONE ESSA LINHA
   const [expandedProdSummaryCode, setExpandedProdSummaryCode] = useState(null);
   const [showProdSuggestionModal, setShowProdSuggestionModal] = useState(false);
@@ -2056,12 +2058,15 @@ export default function App() {
   const USE_LOCAL_JSON = isLocalHost();
   // true no npm run dev, false no build/Vercel
   const ADMIN_EMAIL = 'pcp@metalosa.com.br';
+  const B2_CORRECTION_OWNER_EMAIL = 'pcp@metalosa.com.br';
   const LOCAL_DEV_USER = {
     uid: 'LOCALHOST-DEV',
     email: ADMIN_EMAIL,
     displayName: 'Dev Local',
   };
   const isAdminUser = user?.email?.toLowerCase() === ADMIN_EMAIL;
+  const canUseB2Correction =
+    String(user?.email || '').toLowerCase() === B2_CORRECTION_OWNER_EMAIL;
   const ADMIN_PAGE_SIZE = 20;
 
   const {
@@ -4603,6 +4608,124 @@ export default function App() {
     });
     setChildCoils(updatedChildren);
     setProductionLogs(productionLogs.filter(l => l.id !== logId));
+  };
+
+  const handleConfirmDailyB2Correction = async () => {
+    if (!dailyB2CorrectionModal || dailyB2CorrectionSaving) return;
+    if (!canUseB2Correction) {
+      alert('Sem permissao para corrigir consumo.');
+      return;
+    }
+
+    const productionLogId = String(dailyB2CorrectionModal.prodId || '').trim();
+    const oldChildId = String(dailyB2CorrectionModal.childId || '').trim();
+    const newChildId = String(dailyB2CorrectionModal.newChildId || '').trim();
+
+    if (!productionLogId || !oldChildId || !newChildId) {
+      alert('Preencha os dados da correcao.');
+      return;
+    }
+    if (oldChildId === newChildId) {
+      alert('Selecione uma B2 diferente para substituir.');
+      return;
+    }
+
+    const prodLog = (productionLogs || []).find((log) => String(log.id) === productionLogId);
+    if (!prodLog) {
+      alert(`Nao encontrei o lancamento ${productionLogId}.`);
+      return;
+    }
+
+    const currentChildIds = Array.isArray(prodLog.childIds) ? prodLog.childIds.map(String) : [];
+    if (!currentChildIds.includes(oldChildId)) {
+      alert('Esta B2 nao esta mais vinculada a este lancamento.');
+      return;
+    }
+
+    const oldChild = (childCoils || []).find((coil) => String(coil.id) === oldChildId) || null;
+    const newChild = (childCoils || []).find((coil) => String(coil.id) === newChildId) || null;
+    if (!newChild) {
+      alert('B2 de substituicao nao encontrada.');
+      return;
+    }
+
+    const isNewChildUsedElsewhere = (productionLogs || []).some((log) => {
+      if (String(log.id) === productionLogId) return false;
+      const ids = Array.isArray(log.childIds) ? log.childIds.map(String) : [];
+      return ids.includes(newChildId);
+    });
+    if (isNewChildUsedElsewhere) {
+      alert('A B2 de substituicao ja esta consumida em outro lancamento.');
+      return;
+    }
+    if (String(newChild.status || '').toLowerCase() !== 'stock') {
+      alert('A B2 de substituicao precisa estar EM ESTOQUE.');
+      return;
+    }
+
+    const nextChildIds = [...new Set(currentChildIds.map((id) => (id === oldChildId ? newChildId : id)))];
+    const nextChildrenRefs = nextChildIds
+      .map((id) => (id === newChildId ? newChild : (childCoils || []).find((coil) => String(coil.id) === String(id))))
+      .filter(Boolean);
+    const nextB2Code = [...new Set(nextChildrenRefs.map((coil) => String(coil?.b2Code || coil?.code || '').trim()).filter(Boolean))].join(', ');
+    const nextB2Name = [...new Set(nextChildrenRefs.map((coil) => String(coil?.b2Name || coil?.name || '').trim()).filter(Boolean))].join(', ');
+
+    const oldUsedElsewhere = (productionLogs || []).some((log) => {
+      if (String(log.id) === productionLogId) return false;
+      const ids = Array.isArray(log.childIds) ? log.childIds.map(String) : [];
+      return ids.includes(oldChildId);
+    });
+    const shouldRestoreOldToStock = !oldUsedElsewhere;
+
+    setDailyB2CorrectionSaving(true);
+    try {
+      setProductionLogs((prev) =>
+        prev.map((log) =>
+          String(log.id) === productionLogId
+            ? { ...log, childIds: nextChildIds, b2Code: nextB2Code || log.b2Code, b2Name: nextB2Name || log.b2Name }
+            : log,
+        ),
+      );
+
+      setChildCoils((prev) =>
+        prev.map((coil) => {
+          const id = String(coil.id);
+          if (id === newChildId) return { ...coil, status: 'consumed' };
+          if (id === oldChildId && shouldRestoreOldToStock) return { ...coil, status: 'stock' };
+          return coil;
+        }),
+      );
+
+      if (!USE_LOCAL_JSON) {
+        await updateInDb('productionLogs', productionLogId, {
+          childIds: nextChildIds,
+          b2Code: nextB2Code || prodLog.b2Code || '',
+          b2Name: nextB2Name || prodLog.b2Name || '',
+        });
+        await updateInDb('childCoils', newChildId, { status: 'consumed' });
+        if (shouldRestoreOldToStock) {
+          await updateInDb('childCoils', oldChildId, { status: 'stock' });
+        }
+      }
+
+      await logUserAction('CORRECAO_CONSUMO_B2', {
+        productionLogId,
+        oldChildId,
+        oldB2Code: oldChild?.b2Code || oldChild?.code || '',
+        newChildId,
+        newB2Code: newChild?.b2Code || newChild?.code || '',
+        productCode: prodLog?.productCode || '',
+        date: prodLog?.date || '',
+      });
+
+      setDailyB2CorrectionModal(null);
+      alert('Correcao aplicada com sucesso.');
+    } catch (error) {
+      console.error('Erro ao corrigir consumo de B2:', error);
+      alert('Nao foi possivel salvar a correcao.');
+    } finally {
+      setDailyB2CorrectionSaving(false);
+    }
   };
 
   const generateTrackingId = () => {
@@ -8497,12 +8620,13 @@ safeCutting.forEach((c) => {
                     <th className="p-2">Status B2</th>
                     <th className="p-2">Quem apontou</th>
                     <th className="p-2">Quando apontou</th>
+                    {canUseB2Correction && <th className="p-2 text-center">Correcao</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700">
                   {dailyB2AuditRows.length === 0 ? (
                     <tr>
-                      <td colSpan="11" className="p-8 text-center text-gray-500">
+                      <td colSpan={canUseB2Correction ? 12 : 11} className="p-8 text-center text-gray-500">
                         Nenhum consumo de B2 encontrado na data {dailyB2AuditDate || '-'}.
                       </td>
                     </tr>
@@ -8530,6 +8654,21 @@ safeCutting.forEach((c) => {
                         </td>
                         <td className="p-2 text-xs">{row.userEmail || '-'}</td>
                         <td className="p-2 text-xs text-gray-400">{row.launchAtLabel || '-'}</td>
+                        {canUseB2Correction && (
+                          <td className="p-2 text-center">
+                            <button
+                              onClick={() =>
+                                setDailyB2CorrectionModal({
+                                  ...row,
+                                  newChildId: '',
+                                })
+                              }
+                              className="px-2 py-1 text-xs rounded bg-amber-600/20 text-amber-200 hover:bg-amber-600/40"
+                            >
+                              Corrigir
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))
                   )}
@@ -13239,6 +13378,80 @@ const handleUploadJSONToFirebase = async (e) => {
           onViewCutConsumption={handleOpenCutConsumptionModal}
           onClose={() => setSelectedGlobalGroup(null)}
         />
+      )}
+      {canUseB2Correction && dailyB2CorrectionModal && (
+        <div className="fixed inset-0 bg-black/80 z-[96] flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-2xl shadow-2xl">
+            <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-900 rounded-t-xl">
+              <div>
+                <h3 className="text-white font-bold text-lg">Corrigir consumo de B2</h3>
+                <p className="text-xs text-gray-400">
+                  Lancamento: {dailyB2CorrectionModal.prodId || '-'} | Produto: {dailyB2CorrectionModal.productCode || '-'}
+                </p>
+              </div>
+              <button
+                onClick={() => !dailyB2CorrectionSaving && setDailyB2CorrectionModal(null)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-3 text-sm">
+                <div className="text-gray-400 text-xs uppercase mb-2">B2 atualmente vinculada</div>
+                <div className="text-blue-300 font-mono text-xs">{dailyB2CorrectionModal.childId || '-'}</div>
+                <div className="text-gray-200">{dailyB2CorrectionModal.b2Code || '-'} - {dailyB2CorrectionModal.b2Name || '-'}</div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Selecionar B2 correta (somente EM ESTOQUE)</label>
+                <select
+                  value={dailyB2CorrectionModal.newChildId || ''}
+                  onChange={(e) =>
+                    setDailyB2CorrectionModal((prev) => (prev ? { ...prev, newChildId: e.target.value } : prev))
+                  }
+                  disabled={dailyB2CorrectionSaving}
+                  className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-amber-500"
+                >
+                  <option value="">Selecione a B2 correta...</option>
+                  {(childCoils || [])
+                    .filter((coil) => String(coil?.status || '').toLowerCase() === 'stock')
+                    .filter((coil) => String(coil?.id || '') !== String(dailyB2CorrectionModal.childId || ''))
+                    .sort((a, b) => {
+                      const codeA = String(a?.b2Code || a?.code || '');
+                      const codeB = String(b?.b2Code || b?.code || '');
+                      const cmpCode = codeA.localeCompare(codeB);
+                      if (cmpCode !== 0) return cmpCode;
+                      return String(a?.id || '').localeCompare(String(b?.id || ''));
+                    })
+                    .map((coil) => (
+                      <option key={coil.id} value={coil.id}>
+                        {String(coil.id)} | {coil.b2Code || coil.code || '-'} | {coil.b2Name || coil.name || '-'} | {(Number(coil.weight) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="p-3 border-t border-gray-700 bg-gray-900/50 flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setDailyB2CorrectionModal(null)}
+                disabled={dailyB2CorrectionSaving}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleConfirmDailyB2Correction}
+                disabled={dailyB2CorrectionSaving || !dailyB2CorrectionModal.newChildId}
+              >
+                {dailyB2CorrectionSaving ? 'Salvando...' : 'Aplicar correcao'}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
       {cutConsumptionModal && (
         <CutConsumptionStatusModal
