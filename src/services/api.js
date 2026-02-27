@@ -63,10 +63,8 @@ export const resetPassword = async (email) => {
 // --- BUSCAR (LÊ TUDO) ---
 export const loadFromDb = async (collectionName) => {
   try {
-    if (isFirestoreBlocked()) {
-      console.warn("[FIREBASE] loadFromDb bloqueado no localhost:", collectionName);
-      return [];
-    }
+    // Permite leitura em localhost para auditoria/rastreio.
+    // Escrita continua bloqueada em save/update/delete.
     const snapshot = await getDocs(collection(db, collectionName));
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
   } catch (error) {

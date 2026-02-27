@@ -359,7 +359,7 @@ const InsightList = ({ title, items, valueLabel }) => (
   </Card>
 );
 
-const DailyGlobalModal = ({ group, onClose }) => {
+const DailyGlobalModal = ({ group, onClose, onViewCutConsumption }) => {
   const { type, date, events, totalQty, totalWeight } = group;
 
   const typeKey = normalizeTypeKey(type);
@@ -383,6 +383,7 @@ const DailyGlobalModal = ({ group, onClose }) => {
   };
 
   const title = titleMap[typeKey] || type;
+  const showCutAction = typeKey === 'CORTE' && typeof onViewCutConsumption === 'function';
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
@@ -417,6 +418,7 @@ const DailyGlobalModal = ({ group, onClose }) => {
                   <th className="p-2">Descrição</th>
                   <th className="p-2 text-right">Qtd</th>
                   <th className="p-2 text-right">Peso</th>
+                  {showCutAction && <th className="p-2 text-center">Detalhe</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-700">
@@ -442,6 +444,19 @@ const DailyGlobalModal = ({ group, onClose }) => {
                           })
                         : e.weight}
                     </td>
+                    {showCutAction && (
+                      <td className="p-2 text-center">
+                        <button
+                          onClick={() => {
+                            console.log('[CUT] click ver consumo', e);
+                            onViewCutConsumption(e);
+                          }}
+                          className="px-2 py-1 text-xs rounded bg-indigo-600/20 text-indigo-200 hover:bg-indigo-600/40"
+                        >
+                          Ver consumo
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -464,6 +479,86 @@ const DailyGlobalModal = ({ group, onClose }) => {
           >
             Fechar
           </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CutConsumptionStatusModal = ({ data, onClose }) => {
+  if (!data) return null;
+
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+  const isLoading = Boolean(data.loading);
+  const errorMessage = data.error || '';
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-[95] flex items-center justify-center p-4">
+      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-6xl shadow-2xl flex flex-col max-h-[88vh]">
+        <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-900 rounded-t-xl">
+          <div>
+            <h3 className="text-white font-bold text-lg">Consumo das B2 geradas no corte</h3>
+            <p className="text-xs text-gray-400">
+              Corte ID: {data.cutLog?.id || '-'} | MP: {data.cutLog?.motherCode || '-'} | Data: {data.cutLog?.date || '-'}
+            </p>
+            <p className="text-xs text-gray-500">
+              B2 geradas: {data.generatedCount || 0} | B2 identificadas: {rows.length}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-4 overflow-y-auto custom-scrollbar-dark flex-1">
+          {isLoading ? (
+            <div className="text-sm text-gray-300">Carregando consumo e auditoria...</div>
+          ) : errorMessage ? (
+            <div className="text-sm text-red-300">{errorMessage}</div>
+          ) : rows.length === 0 ? (
+            <div className="text-sm text-gray-400">
+              Nao consegui vincular as B2 deste corte. Pode ser registro antigo sem childIds.
+            </div>
+          ) : (
+            <table className="w-full text-sm text-left text-gray-300">
+              <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                <tr>
+                  <th className="p-2">B2 ID</th>
+                  <th className="p-2">Codigo</th>
+                  <th className="p-2">Descricao</th>
+                  <th className="p-2 text-right">Peso</th>
+                  <th className="p-2">Status atual</th>
+                  <th className="p-2">Consumo em PA</th>
+                  <th className="p-2">Quem apontou</th>
+                  <th className="p-2">Quando apontou</th>
+                  <th className="p-2">Data apontamento</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-700">
+                {rows.map((row) => (
+                  <tr key={row.childId} className="hover:bg-gray-700/50">
+                    <td className="p-2 font-mono text-[11px] text-blue-300">{row.childId}</td>
+                    <td className="p-2 font-mono text-xs">{row.b2Code || '-'}</td>
+                    <td className="p-2">{row.b2Name || '-'}</td>
+                    <td className="p-2 text-right font-mono">{row.weightLabel}</td>
+                    <td className="p-2">
+                      <span className={row.isConsumed ? 'text-amber-300 font-semibold' : 'text-emerald-400 font-semibold'}>
+                        {row.isConsumed ? 'CONSUMIDA' : 'EM ESTOQUE'}
+                      </span>
+                    </td>
+                    <td className="p-2 text-xs">{row.productionLabel || '-'}</td>
+                    <td className="p-2 text-xs">{row.userLabel || '-'}</td>
+                    <td className="p-2 text-xs text-gray-300">{row.pointedAtLabel || '-'}</td>
+                    <td className="p-2 text-xs text-gray-300">{row.pointedDateLabel || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="p-3 border-t border-gray-700 bg-gray-900/50 flex justify-end">
+          <Button variant="secondary" onClick={onClose}>Fechar</Button>
         </div>
       </div>
     </div>
@@ -1792,6 +1887,7 @@ export default function App() {
 // 'dashboard', 'rastreioB2', 'mpNeed', etc...
 
   const [logsPage, setLogsPage] = useState(1);
+  const [cutConsumptionModal, setCutConsumptionModal] = useState(null);
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const [isSidebarHidden, setSidebarHidden] = useState(() => {
       if (typeof window === 'undefined') return false;
@@ -1991,7 +2087,9 @@ export default function App() {
         eventType: EVENT_TYPES.B2_CUT,
         timestamp: log.timestamp || makeTimestamp(),
         sourceId: log.motherId || log.motherCode || log.id,
-        targetIds: Array.isArray(log.generatedItems) ? log.generatedItems : [],
+        targetIds: Array.isArray(log.childIds)
+          ? log.childIds.map((id) => String(id))
+          : [],
         details: {
           motherCode: log.motherCode,
           newChildCount: log.outputCount,
@@ -3450,6 +3548,9 @@ export default function App() {
       }));
 
     // Objeto de atualização da Mãe
+    newCutLog.motherId = mother.id;
+    newCutLog.childIds = tempNewChildren.map((child) => child.id);
+
     const motherUpdateData = {
       remainingWeight: remaining,
       status: isTotalConsumption ? 'consumed' : 'stock',
@@ -3492,11 +3593,21 @@ export default function App() {
           const savedChild = await saveToDb('childCoils', childData);
           savedChildrenReal.push(savedChild);
       }
+      const savedChildIds = savedChildrenReal.map((child) => child.id);
+      await updateInDb('cuttingLogs', savedLog.id, {
+        childIds: savedChildIds,
+        motherId: mother.id,
+      });
 
       // --- 6. TROCA SILENCIOSA DE IDS (TEMP -> REAL) ---
       
       // Troca ID do Log
-      setCuttingLogs(prev => prev.map(l => l.id === tempLogId ? { ...l, id: savedLog.id } : l));
+      setCuttingLogs(prev => prev.map(l => l.id === tempLogId ? {
+        ...l,
+        id: savedLog.id,
+        motherId: mother.id,
+        childIds: savedChildIds,
+      } : l));
       
       // Troca IDs das Filhas (Remove as Temp e bota as Reais para garantir integridade)
       setChildCoils(prev => {
@@ -4180,7 +4291,7 @@ export default function App() {
             childIds: sourceIds, motherCode: uniqueMotherCodes, b2Code: uniqueB2Codes, b2Name: selectedInputCoils[0].b2Name,
             productCode: productInfo.code, productName: productInfo.name, pieces: packSize,
             packIndex: `${i + 1}/${totalLabels}`, scrap: i === 0 ? parseFloat(prodScrap) || 0 : 0,
-            date: date, timestamp: timestamp
+            date: date, timestamp: timestamp, userEmail: user?.email || 'offline@local'
         });
     }
     // Cria Pacote Resto
@@ -4190,7 +4301,7 @@ export default function App() {
             trackingId: `${baseTrackingId}-F`,
             childIds: sourceIds, motherCode: uniqueMotherCodes, b2Code: uniqueB2Codes, b2Name: selectedInputCoils[0].b2Name,
             productCode: productInfo.code, productName: productInfo.name, pieces: remainder,
-            packIndex: `${totalLabels}/${totalLabels}`, scrap: 0, date: date, timestamp: timestamp
+            packIndex: `${totalLabels}/${totalLabels}`, scrap: 0, date: date, timestamp: timestamp, userEmail: user?.email || 'offline@local'
         });
     }
 
@@ -4911,6 +5022,8 @@ export default function App() {
       b2Code: temp.b2Code, b2Name: temp.b2Name, width: temp.width, thickness: temp.thickness,
       type: mother.type, weight: temp.weight, initialWeight: temp.weight, status: 'stock', createdAt: dateNow
     }));
+    newCutLog.motherId = mother.id;
+    newCutLog.childIds = tempNewChildren.map((child) => child.id);
 
     const motherUpdateData = {
       remainingWeight: remaining,
@@ -4945,8 +5058,18 @@ export default function App() {
         const savedChild = await saveToDb('childCoils', childData);
         savedChildrenReal.push(savedChild);
       }
+      const savedChildIds = savedChildrenReal.map((child) => child.id);
+      await updateInDb('cuttingLogs', savedLog.id, {
+        childIds: savedChildIds,
+        motherId: mother.id,
+      });
 
-      setCuttingLogs(prev => prev.map(l => l.id === tempLogId ? { ...l, id: savedLog.id } : l));
+      setCuttingLogs(prev => prev.map(l => l.id === tempLogId ? {
+        ...l,
+        id: savedLog.id,
+        motherId: mother.id,
+        childIds: savedChildIds,
+      } : l));
       setChildCoils(prev => {
         const others = prev.filter(c => !tempNewChildren.some(t => t.id === c.id));
         return [...others, ...savedChildrenReal];
@@ -7038,6 +7161,111 @@ const makeKeyFromCut = (c, safeMother) => {
 const handleGlobalDetail = (group) => {
   // group = { date, isoDate, type, events, totalQty, totalWeight }
   setSelectedGlobalGroup(group);
+};
+
+const handleOpenCutConsumption = (eventItem) => {
+  const safeCuttingLogs = Array.isArray(cuttingLogs) ? cuttingLogs : [];
+  const safeChildren = Array.isArray(childCoils) ? childCoils : [];
+  const safeProdLogs = Array.isArray(productionLogs) ? productionLogs : [];
+  const safeEvents = Array.isArray(eventLogs) ? eventLogs : [];
+
+  const cutId = String(eventItem?.movementId || eventItem?.id || '').trim();
+  const cutLog = safeCuttingLogs.find((log) => String(log.id) === cutId);
+
+  if (!cutLog) {
+    alert('Nao encontrei esse corte no historico detalhado.');
+    return;
+  }
+
+  let childIds = Array.isArray(cutLog.childIds)
+    ? cutLog.childIds.map((id) => String(id))
+    : [];
+
+  if (childIds.length === 0) {
+    const cutEvent = safeEvents.find((ev) =>
+      ev?.eventType === EVENT_TYPES.B2_CUT &&
+      (
+        String(ev?.details?.cuttingLogId || '') === String(cutLog.id) ||
+        String(ev?.id || '') === String(cutLog.id)
+      ),
+    );
+    if (Array.isArray(cutEvent?.targetIds) && cutEvent.targetIds.length > 0) {
+      childIds = cutEvent.targetIds.map((id) => String(id));
+    }
+  }
+
+  if (childIds.length === 0) {
+    const cutIso = toISODate(cutLog.date || eventItem?.rawDate || '');
+    const inferred = safeChildren.filter((child) => {
+      const sameMother = String(child?.motherCode || '') === String(cutLog?.motherCode || '');
+      const childIso = toISODate(child?.createdAt || child?.entryDate || child?.date || '');
+      return sameMother && (!cutIso || childIso === cutIso);
+    });
+    const limit = Number(cutLog.outputCount) || inferred.length;
+    childIds = inferred.slice(0, limit).map((child) => String(child.id));
+  }
+
+  childIds = [...new Set(childIds)];
+
+  const rows = childIds.map((childId) => {
+    const child = safeChildren.find((coil) => String(coil.id) === String(childId)) || null;
+    const childProdLogs = safeProdLogs
+      .filter((log) => Array.isArray(log.childIds) && log.childIds.map(String).includes(String(childId)))
+      .sort((a, b) => {
+        const dateA = parseMovementDate(a?.date || a?.timestamp)?.getTime() || 0;
+        const dateB = parseMovementDate(b?.date || b?.timestamp)?.getTime() || 0;
+        return dateA - dateB;
+      });
+    const prodLog = childProdLogs[0] || null;
+
+    const prodEvent = safeEvents
+      .filter((ev) => ev?.eventType === EVENT_TYPES.PA_PRODUCTION)
+      .filter((ev) => {
+        const childIdsFromEvent = Array.isArray(ev?.details?.childIds) ? ev.details.childIds.map(String) : [];
+        const targetIdsFromEvent = Array.isArray(ev?.targetIds) ? ev.targetIds.map(String) : [];
+        return (
+          childIdsFromEvent.includes(String(childId)) ||
+          (prodLog?.id ? targetIdsFromEvent.includes(String(prodLog.id)) : false)
+        );
+      })
+      .sort((a, b) => {
+        const dateA = parseMovementDate(a?.timestamp || a?.createdAt || a?.details?.date)?.getTime() || 0;
+        const dateB = parseMovementDate(b?.timestamp || b?.createdAt || b?.details?.date)?.getTime() || 0;
+        return dateA - dateB;
+      })[0] || null;
+
+    const pointedAtDate = parseMovementDate(
+      prodEvent?.timestamp || prodEvent?.createdAt || prodLog?.timestamp || null,
+    );
+
+    return {
+      childId: child?.id || childId,
+      b2Code: child?.b2Code || child?.code || '-',
+      b2Name: child?.b2Name || child?.name || '-',
+      weightLabel: `${Number(child?.weight || 0).toLocaleString('pt-BR', {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      })} kg`,
+      isConsumed: child?.status === 'consumed' || Boolean(prodLog),
+      productionLabel: prodLog
+        ? `${prodLog.productCode || '-'} - ${prodLog.productName || '-'} (${prodLog.pieces || '-'} pcs)`
+        : null,
+      userLabel:
+        prodEvent?.details?.userEmail ||
+        prodEvent?.userEmail ||
+        prodEvent?.userId ||
+        prodLog?.userEmail ||
+        '-',
+      pointedAtLabel: pointedAtDate ? pointedAtDate.toLocaleString('pt-BR') : '-',
+      pointedDateLabel: prodEvent?.details?.date || prodLog?.date || '-',
+    };
+  });
+
+  setCutConsumptionModal({
+    cutLog,
+    generatedCount: Number(cutLog.outputCount) || rows.length,
+    rows,
+  });
 };
 
 
@@ -10450,6 +10678,236 @@ const formatPcs = (pcs) => {
   return `${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} pçs`;
 };
 
+const handleOpenCutConsumptionModal = async (eventItem) => {
+  const safeCuttingLogs = Array.isArray(cuttingLogs) ? cuttingLogs : [];
+  const safeChildren = Array.isArray(childCoils) ? childCoils : [];
+  const safeProdLogs = Array.isArray(productionLogs) ? productionLogs : [];
+  const safeEvents = Array.isArray(eventLogs) ? eventLogs : [];
+  console.log('[CUT] handler start', eventItem);
+  let userActionLogs = [];
+  const normalizeAction = (value) =>
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .trim();
+  const isProductionAction = (action) => {
+    const normalized = normalizeAction(action);
+    return (
+      normalized.includes('PRODU') ||
+      normalized.includes('APONT') ||
+      normalized === 'PROD'
+    );
+  };
+  const toIsoDate = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (raw.includes('/')) {
+      const [dd, mm, yyyy] = raw.split('/');
+      if (dd && mm && yyyy) return `${yyyy}-${mm}-${dd}`;
+    }
+    return raw.slice(0, 10);
+  };
+
+  const cutId = String(eventItem?.movementId || eventItem?.id || '').trim();
+  const cutLog = safeCuttingLogs.find((log) => String(log.id) === cutId);
+  setCutConsumptionModal({
+    cutLog: cutLog || { id: cutId || '-', motherCode: eventItem?.code || '-', date: eventItem?.rawDate || '-' },
+    generatedCount: Number(cutLog?.outputCount) || Number(eventItem?.qty) || 0,
+    rows: [],
+    loading: true,
+  });
+
+  if (!cutLog) {
+    console.warn('[CUT] corte nao encontrado por movementId', { cutId, eventItem });
+    setCutConsumptionModal({
+      cutLog: { id: cutId || '-', motherCode: eventItem?.code || '-', date: eventItem?.rawDate || '-' },
+      generatedCount: Number(eventItem?.qty) || 0,
+      rows: [],
+      loading: false,
+      error: `Nao encontrei o corte ${cutId || '-'} em cuttingLogs.`,
+    });
+    return;
+  }
+
+  try {
+    const timeoutMs = 4000;
+    const loadedUserLogs = await Promise.race([
+      loadFromDb('userLogs'),
+      new Promise((resolve) => setTimeout(() => resolve('__timeout__'), timeoutMs)),
+    ]);
+    if (loadedUserLogs === '__timeout__') {
+      console.warn(`[CUT] Timeout ao carregar userLogs (${timeoutMs}ms). Seguindo sem userLogs.`);
+      userActionLogs = [];
+    } else {
+      userActionLogs = Array.isArray(loadedUserLogs) ? loadedUserLogs : [];
+    }
+  } catch (error) {
+    console.warn('Nao foi possivel carregar userLogs para auditoria de apontamento.', error);
+  }
+
+  try {
+
+  let childIds = Array.isArray(cutLog.childIds)
+    ? cutLog.childIds.map((id) => String(id))
+    : [];
+
+  if (childIds.length === 0) {
+    const cutEvent = safeEvents.find((ev) =>
+      ev?.eventType === EVENT_TYPES.B2_CUT &&
+      (
+        String(ev?.details?.cuttingLogId || '') === String(cutLog.id) ||
+        String(ev?.id || '') === String(cutLog.id)
+      ),
+    );
+    if (Array.isArray(cutEvent?.targetIds) && cutEvent.targetIds.length > 0) {
+      childIds = cutEvent.targetIds.map((id) => String(id));
+    }
+  }
+
+  if (childIds.length === 0) {
+    const cutIso = toIsoDate(cutLog.date || eventItem?.rawDate || '');
+    const inferred = safeChildren.filter((child) => {
+      const sameMother = String(child?.motherCode || '') === String(cutLog?.motherCode || '');
+      const childIso = toIsoDate(child?.createdAt || child?.entryDate || child?.date || '');
+      return sameMother && (!cutIso || childIso === cutIso);
+    });
+    const limit = Number(cutLog.outputCount) || inferred.length;
+    childIds = inferred.slice(0, limit).map((child) => String(child.id));
+  }
+
+  childIds = [...new Set(childIds)];
+
+  const rows = childIds.map((childId) => {
+    const child = safeChildren.find((coil) => String(coil.id) === String(childId)) || null;
+    const childProdLogs = safeProdLogs
+      .filter((log) => Array.isArray(log.childIds) && log.childIds.map(String).includes(String(childId)))
+      .sort((a, b) => {
+        const dateA = parseMovementDate(a?.date || a?.timestamp)?.getTime() || 0;
+        const dateB = parseMovementDate(b?.date || b?.timestamp)?.getTime() || 0;
+        return dateA - dateB;
+      });
+    const prodLog = childProdLogs[0] || null;
+
+    const prodEvent = safeEvents
+      .filter((ev) => ev?.eventType === EVENT_TYPES.PA_PRODUCTION)
+      .filter((ev) => {
+        const childIdsFromEvent = Array.isArray(ev?.details?.childIds) ? ev.details.childIds.map(String) : [];
+        const targetIdsFromEvent = Array.isArray(ev?.targetIds) ? ev.targetIds.map(String) : [];
+        return (
+          childIdsFromEvent.includes(String(childId)) ||
+          (prodLog?.id ? targetIdsFromEvent.includes(String(prodLog.id)) : false)
+        );
+      })
+      .sort((a, b) => {
+        const dateA = parseMovementDate(a?.timestamp || a?.createdAt || a?.details?.date)?.getTime() || 0;
+        const dateB = parseMovementDate(b?.timestamp || b?.createdAt || b?.details?.date)?.getTime() || 0;
+        return dateA - dateB;
+      })[0] || null;
+
+    const pointedAtDate = parseMovementDate(
+      prodEvent?.timestamp || prodEvent?.createdAt || prodLog?.timestamp || null,
+    );
+    const userAction = userActionLogs
+      .filter((log) => isProductionAction(log?.action))
+      .filter((log) => {
+        const ids = Array.isArray(log?.payload?.sourceChildIds)
+          ? log.payload.sourceChildIds.map(String)
+          : [];
+        return ids.includes(String(childId));
+      })
+      .sort((a, b) => {
+        const dateA = parseMovementDate(a?.timestamp)?.getTime() || 0;
+        const dateB = parseMovementDate(b?.timestamp)?.getTime() || 0;
+        return dateA - dateB;
+      })[0] || null;
+    const referenceTs =
+      pointedAtDate?.getTime() ||
+      parseMovementDate(prodLog?.timestamp || prodLog?.date)?.getTime() ||
+      0;
+    const fallbackUserAction = userActionLogs
+      .filter((log) => isProductionAction(log?.action))
+      .filter((log) => {
+        if (!prodLog) return false;
+        const sameCode =
+          String(log?.payload?.productCode || '').trim() ===
+          String(prodLog?.productCode || '').trim();
+        if (!sameCode) return false;
+        const logTs = parseMovementDate(log?.timestamp)?.getTime() || 0;
+        if (!logTs || !referenceTs) return true;
+        const diffMs = Math.abs(logTs - referenceTs);
+        return diffMs <= 24 * 60 * 60 * 1000;
+      })
+      .sort((a, b) => {
+        const dateA = parseMovementDate(a?.timestamp)?.getTime() || 0;
+        const dateB = parseMovementDate(b?.timestamp)?.getTime() || 0;
+        const diffA = referenceTs ? Math.abs(dateA - referenceTs) : Number.MAX_SAFE_INTEGER;
+        const diffB = referenceTs ? Math.abs(dateB - referenceTs) : Number.MAX_SAFE_INTEGER;
+        return diffA - diffB;
+      })[0] || null;
+    const broadFallbackUserAction = userActionLogs
+      .filter((log) => isProductionAction(log?.action))
+      .filter((log) => {
+        const logTs = parseMovementDate(log?.timestamp)?.getTime() || 0;
+        if (!logTs || !referenceTs) return false;
+        const diffMs = Math.abs(logTs - referenceTs);
+        return diffMs <= 24 * 60 * 60 * 1000;
+      })
+      .sort((a, b) => {
+        const dateA = parseMovementDate(a?.timestamp)?.getTime() || 0;
+        const dateB = parseMovementDate(b?.timestamp)?.getTime() || 0;
+        const diffA = referenceTs ? Math.abs(dateA - referenceTs) : Number.MAX_SAFE_INTEGER;
+        const diffB = referenceTs ? Math.abs(dateB - referenceTs) : Number.MAX_SAFE_INTEGER;
+        return diffA - diffB;
+      })[0] || null;
+
+    return {
+      childId: child?.id || childId,
+      b2Code: child?.b2Code || child?.code || '-',
+      b2Name: child?.b2Name || child?.name || '-',
+      weightLabel: `${Number(child?.weight || 0).toLocaleString('pt-BR', {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      })} kg`,
+      isConsumed: child?.status === 'consumed' || Boolean(prodLog),
+      productionLabel: prodLog
+        ? `${prodLog.productCode || '-'} - ${prodLog.productName || '-'} (${prodLog.pieces || '-'} pcs)`
+        : null,
+      userLabel:
+        prodEvent?.details?.userEmail ||
+        prodEvent?.userEmail ||
+        prodEvent?.userId ||
+        userAction?.userEmail ||
+        userAction?.payload?.userEmail ||
+        fallbackUserAction?.userEmail ||
+        fallbackUserAction?.payload?.userEmail ||
+        broadFallbackUserAction?.userEmail ||
+        broadFallbackUserAction?.payload?.userEmail ||
+        prodLog?.userEmail ||
+        '-',
+      pointedAtLabel: pointedAtDate ? pointedAtDate.toLocaleString('pt-BR') : '-',
+      pointedDateLabel: prodEvent?.details?.date || prodLog?.date || '-',
+    };
+  });
+
+    setCutConsumptionModal({
+      cutLog,
+      generatedCount: Number(cutLog.outputCount) || rows.length,
+      rows,
+      loading: false,
+    });
+  } catch (error) {
+    console.error('Falha ao montar consumo detalhado do corte:', error);
+    setCutConsumptionModal({
+      cutLog,
+      generatedCount: Number(cutLog.outputCount) || 0,
+      rows: [],
+      loading: false,
+      error: 'Erro ao abrir consumo deste corte. Veja o console para detalhes.',
+    });
+  }
+};
+
 const CustomFlowTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     const entrada = payload.find(p => p.dataKey === 'entrada')?.value || 0;
@@ -10475,6 +10933,8 @@ const renderB2DynamicReport = () => {
   const safeChild = Array.isArray(childCoils) ? childCoils : [];
   const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
   const safeProd = Array.isArray(productionLogs) ? productionLogs : [];
+  const safeCut = Array.isArray(cuttingLogs) ? cuttingLogs : [];
+  const safeEvents = Array.isArray(eventLogs) ? eventLogs : [];
   const motherCatalogFallback = Array.isArray(INITIAL_MOTHER_CATALOG)
     ? INITIAL_MOTHER_CATALOG
     : [];
@@ -10560,22 +11020,69 @@ const renderB2DynamicReport = () => {
 
   const catalogB2List = Object.values(b2CatalogMap);
 
+  const getMovementTime = (value) =>
+    parseMovementDate(value)?.getTime() || 0;
+
+  const cutLogsByChildId = safeCut.reduce((acc, log) => {
+    const childIds = Array.isArray(log?.childIds) ? log.childIds : [];
+    childIds.forEach((childId) => {
+      const key = String(childId);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(log);
+    });
+    return acc;
+  }, {});
+
+  const productionByChildId = safeProd.reduce((acc, log) => {
+    const childIds = Array.isArray(log?.childIds) ? log.childIds : [];
+    childIds.forEach((childId) => {
+      const key = String(childId);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(log);
+    });
+    return acc;
+  }, {});
+
+  const cutEventsByChildId = safeEvents
+    .filter((event) => event?.eventType === EVENT_TYPES.B2_CUT)
+    .reduce((acc, event) => {
+      const targetIds = Array.isArray(event?.targetIds) ? event.targetIds : [];
+      targetIds.forEach((childId) => {
+        const key = String(childId);
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(event);
+      });
+      return acc;
+    }, {});
+
   // --- 2. ENRIQUECER B2 COM INFO DA BOBINA MÃE + CONSUMO ---
   const enrichedData = safeChild.map((b2) => {
+    const childId = String(b2.id || '');
     const mother =
       safeMother.find((m) => String(m.code) === String(b2.motherCode)) || {
         material: "Desconhecido",
         entryDate: "-",
       };
 
-    const prodLogsForChild = safeProd
-      .filter((log) => Array.isArray(log.childIds) && log.childIds.includes(b2.id))
-      .sort((a, b) => {
-        const dateA = parseMovementDate(a?.date || a?.timestamp)?.getTime() || 0;
-        const dateB = parseMovementDate(b?.date || b?.timestamp)?.getTime() || 0;
-        return dateA - dateB;
-      });
+    const prodLogsForChild = [...(productionByChildId[childId] || [])].sort((a, b) => {
+      const dateA = getMovementTime(a?.date || a?.timestamp);
+      const dateB = getMovementTime(b?.date || b?.timestamp);
+      return dateA - dateB;
+    });
     const prodLog = prodLogsForChild[0] || null;
+    const latestProdLog = prodLogsForChild[prodLogsForChild.length - 1] || null;
+
+    const cutLogsForChild = [...(cutLogsByChildId[childId] || [])].sort((a, b) => {
+      const dateA = getMovementTime(a?.date || a?.timestamp);
+      const dateB = getMovementTime(b?.date || b?.timestamp);
+      return dateA - dateB;
+    });
+    const cutLog = cutLogsForChild[0] || null;
+    const cutEvent = [...(cutEventsByChildId[childId] || [])].sort((a, b) => {
+      const dateA = getMovementTime(a?.details?.date || a?.timestamp);
+      const dateB = getMovementTime(b?.details?.date || b?.timestamp);
+      return dateA - dateB;
+    })[0] || null;
 
     const motherCatalogMatch = safeMotherCatalog.find(
       (m) => String(m.code) === String(b2.motherCode)
@@ -10592,12 +11099,33 @@ const renderB2DynamicReport = () => {
       motherWidth: motherCatalogMatch?.width ?? mother.width ?? null,
       motherThickness: motherCatalogMatch?.thickness ?? mother.thickness ?? null,
       motherEntryDate: mother.entryDate || mother.date,
+      cutDate:
+        cutLog?.date ||
+        cutLog?.timestamp ||
+        cutEvent?.details?.date ||
+        cutEvent?.timestamp ||
+        null,
       consumptionDate: prodLog ? prodLog.date || prodLog.timestamp : null,
       consumptionTimestamp: prodLog ? prodLog.timestamp || prodLog.date : null,
       productFinal: prodLog
         ? `${prodLog.productCode} - ${prodLog.productName}`
         : null,
       productionBatchId: prodLog ? prodLog.id : null,
+      lastMovementDate:
+        (latestProdLog && (latestProdLog.date || latestProdLog.timestamp)) ||
+        cutLog?.date ||
+        cutLog?.timestamp ||
+        cutEvent?.details?.date ||
+        cutEvent?.timestamp ||
+        b2.createdAt ||
+        b2.entryDate ||
+        b2.date ||
+        null,
+      traceabilityLabel: latestProdLog
+        ? 'CORTE + PRODUCAO'
+        : cutLog || cutEvent
+          ? 'CORTE REGISTRADO'
+          : 'SOMENTE ENTRADA',
 
       b2Thickness,
       b2Type,
@@ -10990,21 +11518,18 @@ const renderB2DynamicReport = () => {
                       <tr>
                         <td colSpan={8} className="bg-gray-900/50 p-0">
                           <div className="p-4 border-t border-indigo-900/50 animate-fade-in">
-                            <table className="w-full text-xs text-left text-gray-400">
-                              <thead className="text-indigo-300 border-b border-gray-700">
+                            <div className="mb-3 text-xs text-indigo-200 font-semibold">
+                              Detalhamento do codigo {group.code}
+                            </div>
+                            <table className="w-full text-xs text-left text-gray-300">
+                              <thead className="text-indigo-300 border-b border-gray-700 bg-gray-950/70">
                                 <tr>
-                                  <th className="pb-2">Data Entrada</th>
-                                  <th className="pb-2">Origem (Mãe)</th>
-                                  <th className="pb-2">ID Rastreio</th>
-                                  <th className="pb-2 text-right">
-                                    Peso
-                                  </th>
-                                  <th className="pb-2 text-center">
-                                    Status
-                                  </th>
-                                  <th className="pb-2">
-                                    Destino / Consumo
-                                  </th>
+                                  <th className="pb-2 pr-2">Entrada</th>
+                                  <th className="pb-2 pr-2">Origem (Mae)</th>
+                                  <th className="pb-2 pr-2">ID Rastreio</th>
+                                  <th className="pb-2 pr-2 text-right">Peso</th>
+                                  <th className="pb-2 pr-2 text-center">Situacao</th>
+                                  <th className="pb-2">Ultima Movimentacao</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-gray-800">
@@ -11016,10 +11541,12 @@ const renderB2DynamicReport = () => {
                                       key={idx}
                                       className="hover:bg-gray-800/50"
                                     >
-                                      <td className="py-2">
-                                        {item.createdAt}
+                                      <td className="py-2 pr-2">
+                                        {formatConsultDate(
+                                          item.createdAt || item.entryDate || item.date
+                                        )}
                                       </td>
-                                      <td className="py-2">
+                                      <td className="py-2 pr-2">
                                         <div className="font-bold text-gray-300">
                                           {item.motherCode}
                                         </div>
@@ -11027,13 +11554,13 @@ const renderB2DynamicReport = () => {
                                           {item.motherMaterial}
                                         </div>
                                       </td>
-                                      <td className="py-2 font-mono text-indigo-200">
+                                      <td className="py-2 pr-2 font-mono text-indigo-200">
                                         {item.id}
                                       </td>
-                                      <td className="py-2 text-right font-bold text-white">
+                                      <td className="py-2 pr-2 text-right font-bold text-white">
                                         {item.weight} kg
                                       </td>
-                                      <td className="py-2 text-center">
+                                      <td className="py-2 pr-2 text-center">
                                         {isConsumed ? (
                                           <span className="text-gray-600">
                                             BAIXADO
@@ -11045,20 +11572,17 @@ const renderB2DynamicReport = () => {
                                         )}
                                       </td>
                                       <td className="py-2">
+                                        <div className="text-white font-bold">
+                                          {formatConsultDate(item.lastMovementDate)}
+                                        </div>
+                                        <div className="text-[10px] text-indigo-300 uppercase">
+                                          {item.traceabilityLabel}
+                                        </div>
                                         {isConsumed ? (
-                                          <div>
-                                            <div className="text-white font-bold">
-                                              {item.consumptionDate}
-                                            </div>
-                                            <div className="text-indigo-300 truncate max-w-[250px]">
-                                              {item.productFinal}
-                                            </div>
+                                          <div className="text-[11px] text-indigo-300 truncate max-w-[280px]">
+                                            {item.productFinal || '-'}
                                           </div>
-                                        ) : (
-                                          <span className="text-gray-600 italic">
-                                            -
-                                          </span>
-                                        )}
+                                        ) : null}
                                       </td>
                                     </tr>
                                   );
@@ -12368,7 +12892,14 @@ const handleUploadJSONToFirebase = async (e) => {
       {selectedGlobalGroup && (
         <DailyGlobalModal
           group={selectedGlobalGroup}
+          onViewCutConsumption={handleOpenCutConsumptionModal}
           onClose={() => setSelectedGlobalGroup(null)}
+        />
+      )}
+      {cutConsumptionModal && (
+        <CutConsumptionStatusModal
+          data={cutConsumptionModal}
+          onClose={() => setCutConsumptionModal(null)}
         />
       )}
 
@@ -12435,3 +12966,4 @@ const parseCSVLine = (text, delimiter) => {
   
   return rows;
 };
+
