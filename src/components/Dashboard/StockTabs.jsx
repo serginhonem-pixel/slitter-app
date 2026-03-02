@@ -154,6 +154,17 @@ export const StockTabs = ({
 }) => {
   const [activeTab, setActiveTab] = useState('mother');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [childProfileFilter, setChildProfileFilter] = useState('ALL');
+
+  const normalizeText = (value) => String(value || '').toUpperCase();
+  const getChildFamily = (item) => {
+    const haystack = normalizeText(`${item?.name || ''} ${item?.type || ''} ${item?.code || ''}`);
+    if (haystack.includes('PERFIL')) return 'PERFIL';
+    if (haystack.includes('LSF') || haystack.includes('STEELFRAME') || haystack.includes('STEEL FRAME')) {
+      return 'STEELFRAME';
+    }
+    return 'DRYWALL';
+  };
 
   const applyStatusFilter = (data, statusMap) => {
     if (!Array.isArray(data)) return [];
@@ -174,8 +185,28 @@ export const StockTabs = ({
     return counts;
   };
 
+  const childDataByProfile = useMemo(() => {
+    if (!Array.isArray(childData)) return [];
+    if (childProfileFilter === 'ALL') return childData;
+    return childData.filter((item) => getChildFamily(item) === childProfileFilter);
+  }, [childData, childProfileFilter]);
+
+  const childProfileCounts = useMemo(() => {
+    const counts = { ALL: 0, PERFIL: 0, STEELFRAME: 0, DRYWALL: 0 };
+    if (!Array.isArray(childData)) return counts;
+    childData.forEach((item) => {
+      const itemCount = Math.max(1, Number(item?.count) || 0);
+      counts.ALL += itemCount;
+      const family = getChildFamily(item);
+      if (family === 'PERFIL' || family === 'STEELFRAME' || family === 'DRYWALL') {
+        counts[family] += itemCount;
+      }
+    });
+    return counts;
+  }, [childData]);
+
   const filteredMotherData = applyStatusFilter(motherData, statusByMotherCode);
-  const filteredChildData = applyStatusFilter(childData, statusByChildCode);
+  const filteredChildData = applyStatusFilter(childDataByProfile, statusByChildCode);
   const filteredFinishedData = applyStatusFilter(finishedData, statusByFinishedCode);
 
   const tabs = useMemo(
@@ -328,7 +359,7 @@ export const StockTabs = ({
     activeTabDefinition.id === 'mother'
       ? motherData
       : activeTabDefinition.id === 'child'
-        ? childData
+        ? childDataByProfile
         : activeTabDefinition.id === 'finished'
           ? finishedData
           : [];
@@ -411,6 +442,53 @@ export const StockTabs = ({
               <button
                 key={item.key}
                 onClick={() => setStatusFilter(item.key)}
+                title={item.title}
+                className={`px-3 py-1 rounded-full border transition-colors ${
+                  isActive
+                    ? `${item.color} shadow-inner`
+                    : 'text-gray-400 border-white/10 hover:text-white'
+                }`}
+              >
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {activeTabDefinition.id === 'child' && (
+        <div className="flex flex-wrap gap-2 text-xs">
+          {[
+            {
+              key: 'ALL',
+              label: `Todos (${childProfileCounts.ALL})`,
+              title: 'Mostra todos os perfis de Bobina B2.',
+              color: 'bg-slate-500/20 text-slate-200 border-slate-400/30',
+            },
+            {
+              key: 'PERFIL',
+              label: `Perfil (${childProfileCounts.PERFIL})`,
+              title: 'Mostra apenas B2 com descricao/tipo de perfil.',
+              color: 'bg-cyan-500/20 text-cyan-200 border-cyan-400/30',
+            },
+            {
+              key: 'STEELFRAME',
+              label: `SteelFrame (${childProfileCounts.STEELFRAME})`,
+              title: 'Mostra apenas B2 com LSF no nome.',
+              color: 'bg-blue-500/20 text-blue-200 border-blue-400/30',
+            },
+            {
+              key: 'DRYWALL',
+              label: `Dry Wall (${childProfileCounts.DRYWALL})`,
+              title: 'Mostra as demais B2 classificadas como dry wall.',
+              color: 'bg-fuchsia-500/20 text-fuchsia-200 border-fuchsia-400/30',
+            },
+          ].map((item) => {
+            const isActive = childProfileFilter === item.key;
+            return (
+              <button
+                key={item.key}
+                onClick={() => setChildProfileFilter(item.key)}
                 title={item.title}
                 className={`px-3 py-1 rounded-full border transition-colors ${
                   isActive
