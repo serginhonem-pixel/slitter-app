@@ -3183,6 +3183,56 @@ export default function App() {
     }
   };
 
+  const handleAdminB2CodeChange = (rawCode) => {
+    const code = String(rawCode || '').trim();
+    const normalizedCode = code.toUpperCase();
+
+    const catalogMatch = (productCatalog || []).find(
+      (item) => String(item?.b2Code || '').trim().toUpperCase() === normalizedCode,
+    );
+
+    const childMatch = (childCoils || []).find(
+      (item) => String(item?.b2Code || item?.code || '').trim().toUpperCase() === normalizedCode,
+    );
+
+    const match = catalogMatch || childMatch;
+
+    setAdminB2Form((prev) => {
+      if (!normalizedCode) {
+        return {
+          ...prev,
+          b2Code: '',
+          b2Name: '',
+          width: '',
+          thickness: '',
+          type: '',
+        };
+      }
+
+      if (!match) {
+        return { ...prev, b2Code: code };
+      }
+
+      return {
+        ...prev,
+        b2Code: code,
+        b2Name: String(match?.b2Name || match?.name || '').trim(),
+        width:
+          match?.width === undefined || match?.width === null
+            ? ''
+            : String(match.width).trim(),
+        thickness:
+          match?.thickness === undefined || match?.thickness === null
+            ? ''
+            : String(match.thickness).trim(),
+        type:
+          match?.type === undefined || match?.type === null
+            ? ''
+            : String(match.type).trim(),
+      };
+    });
+  };
+
   const addAdminChildCoil = async () => {
     const qty = Math.max(1, parseInt(adminB2Form.quantity || '1', 10));
     const weight = parseFloat(String(adminB2Form.weight || '').replace(',', '.'));
@@ -9983,7 +10033,7 @@ safeCutting.forEach((c) => {
                 <Input
                   label="Código B2"
                   value={adminB2Form.b2Code}
-                  onChange={(e) => setAdminB2Form((prev) => ({ ...prev, b2Code: e.target.value }))}
+                  onChange={(e) => handleAdminB2CodeChange(e.target.value)}
                 />
                 <Input
                   label="Descrição"
