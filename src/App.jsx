@@ -1909,6 +1909,8 @@ export default function App() {
   const [adminCreateType, setAdminCreateType] = useState('mother');
   const [adminMotherFilter, setAdminMotherFilter] = useState('');
   const [adminB2Filter, setAdminB2Filter] = useState('');
+  const [adminB2WeightMin, setAdminB2WeightMin] = useState('');
+  const [adminB2WeightMax, setAdminB2WeightMax] = useState('');
   const [adminPaFilter, setAdminPaFilter] = useState('');
   const [adminMovementsIdFilter, setAdminMovementsIdFilter] = useState('');
   const [adminStockTab, setAdminStockTab] = useState('mother');
@@ -9732,9 +9734,15 @@ safeCutting.forEach((c) => {
     });
     const childFiltered = childStock.filter((coil) => {
       const search = normalizeSearch(adminB2Filter);
-      if (!search) return true;
+      const weight = parseFloat(String(coil.weight ?? 0).replace(',', '.')) || 0;
+      const minWeight = parseFloat(String(adminB2WeightMin || '').replace(',', '.'));
+      const maxWeight = parseFloat(String(adminB2WeightMax || '').replace(',', '.'));
+      const hasMin = Number.isFinite(minWeight);
+      const hasMax = Number.isFinite(maxWeight);
+      const weightMatch = (!hasMin || weight >= minWeight) && (!hasMax || weight <= maxWeight);
+      if (!search) return weightMatch;
       const haystack = `${coil.b2Code || ''} ${coil.b2Name || ''} ${coil.width || ''} ${coil.origin || ''}`;
-      return normalizeSearch(haystack).includes(search);
+      return normalizeSearch(haystack).includes(search) && weightMatch;
     });
 
     const productNameByCode = (productCatalog || []).reduce((acc, item) => {
@@ -10518,6 +10526,24 @@ safeCutting.forEach((c) => {
                   onChange={(e) => setAdminB2Filter(e.target.value)}
                   placeholder="Código, descrição, largura..."
                 />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Input
+                    label="Peso min (kg)"
+                    type="number"
+                    step="0.1"
+                    value={adminB2WeightMin}
+                    onChange={(e) => setAdminB2WeightMin(e.target.value)}
+                    placeholder="Ex: 200"
+                  />
+                  <Input
+                    label="Peso max (kg)"
+                    type="number"
+                    step="0.1"
+                    value={adminB2WeightMax}
+                    onChange={(e) => setAdminB2WeightMax(e.target.value)}
+                    placeholder="Ex: 500"
+                  />
+                </div>
               </div>
               <div className="overflow-auto max-h-[360px] custom-scrollbar-dark">
                 <table className="w-full text-sm text-left text-gray-300">
@@ -13573,4 +13599,5 @@ const parseCSVLine = (text, delimiter) => {
   
   return rows;
 };
+
 
