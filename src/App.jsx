@@ -3670,7 +3670,11 @@ export default function App() {
     if (!targetB2Code || !cutWeight || !cutQuantity) return alert("Preencha todos os campos.");
     
     // Busca no ARQUIVO NOVO
-    const b2Data = INITIAL_PRODUCT_CATALOG.find(p => p.b2Code === targetB2Code);
+    const runtimeCatalog =
+      Array.isArray(productCatalog) && productCatalog.length
+        ? productCatalog
+        : INITIAL_PRODUCT_CATALOG;
+    const b2Data = runtimeCatalog.find(p => p.b2Code === targetB2Code);
     if (!b2Data) return alert("Erro: Produto não encontrado no catálogo.");
 
     const totalWeight = parseWeight(cutWeight); // <--- LIMPEZA AQUI
@@ -5276,7 +5280,11 @@ export default function App() {
   const opsAddTempCut = () => {
     if (!opsTargetB2 || !opsCutWeight || !opsCutQty) return alert("Preencha todos os campos.");
 
-    const b2Data = INITIAL_PRODUCT_CATALOG.find(p => p.b2Code === opsTargetB2);
+    const runtimeCatalog =
+      Array.isArray(productCatalog) && productCatalog.length
+        ? productCatalog
+        : INITIAL_PRODUCT_CATALOG;
+    const b2Data = runtimeCatalog.find(p => p.b2Code === opsTargetB2);
     if (!b2Data) return alert("Produto não encontrado no catálogo.");
 
     const parseW = (val) => parseFloat(String(val).replace(',', '.').trim()) || 0;
@@ -5424,12 +5432,16 @@ export default function App() {
     const cleanNum = (val) => { if (!val) return 0; return parseFloat(String(val).replace(',', '.').replace('mm', '').trim()); };
     const uniqueByB2 = (items) => { const map = new Map(); items.forEach((p) => { if (!map.has(p.b2Code)) map.set(p.b2Code, p); }); return Array.from(map.values()).sort((a, b) => a.b2Name.localeCompare(b.b2Name)); };
 
-    const allB2Types = uniqueByB2(INITIAL_PRODUCT_CATALOG);
+    const opsProductCatalog =
+      Array.isArray(productCatalog) && productCatalog.length
+        ? productCatalog
+        : INITIAL_PRODUCT_CATALOG;
+    const allB2Types = uniqueByB2(opsProductCatalog);
     let filteredB2ForOps = [];
     if (selectedOpsMother) {
       const motherThick = cleanNum(selectedOpsMother.thickness);
       const targetCode = String(selectedOpsMother.code).trim();
-      const filtered = INITIAL_PRODUCT_CATALOG.filter(p => {
+      const filtered = opsProductCatalog.filter(p => {
         if (p.motherCode && String(p.motherCode).trim() === targetCode) return true;
         const prodThick = cleanNum(p.thickness);
         if (Math.abs(prodThick - motherThick) < 0.05) return true;
@@ -6804,13 +6816,17 @@ const getUnitWeight = (code) => {
         return Array.from(map.values()).sort((a, b) => a.b2Name.localeCompare(b.b2Name));
     };
 
-    const allB2Types = uniqueByB2(INITIAL_PRODUCT_CATALOG);
+    const cuttingProductCatalog =
+      Array.isArray(productCatalog) && productCatalog.length
+        ? productCatalog
+        : INITIAL_PRODUCT_CATALOG;
+    const allB2Types = uniqueByB2(cuttingProductCatalog);
     let filteredB2Types = [];
     if (selectedMother) {
         const motherThick = cleanNum(selectedMother.thickness);
         const targetCode = String(selectedMother.code).trim();
 
-        const filteredCatalog = INITIAL_PRODUCT_CATALOG.filter(p => {
+        const filteredCatalog = cuttingProductCatalog.filter(p => {
             if (p.motherCode && String(p.motherCode).trim() === targetCode) return true;
             const prodThick = cleanNum(p.thickness);
             if (Math.abs(prodThick - motherThick) < 0.05) return true;
@@ -6955,8 +6971,8 @@ const getUnitWeight = (code) => {
                                     if (codeMatch) {
                                         const code = codeMatch[1];
                                         if (itemStr.includes(' - ')) return itemStr;
-                                        let prod = INITIAL_PRODUCT_CATALOG.find(p => p.b2Code === code);
-                                        if (!prod) prod = INITIAL_PRODUCT_CATALOG.find(p => p.code === code);
+                                        let prod = cuttingProductCatalog.find(p => p.b2Code === code);
+                                        if (!prod) prod = cuttingProductCatalog.find(p => p.code === code);
                                         if (prod) return itemStr.replace(code, `${prod.b2Code} - ${prod.b2Name}`);
                                     }
                                     return itemStr;
