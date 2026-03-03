@@ -4,7 +4,21 @@ import Button from '../ui/Button';
 import Input from '../ui/Input';
 
 const EditMotherCoilModal = ({ coil, onClose, onSave }) => {
-  const [editData, setEditData] = useState(coil);
+  const toDateInputValue = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (raw.includes('-')) return raw.slice(0, 10);
+    if (raw.includes('/')) {
+      const [dd, mm, yyyy] = raw.split('/');
+      if (dd && mm && yyyy) return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+    }
+    return '';
+  };
+
+  const [editData, setEditData] = useState({
+    ...coil,
+    entryDate: toDateInputValue(coil?.entryDate || coil?.date),
+  });
 
   // Função segura para atualizar números sem quebrar se ficar vazio
   const handleNumChange = (field, value) => {
@@ -39,6 +53,13 @@ const EditMotherCoilModal = ({ coil, onClose, onSave }) => {
              label="Descrição / Material" 
              value={editData.material} 
              onChange={e => setEditData({...editData, material: e.target.value})} 
+           />
+
+           <Input
+             label="Data"
+             type="date"
+             value={editData.entryDate || ''}
+             onChange={e => setEditData({...editData, entryDate: e.target.value})}
            />
 
            {/* PESO E LARGURA */}

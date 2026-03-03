@@ -1425,7 +1425,21 @@ const ProductionSuggestionModal = ({
 
 
 const EditChildCoilModal = ({ coil, onClose, onSave }) => {
-  const [form, setForm] = useState(coil);
+  const toDateInputValue = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    if (raw.includes("-")) return raw.slice(0, 10);
+    if (raw.includes("/")) {
+      const [dd, mm, yyyy] = raw.split("/");
+      if (dd && mm && yyyy) return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
+    }
+    return "";
+  };
+
+  const [form, setForm] = useState({
+    ...coil,
+    entryDate: toDateInputValue(coil?.entryDate || coil?.date || coil?.createdAt),
+  });
 
   const handleChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -1459,6 +1473,13 @@ const EditChildCoilModal = ({ coil, onClose, onSave }) => {
             label="Descri??o"
             value={form.b2Name || ""}
             onChange={(e) => handleChange("b2Name", e.target.value)}
+          />
+
+          <Input
+            label="Data"
+            type="date"
+            value={form.entryDate || ""}
+            onChange={(e) => handleChange("entryDate", e.target.value)}
           />
 
           <div className="grid grid-cols-3 gap-3">
@@ -2429,6 +2450,13 @@ export default function App() {
     
     // 2. Pega o NOVO peso total que você digitou no formulário
     const newTotalWeight = parseFloat(updatedCoil.weight) || 0;
+    const entryDate = String(updatedCoil.entryDate || '').trim();
+    const formattedDate = entryDate.includes('-')
+      ? (() => {
+          const [y, m, d] = entryDate.split('-');
+          return `${d}/${m}/${y}`;
+        })()
+      : (updatedCoil.date || '');
 
     const safeCoil = {
       ...updatedCoil,
@@ -2438,6 +2466,8 @@ export default function App() {
       // (Math.max garante que não fique negativo)
       remainingWeight: Math.max(0, newTotalWeight - consumed), 
       width: parseFloat(updatedCoil.width) || 0,
+      entryDate,
+      date: formattedDate,
     };
 
     // ... (o resto da função updateMotherCoil continua igual: setMotherCoils e updateInDb) 
@@ -3569,10 +3599,20 @@ export default function App() {
 
   const updateChildCoil = async (coil) => {
     const { entryType, ...clean } = coil || {};
+    const entryDate = String(clean.entryDate || '').trim();
+    const formattedDate = entryDate.includes('-')
+      ? (() => {
+          const [y, m, d] = entryDate.split('-');
+          return `${d}/${m}/${y}`;
+        })()
+      : (clean.date || clean.createdAt || '');
     const safeCoil = {
       ...clean,
       weight: parseFloat(clean.weight) || 0,
       width: parseFloat(clean.width) || 0,
+      entryDate,
+      date: formattedDate,
+      createdAt: formattedDate,
     };
 
     setChildCoils((prev) => prev.map((c) => (c.id === safeCoil.id ? safeCoil : c)));
