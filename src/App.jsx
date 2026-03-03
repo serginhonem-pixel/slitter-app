@@ -2082,12 +2082,15 @@ export default function App() {
   // true no npm run dev, false no build/Vercel
   const ADMIN_EMAIL = 'pcp@metalosa.com.br';
   const B2_CORRECTION_OWNER_EMAIL = 'pcp@metalosa.com.br';
+  const OPERATIONS_ONLY_EMAIL = 'carlos@metalosa.com.br';
   const LOCAL_DEV_USER = {
     uid: 'LOCALHOST-DEV',
     email: ADMIN_EMAIL,
     displayName: 'Dev Local',
   };
   const isAdminUser = user?.email?.toLowerCase() === ADMIN_EMAIL;
+  const isOperationsOnlyUser =
+    String(user?.email || '').toLowerCase() === OPERATIONS_ONLY_EMAIL;
   const canUseB2Correction =
     String(user?.email || '').toLowerCase() === B2_CORRECTION_OWNER_EMAIL;
   const ADMIN_PAGE_SIZE = 20;
@@ -2304,6 +2307,12 @@ export default function App() {
       setActiveTab('dashboard');
     }
   }, [activeTab, isAdminUser]);
+
+  useEffect(() => {
+    if (isOperationsOnlyUser && activeTab !== 'operations') {
+      setActiveTab('operations');
+    }
+  }, [activeTab, isOperationsOnlyUser]);
 
     // CARREGAR DADOS (Firebase com fallback no localStorage)
     
@@ -12346,6 +12355,10 @@ const handleUploadJSONToFirebase = async (e) => {
     };
 
     const handleSidebarNavigate = (tab) => {
+      if (isOperationsOnlyUser && tab !== 'operations') {
+        setSidebarOpen(false);
+        return;
+      }
       setActiveTab(tab);
       setSidebarOpen(false);
     };
@@ -12931,41 +12944,47 @@ const handleUploadJSONToFirebase = async (e) => {
 
          <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar-dark">
             <div className="max-w-7xl mx-auto pb-20 md:pb-0">
-              {activeTab === 'dashboard' && renderDashboard()}
-              {activeTab === 'operations' && renderOperationsPanel()}
-              {activeTab === 'mother' && renderMotherCoilForm()}
-              {activeTab === 'cutting' && renderCuttingProcess()}
-              {activeTab === 'production' && renderProduction()}
-              {activeTab === 'shipping' && renderShipping()}
-              {activeTab === 'reports' && renderReports()}
-              {activeTab === 'b2report' && renderB2DynamicReport()}
-              {activeTab === 'admin' && renderAdmin()}
+              {isOperationsOnlyUser ? (
+                renderOperationsPanel()
+              ) : (
+                <>
+                  {activeTab === 'dashboard' && renderDashboard()}
+                  {activeTab === 'operations' && renderOperationsPanel()}
+                  {activeTab === 'mother' && renderMotherCoilForm()}
+                  {activeTab === 'cutting' && renderCuttingProcess()}
+                  {activeTab === 'production' && renderProduction()}
+                  {activeTab === 'shipping' && renderShipping()}
+                  {activeTab === 'reports' && renderReports()}
+                  {activeTab === 'b2report' && renderB2DynamicReport()}
+                  {activeTab === 'admin' && renderAdmin()}
 
-              {activeTab === 'bi' && (
-                <IndicatorsDashboard
-                  motherCoils={motherCoils}
-                  childCoils={childCoils}
-                  cuttingLogs={cuttingLogs}
-                  shippingLogs={shippingLogs}
-                  productionLogs={productionLogs}
-                />
-              )}              
-{activeTab === "mpNeed" && (
-  <RawMaterialRequirement
-    motherCoils={motherCoils}
-    childCoils={childCoils}
-    productCatalog={INITIAL_PRODUCT_CATALOG}
-    motherCatalog={INITIAL_MOTHER_CATALOG}
-  />
-)}
+                  {activeTab === 'bi' && (
+                    <IndicatorsDashboard
+                      motherCoils={motherCoils}
+                      childCoils={childCoils}
+                      cuttingLogs={cuttingLogs}
+                      shippingLogs={shippingLogs}
+                      productionLogs={productionLogs}
+                    />
+                  )}
+                  {activeTab === "mpNeed" && (
+                    <RawMaterialRequirement
+                      motherCoils={motherCoils}
+                      childCoils={childCoils}
+                      productCatalog={INITIAL_PRODUCT_CATALOG}
+                      motherCatalog={INITIAL_MOTHER_CATALOG}
+                    />
+                  )}
 
-{activeTab === "steelDemand" && (
-  <DemandFocus />
-)}
+                  {activeTab === "steelDemand" && (
+                    <DemandFocus />
+                  )}
 
-{activeTab === "inoxBlanks" && (
-  <InoxBlanksPlanner />
-)}
+                  {activeTab === "inoxBlanks" && (
+                    <InoxBlanksPlanner />
+                  )}
+                </>
+              )}
 
 
 
