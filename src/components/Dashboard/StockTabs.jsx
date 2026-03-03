@@ -159,10 +159,18 @@ export const StockTabs = ({
   const normalizeText = (value) => String(value || '').toUpperCase();
   const getChildFamily = (item) => {
     const haystack = normalizeText(`${item?.name || ''} ${item?.type || ''} ${item?.code || ''}`);
-    if (haystack.includes('PERFIL')) return 'PERFIL';
+    if (
+      haystack.includes('DRY WALL') ||
+      haystack.includes('DRYWALL') ||
+      haystack.includes(' DW ') ||
+      haystack.includes('TETO F 47')
+    ) {
+      return 'DRYWALL';
+    }
     if (haystack.includes('LSF') || haystack.includes('STEELFRAME') || haystack.includes('STEEL FRAME')) {
       return 'STEELFRAME';
     }
+    if (haystack.includes('PERFIL')) return 'PERFIL';
     return 'DRYWALL';
   };
 
