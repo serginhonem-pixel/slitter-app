@@ -5977,7 +5977,7 @@ export default function App() {
         )}
 
         {/* ============ SELETOR DE OPERAÇÃO (BOTÕES BEM GRANDES) ============ */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className={`grid grid-cols-1 md:grid-cols-2 ${isOperationsOnlyUser ? 'xl:grid-cols-4' : 'xl:grid-cols-5'} gap-4`}>
           <button
             onClick={() => setOpsMode('entrada')}
             className={`flex flex-col items-center justify-center gap-3 p-6 rounded-2xl font-bold transition-all border-2 ${
