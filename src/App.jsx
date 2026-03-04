@@ -7051,6 +7051,37 @@ const getUnitWeight = (code) => {
 
     // Totais visuais (Mantido igual)
     const totalInputWeight = selectedInputCoils.reduce((acc, c) => acc + c.weight, 0);
+    const stockByB2Code = (childCoils || []).reduce((acc, coil) => {
+      if (coil?.status !== 'stock') return acc;
+      const code = String(coil?.b2Code || '').trim();
+      if (!code) return acc;
+      if (!acc[code]) acc[code] = { weight: 0, lots: 0 };
+      acc[code].weight += Number(coil?.weight) || 0;
+      acc[code].lots += 1;
+      return acc;
+    }, {});
+    const selectedB2Summaries = Object.entries(
+      selectedInputCoils.reduce((acc, coil) => {
+        const code = String(coil?.b2Code || '').trim();
+        if (!code) return acc;
+        if (!acc[code]) {
+          acc[code] = {
+            code,
+            name: coil?.b2Name || '',
+            selectedLots: 0,
+          };
+        }
+        acc[code].selectedLots += 1;
+        return acc;
+      }, {})
+    ).map(([, summary]) => {
+      const stock = stockByB2Code[summary.code] || { weight: 0, lots: 0 };
+      return {
+        ...summary,
+        totalStockWeight: stock.weight,
+        totalStockLots: stock.lots,
+      };
+    });
     const totalPcs = parseInt(totalProducedPieces) || 0;
     const packStd = parseInt(standardPackSize) || totalPcs || 1;
     const fullPacks = Math.floor(totalPcs / packStd);
@@ -7115,6 +7146,26 @@ const getUnitWeight = (code) => {
                                 </div>
                             ))}
                         </div>
+                    )}
+
+                    {selectedB2Summaries.length > 0 && (
+                      <div className="mt-3 rounded-lg border border-blue-900/50 bg-blue-900/20 p-2">
+                        <p className="text-[10px] font-bold uppercase text-blue-300">Saldo total da bobina selecionada</p>
+                        <div className="mt-1 space-y-1">
+                          {selectedB2Summaries.map((item) => (
+                            <div key={item.code} className="flex items-center justify-between text-xs">
+                              <span className="text-gray-200 truncate pr-2" title={item.name || item.code}>
+                                {item.code}
+                                {item.name ? ` - ${item.name}` : ''}
+                              </span>
+                              <span className="font-bold text-blue-300 whitespace-nowrap">
+                                {Number(item.totalStockWeight || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg
+                                <span className="text-gray-400 font-normal"> ({item.totalStockLots} lotes)</span>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
                 </div>
 
