@@ -1857,6 +1857,7 @@ export default function App() {
   const [childCoils, setChildCoils] = useState([]);
   const [productionLogs, setProductionLogs] = useState([]);
   const [shippingLogs, setShippingLogs] = useState([]); 
+  const [pendingApprovals, setPendingApprovals] = useState([]);
   const [productCatalog, setProductCatalog] = useState(INITIAL_PRODUCT_CATALOG);
   const [motherCatalog, setMotherCatalog] = useState(INITIAL_MOTHER_CATALOG);
   const [viewingStockType, setViewingStockType] = useState('b2'); // 'mother' ou 'b2'
@@ -2032,7 +2033,7 @@ export default function App() {
   // Junto com os outros useState
   const [cuttingDate, setCuttingDate] = useState(new Date().toISOString().split('T')[0]);
   // --- ESTADOS DO PAINEL DE OPERAÇÕES ---
-  const [opsMode, setOpsMode] = useState('entrada'); // 'entrada' | 'corte' | 'consulta' | 'impressao'
+  const [opsMode, setOpsMode] = useState('entrada'); // 'entrada' | 'corte' | 'consulta' | 'impressao' | 'aprovacao'
   const [opsEntryForm, setOpsEntryForm] = useState({ code: '', nf: '', weight: '', material: '', thickness: '', type: '', entryDate: new Date().toISOString().split('T')[0], usina: '', usinaOutro: '', filialDestino: '' });
   const [opsSelectedMother, setOpsSelectedMother] = useState('');
   const [opsMotherSearch, setOpsMotherSearch] = useState('');
@@ -2051,6 +2052,7 @@ export default function App() {
   const [opsQuickPrintMinWeight, setOpsQuickPrintMinWeight] = useState('');
   const [opsQuickPrintMaxWeight, setOpsQuickPrintMaxWeight] = useState('');
   const [opsQuickPrintCopies, setOpsQuickPrintCopies] = useState({});
+  const [opsApprovalActionId, setOpsApprovalActionId] = useState(null);
   const [consultQrInput, setConsultQrInput] = useState('');
   const [consultResult, setConsultResult] = useState(null);
   const [consultError, setConsultError] = useState('');
@@ -2297,6 +2299,7 @@ export default function App() {
       if (!firebaseUser) {
         setMotherCoils([]);
         setChildCoils([]);
+        setPendingApprovals([]);
         setMotherCatalog([]);
         setProductCatalog([]);
         setProductionLogs([]);
@@ -2353,6 +2356,7 @@ export default function App() {
 
     setMotherCoils(backupData.motherCoils || []);
     setChildCoils(backupData.childCoils || []);
+    setPendingApprovals(backupData.pendingApprovals || []);
     setMotherCatalog(backupData.motherCatalog || []);
     setProductCatalog(backupData.productCatalog || []);
     setProductionLogs(sortLogs(backupData.productionLogs || []));
@@ -2413,6 +2417,7 @@ export default function App() {
   // aqui você liga todas as coleções que já usava no Firebase
   setupListener('motherCoils', setMotherCoils);
   setupListener('childCoils', setChildCoils);
+  setupListener('pendingApprovals', setPendingApprovals);
   setupListener('motherCatalog', setMotherCatalog);
   setupListener('productCatalog', setProductCatalog);
   setupListener('productionLogs', setProductionLogs);
@@ -2433,13 +2438,14 @@ export default function App() {
       localStorage.setItem('currentFileName', currentFileName);
       localStorage.setItem('motherCoils', JSON.stringify(motherCoils));
       localStorage.setItem('childCoils', JSON.stringify(childCoils));
+      localStorage.setItem('pendingApprovals', JSON.stringify(pendingApprovals));
       localStorage.setItem('productionLogs', JSON.stringify(productionLogs));
       localStorage.setItem('shippingLogs', JSON.stringify(shippingLogs));
       localStorage.setItem('cuttingLogs', JSON.stringify(cuttingLogs));
     } catch (error) {
       console.error('Erro ao salvar backup local', error);
     }
-  }, [currentFileName, motherCoils, childCoils, productionLogs, shippingLogs, cuttingLogs]);
+  }, [currentFileName, motherCoils, childCoils, pendingApprovals, productionLogs, shippingLogs, cuttingLogs]);
 
   // ... (Sua função updateMotherCoil continua igual)
 
@@ -2449,13 +2455,14 @@ export default function App() {
       localStorage.setItem('currentFileName', currentFileName);
       localStorage.setItem('motherCoils', JSON.stringify(motherCoils));
       localStorage.setItem('childCoils', JSON.stringify(childCoils));
+      localStorage.setItem('pendingApprovals', JSON.stringify(pendingApprovals));
       localStorage.setItem('productionLogs', JSON.stringify(productionLogs));
       localStorage.setItem('shippingLogs', JSON.stringify(shippingLogs));
       localStorage.setItem('cuttingLogs', JSON.stringify(cuttingLogs));
     } catch (error) {
       console.error('Erro ao salvar backup local', error);
     }
-  }, [currentFileName, motherCoils, childCoils, productionLogs, shippingLogs, cuttingLogs]);
+  }, [currentFileName, motherCoils, childCoils, pendingApprovals, productionLogs, shippingLogs, cuttingLogs]);
 
 
       const updateMotherCoil = async (updatedCoil) => {
@@ -5227,6 +5234,271 @@ export default function App() {
   // =====================================================
   // PAINEL DE OPERAÇÕES (Entrada + Corte com Impressão)
   // =====================================================
+  const submitOpsApprovalRequest = async ({ requestType, payload, summary }) => {
+    const requestData = {
+      requestType,
+      status: 'pending',
+      requestedByEmail: String(user?.email || '').toLowerCase(),
+      requestedByUid: user?.uid || 'local-dev',
+      requestedAt: new Date().toISOString(),
+      requestedAtLabel: new Date().toLocaleString(),
+      summary: summary || {},
+      payload: payload || {},
+    };
+
+    if (USE_LOCAL_JSON) {
+      const localRequest = { id: `LOCAL-REQ-${Date.now()}`, ...requestData };
+      setPendingApprovals((prev) => [localRequest, ...prev]);
+      return localRequest;
+    }
+
+    return saveToDb('pendingApprovals', requestData);
+  };
+
+  const applyApprovedEntryRequest = async (request) => {
+    const payload = request?.payload || {};
+    const coilData = payload?.coilData;
+    if (!coilData) throw new Error('Solicitação de entrada inválida.');
+
+    if (USE_LOCAL_JSON) {
+      const savedItem = { ...coilData, id: `LOCAL-MP-${Date.now()}` };
+      setMotherCoils((prev) => [savedItem, ...prev]);
+      return { createdItems: [savedItem], resultMessage: `Entrada ${coilData.code} aprovada.` };
+    }
+
+    const savedItem = await saveToDb('motherCoils', coilData);
+    await logUserAction('ENTRADA_MP_APROVADA', {
+      motherCode: coilData.code,
+      weight: coilData.weight,
+      requestedBy: request?.requestedByEmail || '',
+    });
+    await logMotherCoilEntry(savedItem, user?.uid || 'local-dev', {
+      userEmail: request?.requestedByEmail || 'offline@local',
+      approvedBy: user?.email || 'offline@local',
+    });
+    return { createdItems: [savedItem], resultMessage: `Entrada ${coilData.code} aprovada e movimentada.` };
+  };
+
+  const applyApprovedCutRequest = async (request) => {
+    const payload = request?.payload || {};
+    const motherId = payload?.motherId;
+    const opsCuts = Array.isArray(payload?.cuts) ? payload.cuts : [];
+    const cutDateIso = payload?.cutDateIso || new Date().toISOString().split('T')[0];
+    const manualScrap = Number(payload?.manualScrap || 0);
+    const requestedMotherCode = payload?.motherCode || '';
+
+    const mother = (motherCoils || []).find((m) => String(m.id) === String(motherId))
+      || (motherCoils || []).find((m) => String(m.code) === String(requestedMotherCode) && m.status === 'stock');
+    if (!mother) throw new Error('Bobina mãe não encontrada para aprovação.');
+    if (opsCuts.length === 0) throw new Error('Solicitação de corte sem tiras.');
+
+    const dateParts = cutDateIso.split('-');
+    const dateNow = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+    const totalCutsWeight = opsCuts.reduce((acc, curr) => acc + (Number(curr.weight) || 0), 0);
+    const totalConsumed = totalCutsWeight + manualScrap;
+    if (totalConsumed > Number(mother.remainingWeight || 0)) {
+      throw new Error(`Peso solicitado (${totalConsumed.toFixed(1)}kg) maior que saldo atual da bobina (${Number(mother.remainingWeight || 0).toFixed(1)}kg).`);
+    }
+
+    const remaining = Math.max(0, Number(mother.remainingWeight || 0) - totalConsumed);
+    const isTotalConsumption = remaining < 10;
+    const itemsSummary = opsCuts
+      .map((t) => `${t.b2Code} - ${t.b2Name} (${Number(t.weight || 0).toFixed(0)}kg)`)
+      .join(', ');
+
+    const newCutLog = {
+      date: dateNow,
+      motherCode: mother.code,
+      motherMaterial: mother.material,
+      inputWeight: totalConsumed,
+      outputCount: opsCuts.length,
+      scrap: manualScrap,
+      generatedItems: itemsSummary,
+      timestamp: new Date().toLocaleString(),
+      motherId: mother.id,
+      childIds: [],
+    };
+
+    const newChildrenPayload = opsCuts.map((temp) => ({
+      motherId: mother.id,
+      motherCode: mother.code,
+      b2Code: temp.b2Code,
+      b2Name: temp.b2Name,
+      width: temp.width,
+      thickness: temp.thickness,
+      type: mother.type,
+      weight: Number(temp.weight) || 0,
+      initialWeight: Number(temp.weight) || 0,
+      status: 'stock',
+      createdAt: dateNow,
+    }));
+
+    const motherUpdateData = {
+      remainingWeight: remaining,
+      status: isTotalConsumption ? 'consumed' : 'stock',
+      cutWaste: (mother.cutWaste || 0) + manualScrap,
+      ...(isTotalConsumption
+        ? {
+            consumedDate: dateNow,
+            consumptionDetail: mother.consumptionDetail
+              ? `${mother.consumptionDetail} + ${itemsSummary}`
+              : itemsSummary,
+          }
+        : {}),
+    };
+
+    if (USE_LOCAL_JSON) {
+      const localChildren = newChildrenPayload.map((item, index) => ({
+        ...item,
+        id: `LOCAL-CHILD-${Date.now()}-${index}`,
+      }));
+      const localLog = {
+        ...newCutLog,
+        id: `LOCAL-CUT-${Date.now()}`,
+        childIds: localChildren.map((c) => c.id),
+      };
+      setMotherCoils((prev) => prev.map((m) => (m.id === mother.id ? { ...m, ...motherUpdateData } : m)));
+      setCuttingLogs((prev) => [localLog, ...prev]);
+      setChildCoils((prev) => [...prev, ...localChildren]);
+      return { createdItems: localChildren, resultMessage: `Corte ${mother.code} aprovado.` };
+    }
+
+    await updateInDb('motherCoils', mother.id, motherUpdateData);
+    const savedLog = await saveToDb('cuttingLogs', newCutLog);
+    const savedChildrenReal = [];
+    for (const childData of newChildrenPayload) {
+      const savedChild = await saveToDb('childCoils', childData);
+      savedChildrenReal.push(savedChild);
+    }
+    await updateInDb('cuttingLogs', savedLog.id, {
+      childIds: savedChildrenReal.map((child) => child.id),
+      motherId: mother.id,
+    });
+
+    await logUserAction('CORTE_APROVADO', {
+      motherCode: mother.code,
+      newChildCount: savedChildrenReal.length,
+      requestedBy: request?.requestedByEmail || '',
+      scrapKg: manualScrap,
+    });
+    await logCut(mother.id, savedChildrenReal.map((c) => c.id), user?.uid || 'local-dev', {
+      totalWeight: totalCutsWeight,
+      inputWeight: totalCutsWeight,
+      scrap: manualScrap,
+      date: cutDateIso,
+      motherCode: mother.code,
+      motherMaterial: mother.material,
+      originalWeight: mother.originalWeight || mother.weight,
+      remainingWeight: motherUpdateData.remainingWeight,
+      generatedItems: newCutLog.generatedItems,
+      cuttingLogId: savedLog.id,
+      childCount: savedChildrenReal.length,
+      userEmail: request?.requestedByEmail || 'offline@local',
+      approvedBy: user?.email || 'offline@local',
+    });
+
+    return { createdItems: savedChildrenReal, resultMessage: `Corte ${mother.code} aprovado e movimentado.` };
+  };
+
+  const handleApprovePendingRequest = async (request) => {
+    if (!request || request.status !== 'pending') return;
+    if (isOperationsOnlyUser) {
+      alert('Este usuário não pode aprovar solicitações.');
+      return;
+    }
+
+    setOpsApprovalActionId(request.id);
+    try {
+      let result = null;
+      if (request.requestType === 'ENTRY_MP') {
+        result = await applyApprovedEntryRequest(request);
+      } else if (request.requestType === 'CUT_B2') {
+        result = await applyApprovedCutRequest(request);
+      } else {
+        throw new Error('Tipo de solicitação não suportado.');
+      }
+
+      if (result?.createdItems?.length) {
+        setItemsToPrint(result.createdItems);
+        setPrintType('coil');
+        setShowPrintModal(true);
+      }
+
+      const approvalUpdate = {
+        status: 'approved',
+        approvedByEmail: String(user?.email || '').toLowerCase(),
+        approvedByUid: user?.uid || 'local-dev',
+        approvedAt: new Date().toISOString(),
+      };
+
+      if (USE_LOCAL_JSON) {
+        setPendingApprovals((prev) =>
+          prev.map((item) => (item.id === request.id ? { ...item, ...approvalUpdate } : item))
+        );
+      } else {
+        await updateInDb('pendingApprovals', request.id, approvalUpdate);
+      }
+
+      setOpsLastAction({
+        type: 'success',
+        message: result?.resultMessage || 'Solicitação aprovada com sucesso.',
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      console.error('Erro ao aprovar solicitação:', error);
+      setOpsLastAction({
+        type: 'error',
+        message: `Erro ao aprovar: ${error?.message || 'falha desconhecida'}`,
+        timestamp: Date.now(),
+      });
+    } finally {
+      setOpsApprovalActionId(null);
+    }
+  };
+
+  const handleRejectPendingRequest = async (request) => {
+    if (!request || request.status !== 'pending') return;
+    if (isOperationsOnlyUser) {
+      alert('Este usuário não pode rejeitar solicitações.');
+      return;
+    }
+    const reason = window.prompt('Motivo da rejeição (opcional):', '') || '';
+
+    setOpsApprovalActionId(request.id);
+    try {
+      const rejectUpdate = {
+        status: 'rejected',
+        rejectedByEmail: String(user?.email || '').toLowerCase(),
+        rejectedByUid: user?.uid || 'local-dev',
+        rejectedAt: new Date().toISOString(),
+        rejectionReason: reason,
+      };
+
+      if (USE_LOCAL_JSON) {
+        setPendingApprovals((prev) =>
+          prev.map((item) => (item.id === request.id ? { ...item, ...rejectUpdate } : item))
+        );
+      } else {
+        await updateInDb('pendingApprovals', request.id, rejectUpdate);
+      }
+
+      setOpsLastAction({
+        type: 'success',
+        message: 'Solicitação rejeitada.',
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      console.error('Erro ao rejeitar solicitação:', error);
+      setOpsLastAction({
+        type: 'error',
+        message: `Erro ao rejeitar: ${error?.message || 'falha desconhecida'}`,
+        timestamp: Date.now(),
+      });
+    } finally {
+      setOpsApprovalActionId(null);
+    }
+  };
+
   const opsAddEntry = async () => {
     const { code, nf, weight, material, thickness, type, entryDate } = opsEntryForm;
     if (!code) return alert("Preencha o código do lote.");
@@ -5251,6 +5523,29 @@ export default function App() {
       usina: usinaFinal || '',
       filialDestino: opsEntryForm.filialDestino || '',
     };
+
+    if (isOperationsOnlyUser) {
+      const { id, ...coilDataToSend } = newCoil;
+      await submitOpsApprovalRequest({
+        requestType: 'ENTRY_MP',
+        payload: {
+          coilData: coilDataToSend,
+        },
+        summary: {
+          code,
+          weight: parseFloat(weight),
+          date: formattedDate,
+          kind: 'Entrada MP',
+        },
+      });
+      setOpsEntryForm({ code: '', nf: '', weight: '', material: '', thickness: '', type: '', entryDate: new Date().toISOString().split('T')[0], usina: '', usinaOutro: '', filialDestino: '' });
+      setOpsLastAction({
+        type: 'success',
+        message: `Solicitação de entrada ${code} enviada para aprovação.`,
+        timestamp: Date.now(),
+      });
+      return;
+    }
 
     setMotherCoils((prev) => [...prev, newCoil]);
     setOpsEntryForm({ code: '', nf: '', weight: '', material: '', thickness: '', type: '', entryDate: new Date().toISOString().split('T')[0], usina: '', usinaOutro: '', filialDestino: '' });
@@ -5361,6 +5656,44 @@ export default function App() {
       cutWaste: (mother.cutWaste || 0) + manualScrap,
       ...(isTotalConsumption ? { consumedDate: dateNow, consumptionDetail: mother.consumptionDetail ? mother.consumptionDetail + ' + ' + itemsSummary : itemsSummary } : {}),
     };
+
+    if (isOperationsOnlyUser) {
+      await submitOpsApprovalRequest({
+        requestType: 'CUT_B2',
+        payload: {
+          motherId: mother.id,
+          motherCode: mother.code,
+          cutDateIso: opsCutDate,
+          manualScrap,
+          cuts: opsTempCuts.map((temp) => ({
+            b2Code: temp.b2Code,
+            b2Name: temp.b2Name,
+            width: temp.width,
+            thickness: temp.thickness,
+            type: temp.type,
+            weight: temp.weight,
+          })),
+        },
+        summary: {
+          code: mother.code,
+          childCount: opsTempCuts.length,
+          totalWeight: totalCutsWeight,
+          scrapKg: manualScrap,
+          date: dateNow,
+          kind: 'Corte B2',
+        },
+      });
+      setOpsTempCuts([]);
+      setOpsCutScrap('');
+      setOpsSelectedMother('');
+      setOpsMotherSearch('');
+      setOpsLastAction({
+        type: 'success',
+        message: `Solicitação de corte ${mother.code} enviada para aprovação.`,
+        timestamp: Date.now(),
+      });
+      return;
+    }
 
     setMotherCoils(prev => prev.map(m => m.id === mother.id ? { ...m, ...motherUpdateData } : m));
     setCuttingLogs(prev => [newCutLog, ...prev]);
@@ -5594,6 +5927,12 @@ export default function App() {
     const selectedQuickPrintItems = buildQuickPrintPayload(selectedQuickPrintEntries);
     const selectedQuickPrintWeight = selectedQuickPrintEntries.reduce((sum, entry) => sum + (entry.weight || 0), 0);
     const selectedQuickPrintLabels = selectedQuickPrintEntries.reduce((sum, entry) => sum + getQuickPrintCopies(entry.key), 0);
+    const pendingOpsApprovals = (pendingApprovals || [])
+      .filter((req) => {
+        const byCarlos = String(req?.requestedByEmail || '').toLowerCase() === OPERATIONS_ONLY_EMAIL;
+        return byCarlos && req?.status === 'pending';
+      })
+      .sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
 
     // --- Helpers visuais ---
     const StepNumber = ({ n, done }) => (
@@ -5687,6 +6026,20 @@ export default function App() {
             <span className="text-lg tracking-wide">IMPRESSAO RAPIDA</span>
             <span className="text-xs font-normal opacity-70">Selecione varios lotes e imprima de uma vez</span>
           </button>
+          {!isOperationsOnlyUser && (
+            <button
+              onClick={() => setOpsMode('aprovacao')}
+              className={`flex flex-col items-center justify-center gap-3 p-6 rounded-2xl font-bold transition-all border-2 ${
+                opsMode === 'aprovacao'
+                  ? 'bg-orange-600 text-white border-orange-400 shadow-xl shadow-orange-600/30 scale-[1.02]'
+                  : 'bg-gray-800/80 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white hover:border-gray-500'
+              }`}
+            >
+              <Shield size={36} />
+              <span className="text-lg tracking-wide">APROVACAO</span>
+              <span className="text-xs font-normal opacity-70">Pendentes do Carlos: {pendingOpsApprovals.length}</span>
+            </button>
+          )}
         </div>
 
         {/* ================================================================= */}
@@ -6402,6 +6755,66 @@ export default function App() {
               ))}
             </div>
             <p className="text-xs text-gray-500 mt-3">Atalhos: Ctrl+A seleciona filtrados | Ctrl+P imprime selecionados</p>
+          </Card>
+        )}
+        {opsMode === 'aprovacao' && !isOperationsOnlyUser && (
+          <Card className="border-2 border-orange-500/30">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-black text-white text-xl">APROVACAO DE MOVIMENTACOES</h3>
+                <p className="text-gray-400 text-sm">Somente após aprovação a movimentação entra no estoque.</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-orange-300 font-bold uppercase">Pendentes</p>
+                <p className="text-2xl font-black text-white">{pendingOpsApprovals.length}</p>
+              </div>
+            </div>
+
+            <div className="space-y-2 max-h-[640px] overflow-y-auto custom-scrollbar-dark">
+              {pendingOpsApprovals.length === 0 && (
+                <div className="text-center text-gray-500 py-10">Nenhuma solicitação pendente do Carlos.</div>
+              )}
+              {pendingOpsApprovals.map((req) => {
+                const isBusy = opsApprovalActionId === req.id;
+                const isCut = req.requestType === 'CUT_B2';
+                return (
+                  <div key={req.id} className="bg-gray-900/60 border border-gray-700 rounded-xl p-4">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs text-orange-300 font-bold uppercase">{isCut ? 'Corte B2' : 'Entrada MP'}</p>
+                        <p className="text-white font-black">
+                          {req.summary?.code || '-'} {isCut ? `| ${req.summary?.childCount || 0} tiras` : ''}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          Solicitado por: {req.requestedByEmail || '-'} | {req.summary?.date || req.requestedAtLabel || '-'}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {isCut
+                            ? `Peso: ${Number(req.summary?.totalWeight || 0).toLocaleString('pt-BR')} kg | Sucata: ${Number(req.summary?.scrapKg || 0).toLocaleString('pt-BR')} kg`
+                            : `Peso: ${Number(req.summary?.weight || 0).toLocaleString('pt-BR')} kg`}
+                        </p>
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <Button
+                          variant="success"
+                          onClick={() => handleApprovePendingRequest(req)}
+                          disabled={isBusy}
+                        >
+                          Aprovar
+                        </Button>
+                        <Button
+                          variant="danger"
+                          onClick={() => handleRejectPendingRequest(req)}
+                          disabled={isBusy}
+                        >
+                          Rejeitar
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </Card>
         )}
         {opsMode === 'consulta' && (
