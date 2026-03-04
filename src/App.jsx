@@ -2032,7 +2032,7 @@ export default function App() {
   // Junto com os outros useState
   const [cuttingDate, setCuttingDate] = useState(new Date().toISOString().split('T')[0]);
   // --- ESTADOS DO PAINEL DE OPERAÇÕES ---
-  const [opsMode, setOpsMode] = useState('entrada'); // 'entrada' | 'corte'
+  const [opsMode, setOpsMode] = useState('entrada'); // 'entrada' | 'corte' | 'consulta' | 'impressao'
   const [opsEntryForm, setOpsEntryForm] = useState({ code: '', nf: '', weight: '', material: '', thickness: '', type: '', entryDate: new Date().toISOString().split('T')[0], usina: '', usinaOutro: '', filialDestino: '' });
   const [opsSelectedMother, setOpsSelectedMother] = useState('');
   const [opsMotherSearch, setOpsMotherSearch] = useState('');
@@ -2045,6 +2045,14 @@ export default function App() {
   const [opsShowAllB2, setOpsShowAllB2] = useState(false);
   const [opsLastAction, setOpsLastAction] = useState(null); // {type, message, timestamp}
   const [opsTimerTick, setOpsTimerTick] = useState(Date.now()); // tick para esconder botão apagar após tempo
+  const [opsQuickPrintSearch, setOpsQuickPrintSearch] = useState('');
+  const [opsQuickPrintType, setOpsQuickPrintType] = useState('all');
+  const [opsQuickPrintSelectedIds, setOpsQuickPrintSelectedIds] = useState([]);
+  const [opsQuickPrintDatePreset, setOpsQuickPrintDatePreset] = useState('all');
+  const [opsQuickPrintMinWeight, setOpsQuickPrintMinWeight] = useState('');
+  const [opsQuickPrintMaxWeight, setOpsQuickPrintMaxWeight] = useState('');
+  const [opsQuickPrintSort, setOpsQuickPrintSort] = useState('date_desc');
+  const [opsQuickPrintCopies, setOpsQuickPrintCopies] = useState({});
   const [consultQrInput, setConsultQrInput] = useState('');
   const [consultResult, setConsultResult] = useState(null);
   const [consultError, setConsultError] = useState('');
@@ -5418,6 +5426,148 @@ export default function App() {
     }
   };
 
+  const parseOpsDateValue = (value) => {
+    if (!value) return 0;
+    const text = String(value).trim();
+    if (text.includes('/')) {
+      const [dd, mm, yy] = text.split('/');
+      return new Date(`${yy}-${mm}-${dd}`).getTime() || 0;
+    }
+    return new Date(text).getTime() || 0;
+  };
+
+  const buildQuickPrintEntries = () => {
+    const minWeight = parseFloat(String(opsQuickPrintMinWeight || '').replace(',', '.'));
+    const maxWeight = parseFloat(String(opsQuickPrintMaxWeight || '').replace(',', '.'));
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const fromLast7Days = startOfToday - 6 * 24 * 60 * 60 * 1000;
+    const fromLast30Days = startOfToday - 29 * 24 * 60 * 60 * 1000;
+
+    const inDatePreset = (dateValue) => {
+      if (opsQuickPrintDatePreset === 'all') return true;
+      const ts = parseOpsDateValue(dateValue);
+      if (!ts) return false;
+      if (opsQuickPrintDatePreset === 'today') return ts >= startOfToday;
+      if (opsQuickPrintDatePreset === '7d') return ts >= fromLast7Days;
+      if (opsQuickPrintDatePreset === '30d') return ts >= fromLast30Days;
+      return true;
+    };
+
+    const entries = [
+      ...motherCoils
+        .filter((m) => m.status === 'stock')
+        .map((m) => ({
+          key: `MP-${String(m.id)}`,
+          id: String(m.id || '-'),
+          kind: 'MP',
+          lot: m.code || '-',
+          title: m.material || 'Materia Prima',
+          date: m.date || '',
+          weight: Number(m.remainingWeight ?? m.weight) || 0,
+          dateSort: parseOpsDateValue(m.date),
+          item: m,
+        })),
+      ...childCoils
+        .filter((c) => c.status === 'stock')
+        .map((c) => ({
+          key: `B2-${String(c.id)}`,
+          id: String(c.id || '-'),
+          kind: 'B2',
+          lot: c.b2Code || c.code || '-',
+          title: c.b2Name || c.material || 'Bobina 2',
+          date: c.date || '',
+          weight: Number(c.weight) || 0,
+          dateSort: parseOpsDateValue(c.date),
+          item: c,
+        })),
+    ];
+
+    const searchValue = String(opsQuickPrintSearch || '').trim().toLowerCase();
+    const filtered = entries.filter((entry) => {
+      if (opsQuickPrintType !== 'all' && entry.kind !== opsQuickPrintType) return false;
+      if (!inDatePreset(entry.date)) return false;
+      if (Number.isFinite(minWeight) && entry.weight < minWeight) return false;
+      if (Number.isFinite(maxWeight) && entry.weight > maxWeight) return false;
+      if (!searchValue) return true;
+      return (
+        String(entry.lot || '').toLowerCase().includes(searchValue) ||
+        String(entry.title || '').toLowerCase().includes(searchValue) ||
+        String(entry.id || '').toLowerCase().includes(searchValue)
+      );
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      if (opsQuickPrintSort === 'weight_desc') return b.weight - a.weight;
+      if (opsQuickPrintSort === 'weight_asc') return a.weight - b.weight;
+      if (opsQuickPrintSort === 'lot_asc') return String(a.lot).localeCompare(String(b.lot), 'pt-BR');
+      return b.dateSort - a.dateSort;
+    });
+
+    return { all: entries, filtered: sorted };
+  };
+
+  const getQuickPrintCopies = (key) => {
+    const raw = Number(opsQuickPrintCopies[key] || 1);
+    if (!Number.isFinite(raw)) return 1;
+    return Math.min(50, Math.max(1, Math.floor(raw)));
+  };
+
+  const buildQuickPrintPayload = (selectedEntries) => {
+    return selectedEntries.flatMap((entry) => {
+      const copies = getQuickPrintCopies(entry.key);
+      return Array.from({ length: copies }, () => entry.item);
+    });
+  };
+
+  useEffect(() => {
+    if (opsMode !== 'impressao') return undefined;
+
+    const onKeyDown = (event) => {
+      if (!event.ctrlKey) return;
+
+      const key = String(event.key || '').toLowerCase();
+      if (key === 'a') {
+        event.preventDefault();
+        const { filtered } = buildQuickPrintEntries();
+        setOpsQuickPrintSelectedIds((prev) => {
+          const merged = new Set(prev);
+          filtered.forEach((entry) => merged.add(entry.key));
+          return Array.from(merged);
+        });
+      }
+
+      if (key === 'p') {
+        event.preventDefault();
+        const { all } = buildQuickPrintEntries();
+        const selectedSet = new Set(opsQuickPrintSelectedIds);
+        const selectedEntries = all.filter((entry) => selectedSet.has(entry.key));
+        if (selectedEntries.length === 0) {
+          alert('Selecione pelo menos um lote para imprimir.');
+          return;
+        }
+        setItemsToPrint(buildQuickPrintPayload(selectedEntries));
+        setPrintType('coil');
+        setShowPrintModal(true);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [
+    opsMode,
+    opsQuickPrintSelectedIds,
+    opsQuickPrintSearch,
+    opsQuickPrintType,
+    opsQuickPrintDatePreset,
+    opsQuickPrintMinWeight,
+    opsQuickPrintMaxWeight,
+    opsQuickPrintSort,
+    opsQuickPrintCopies,
+    motherCoils,
+    childCoils,
+  ]);
+
   const renderOperationsPanel = () => {
     // --- Filtros para corte ---
     const availableMothers = motherCoils.filter(m => m.status === 'stock');
@@ -5455,6 +5605,19 @@ export default function App() {
     const opsCutTotal = opsTempCuts.reduce((a, b) => a + b.weight, 0);
     const opsScrapVal = parseFloat(opsCutScrap) || 0;
     const opsRemaining = selectedOpsMother ? (selectedOpsMother.remainingWeight - opsCutTotal - opsScrapVal) : 0;
+    const { all: quickPrintItems, filtered: filteredQuickPrintItems } = buildQuickPrintEntries();
+    const formatOpsWeight = (value) =>
+      `${Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} kg`;
+    const quickPrintKeySet = new Set(quickPrintItems.map((entry) => entry.key));
+    const filteredQuickPrintKeys = new Set(filteredQuickPrintItems.map((entry) => entry.key));
+    const selectedQuickPrintKeys = new Set(
+      opsQuickPrintSelectedIds.filter((id) => quickPrintKeySet.has(id))
+    );
+    const selectedQuickPrintEntries = quickPrintItems
+      .filter((entry) => selectedQuickPrintKeys.has(entry.key));
+    const selectedQuickPrintItems = buildQuickPrintPayload(selectedQuickPrintEntries);
+    const selectedQuickPrintWeight = selectedQuickPrintEntries.reduce((sum, entry) => sum + (entry.weight || 0), 0);
+    const selectedQuickPrintLabels = selectedQuickPrintEntries.reduce((sum, entry) => sum + getQuickPrintCopies(entry.key), 0);
 
     // --- Helpers visuais ---
     const StepNumber = ({ n, done }) => (
@@ -5499,7 +5662,7 @@ export default function App() {
         )}
 
         {/* ============ SELETOR DE OPERAÇÃO (BOTÕES BEM GRANDES) ============ */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <button
             onClick={() => setOpsMode('entrada')}
             className={`flex flex-col items-center justify-center gap-3 p-6 rounded-2xl font-bold transition-all border-2 ${
@@ -5535,6 +5698,18 @@ export default function App() {
             <ScanLine size={36} />
             <span className="text-lg tracking-wide">CONSULTA QR</span>
             <span className="text-xs font-normal opacity-70">Leia e consulte dados completos</span>
+          </button>
+          <button
+            onClick={() => setOpsMode('impressao')}
+            className={`flex flex-col items-center justify-center gap-3 p-6 rounded-2xl font-bold transition-all border-2 ${
+              opsMode === 'impressao'
+                ? 'bg-amber-600 text-white border-amber-400 shadow-xl shadow-amber-600/30 scale-[1.02]'
+                : 'bg-gray-800/80 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white hover:border-gray-500'
+            }`}
+          >
+            <Printer size={36} />
+            <span className="text-lg tracking-wide">IMPRESSAO RAPIDA</span>
+            <span className="text-xs font-normal opacity-70">Selecione varios lotes e imprima de uma vez</span>
           </button>
         </div>
 
@@ -6055,6 +6230,223 @@ export default function App() {
               </div>
             )}
           </div>
+        )}
+        {opsMode === 'impressao' && (
+          <Card className="border-2 border-amber-500/30">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
+              <div>
+                <h3 className="font-black text-white text-xl">IMPRESSAO RAPIDA DE LOTES</h3>
+                <p className="text-gray-400 text-sm">Marque os lotes desejados e imprima tudo em uma vez.</p>
+              </div>
+              <div className="bg-amber-900/20 border border-amber-500/30 rounded-xl px-4 py-3 text-right">
+                <p className="text-xs text-amber-300 font-bold uppercase">Resumo Selecionado</p>
+                <p className="text-2xl font-black text-white">{selectedQuickPrintEntries.length} lotes</p>
+                <p className="text-xs text-gray-300">{formatOpsWeight(selectedQuickPrintWeight)} | {selectedQuickPrintLabels} etiquetas</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_180px_180px] gap-3 mb-3">
+              <div className="relative">
+                <Search className="absolute left-4 top-4 text-gray-500" size={20} />
+                <input
+                  type="text"
+                  placeholder="Buscar por lote, descricao ou ID..."
+                  value={opsQuickPrintSearch}
+                  onChange={(e) => setOpsQuickPrintSearch(e.target.value)}
+                  className="w-full pl-12 p-4 border-2 border-gray-600 rounded-xl bg-gray-900 text-white outline-none text-base focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <select
+                value={opsQuickPrintType}
+                onChange={(e) => setOpsQuickPrintType(e.target.value)}
+                className="w-full p-4 border-2 border-gray-600 rounded-xl bg-gray-900 text-white outline-none text-base focus:ring-2 focus:ring-amber-500"
+              >
+                <option value="all">Todos os tipos</option>
+                <option value="MP">Somente MP</option>
+                <option value="B2">Somente B2</option>
+              </select>
+              <select
+                value={opsQuickPrintDatePreset}
+                onChange={(e) => setOpsQuickPrintDatePreset(e.target.value)}
+                className="w-full p-4 border-2 border-gray-600 rounded-xl bg-gray-900 text-white outline-none text-base focus:ring-2 focus:ring-amber-500"
+              >
+                <option value="all">Todas as datas</option>
+                <option value="today">Somente hoje</option>
+                <option value="7d">Ultimos 7 dias</option>
+                <option value="30d">Ultimos 30 dias</option>
+              </select>
+              <select
+                value={opsQuickPrintSort}
+                onChange={(e) => setOpsQuickPrintSort(e.target.value)}
+                className="w-full p-4 border-2 border-gray-600 rounded-xl bg-gray-900 text-white outline-none text-base focus:ring-2 focus:ring-amber-500"
+              >
+                <option value="date_desc">Mais novo</option>
+                <option value="weight_desc">Mais pesado</option>
+                <option value="weight_asc">Mais leve</option>
+                <option value="lot_asc">Codigo A-Z</option>
+              </select>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+              <input
+                type="number"
+                min="0"
+                placeholder="Peso minimo (kg)"
+                value={opsQuickPrintMinWeight}
+                onChange={(e) => setOpsQuickPrintMinWeight(e.target.value)}
+                className="w-full p-3 border border-gray-700 rounded-xl bg-gray-900 text-white outline-none text-sm focus:ring-2 focus:ring-amber-500"
+              />
+              <input
+                type="number"
+                min="0"
+                placeholder="Peso maximo (kg)"
+                value={opsQuickPrintMaxWeight}
+                onChange={(e) => setOpsQuickPrintMaxWeight(e.target.value)}
+                className="w-full p-3 border border-gray-700 rounded-xl bg-gray-900 text-white outline-none text-sm focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-4">
+              <Button
+                variant="secondary"
+                onClick={() => setOpsQuickPrintSelectedIds(Array.from(quickPrintKeySet))}
+                disabled={quickPrintItems.length === 0}
+              >
+                Selecionar todos ({quickPrintItems.length})
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setOpsQuickPrintSelectedIds([])}
+                disabled={opsQuickPrintSelectedIds.length === 0}
+              >
+                Limpar tudo
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setOpsQuickPrintSelectedIds((prev) => {
+                    const merged = new Set(prev.filter((id) => quickPrintKeySet.has(id)));
+                    filteredQuickPrintItems.forEach((entry) => merged.add(entry.key));
+                    return Array.from(merged);
+                  });
+                }}
+                disabled={filteredQuickPrintItems.length === 0}
+              >
+                Selecionar filtrados ({filteredQuickPrintItems.length})
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setOpsQuickPrintSelectedIds((prev) => {
+                    const set = new Set(prev);
+                    filteredQuickPrintItems.forEach((entry) => {
+                      if (set.has(entry.key)) set.delete(entry.key);
+                      else set.add(entry.key);
+                    });
+                    return Array.from(set);
+                  });
+                }}
+                disabled={filteredQuickPrintItems.length === 0}
+              >
+                Inverter filtrados
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setOpsQuickPrintSelectedIds((prev) => prev.filter((id) => !filteredQuickPrintKeys.has(id)));
+                }}
+                disabled={filteredQuickPrintItems.length === 0}
+              >
+                Limpar filtrados
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  if (selectedQuickPrintEntries.length === 0) {
+                    alert('Selecione pelo menos um lote para imprimir.');
+                    return;
+                  }
+                  setItemsToPrint(selectedQuickPrintItems);
+                  setPrintType('coil');
+                  setShowPrintModal(true);
+                }}
+                disabled={selectedQuickPrintEntries.length === 0}
+              >
+                <Printer size={16} />
+                Imprimir Selecionados ({selectedQuickPrintLabels})
+              </Button>
+            </div>
+
+            {selectedQuickPrintEntries.length > 0 && (
+              <div className="mb-4 p-3 rounded-xl border border-amber-500/20 bg-amber-900/10">
+                <p className="text-xs text-amber-300 font-bold uppercase mb-2">Previa (primeiros 5 selecionados)</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                  {selectedQuickPrintEntries.slice(0, 5).map((entry) => (
+                    <div key={`preview-${entry.key}`} className="bg-gray-900/70 border border-gray-700 rounded-lg p-2">
+                      <p className="text-sm font-bold text-white">{entry.lot}</p>
+                      <p className="text-xs text-gray-300 truncate">{entry.title}</p>
+                      <p className="text-[11px] text-amber-300">{formatOpsWeight(entry.weight)} | {getQuickPrintCopies(entry.key)} copias</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="max-h-[520px] overflow-y-auto space-y-2 custom-scrollbar-dark pr-1">
+              {filteredQuickPrintItems.length === 0 && (
+                <div className="text-center text-gray-500 py-10">Nenhum lote encontrado para o filtro atual.</div>
+              )}
+              {filteredQuickPrintItems.map((entry) => (
+                <label
+                  key={entry.key}
+                  className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${
+                    selectedQuickPrintKeys.has(entry.key)
+                      ? 'bg-amber-900/20 border-amber-500/40'
+                      : 'bg-gray-900/60 border-gray-700 hover:bg-gray-800/70'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedQuickPrintKeys.has(entry.key)}
+                    onChange={() => {
+                      setOpsQuickPrintSelectedIds((prev) => (
+                        prev.includes(entry.key)
+                          ? prev.filter((id) => id !== entry.key)
+                          : [...prev, entry.key]
+                      ));
+                    }}
+                    className="h-4 w-4 accent-amber-500"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black px-2 py-0.5 rounded-full bg-gray-800 text-gray-300">{entry.kind}</span>
+                      <span className="font-black text-white">{entry.lot}</span>
+                      <span className="text-[11px] text-gray-500 font-mono">ID: {entry.id}</span>
+                    </div>
+                    <p className="text-sm text-gray-300 truncate">{entry.title}</p>
+                  </div>
+                  <div className="text-right shrink-0 min-w-[140px]">
+                    <input
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={getQuickPrintCopies(entry.key)}
+                      onChange={(e) => {
+                        const raw = parseInt(e.target.value, 10);
+                        const next = Number.isFinite(raw) ? Math.min(50, Math.max(1, raw)) : 1;
+                        setOpsQuickPrintCopies((prev) => ({ ...prev, [entry.key]: next }));
+                      }}
+                      className="w-20 ml-auto mb-1 px-2 py-1 text-xs border border-gray-600 rounded bg-gray-900 text-white text-right"
+                      title="Quantidade de copias"
+                    />
+                    <p className="text-sm font-black text-amber-300">{formatOpsWeight(entry.weight)}</p>
+                    <p className="text-xs text-gray-500">{entry.date || '-'}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-3">Atalhos: Ctrl+A seleciona filtrados | Ctrl+P imprime selecionados</p>
+          </Card>
         )}
         {opsMode === 'consulta' && (
           <div className="space-y-5">
@@ -12803,9 +13195,12 @@ const handleUploadJSONToFirebase = async (e) => {
 
       
       {/* Mobile Overlay */}
-      <div className={`fixed inset-0 z-30 bg-black/50 md:hidden ${isSidebarOpen ? 'block' : 'hidden'}`} onClick={() => setSidebarOpen(false)}></div>
+      {!isOperationsOnlyUser && (
+        <div className={`fixed inset-0 z-30 bg-black/50 md:hidden ${isSidebarOpen ? 'block' : 'hidden'}`} onClick={() => setSidebarOpen(false)}></div>
+      )}
 
       {/* Sidebar */}
+      {!isOperationsOnlyUser && (
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-950/70 text-gray-300 flex flex-col border-r border-white/5 shadow-2xl backdrop-blur-sm transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${isSidebarHidden ? 'md:-translate-x-full' : 'md:translate-x-0 md:static'} md:w-72`}>
         <div className="h-20 flex items-center justify-between px-6 border-b border-white/5 font-bold text-xl tracking-wider bg-black/20">
            <div className="flex items-center">
@@ -12961,13 +13356,14 @@ const handleUploadJSONToFirebase = async (e) => {
           </div>
         </div>
       </aside>
+      )}
     
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden relative bg-[#111827]">
          
          <header className="h-16 md:h-20 bg-slate-900/70 backdrop-blur shadow-lg flex items-center justify-between px-4 md:px-8 z-10 border-b border-white/5 shrink-0">
             <div className="flex items-center gap-4">
-              {isSidebarHidden && (
+              {!isOperationsOnlyUser && isSidebarHidden && (
                 <button
                   className="hidden md:inline-flex p-2 text-gray-400 hover:text-white"
                   onClick={() => setSidebarHiddenPreference(false)}
@@ -12976,7 +13372,9 @@ const handleUploadJSONToFirebase = async (e) => {
                   <ChevronRight size={22} />
                 </button>
               )}
-              <button className="md:hidden p-2 text-gray-400 hover:text-white" onClick={() => setSidebarOpen(true)}><Menu size={24}/></button>
+              {!isOperationsOnlyUser && (
+                <button className="md:hidden p-2 text-gray-400 hover:text-white" onClick={() => setSidebarOpen(true)}><Menu size={24}/></button>
+              )}
               <div>
                 <h2 className="text-lg md:text-2xl font-bold text-white tracking-tight truncate">
                   {activeTab === 'dashboard' && "Dashboard"}
