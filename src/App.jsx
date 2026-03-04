@@ -2048,10 +2048,8 @@ export default function App() {
   const [opsQuickPrintSearch, setOpsQuickPrintSearch] = useState('');
   const [opsQuickPrintType, setOpsQuickPrintType] = useState('all');
   const [opsQuickPrintSelectedIds, setOpsQuickPrintSelectedIds] = useState([]);
-  const [opsQuickPrintDatePreset, setOpsQuickPrintDatePreset] = useState('all');
   const [opsQuickPrintMinWeight, setOpsQuickPrintMinWeight] = useState('');
   const [opsQuickPrintMaxWeight, setOpsQuickPrintMaxWeight] = useState('');
-  const [opsQuickPrintSort, setOpsQuickPrintSort] = useState('date_desc');
   const [opsQuickPrintCopies, setOpsQuickPrintCopies] = useState({});
   const [consultQrInput, setConsultQrInput] = useState('');
   const [consultResult, setConsultResult] = useState(null);
@@ -5439,20 +5437,6 @@ export default function App() {
   const buildQuickPrintEntries = () => {
     const minWeight = parseFloat(String(opsQuickPrintMinWeight || '').replace(',', '.'));
     const maxWeight = parseFloat(String(opsQuickPrintMaxWeight || '').replace(',', '.'));
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const fromLast7Days = startOfToday - 6 * 24 * 60 * 60 * 1000;
-    const fromLast30Days = startOfToday - 29 * 24 * 60 * 60 * 1000;
-
-    const inDatePreset = (dateValue) => {
-      if (opsQuickPrintDatePreset === 'all') return true;
-      const ts = parseOpsDateValue(dateValue);
-      if (!ts) return false;
-      if (opsQuickPrintDatePreset === 'today') return ts >= startOfToday;
-      if (opsQuickPrintDatePreset === '7d') return ts >= fromLast7Days;
-      if (opsQuickPrintDatePreset === '30d') return ts >= fromLast30Days;
-      return true;
-    };
 
     const entries = [
       ...motherCoils
@@ -5486,7 +5470,6 @@ export default function App() {
     const searchValue = String(opsQuickPrintSearch || '').trim().toLowerCase();
     const filtered = entries.filter((entry) => {
       if (opsQuickPrintType !== 'all' && entry.kind !== opsQuickPrintType) return false;
-      if (!inDatePreset(entry.date)) return false;
       if (Number.isFinite(minWeight) && entry.weight < minWeight) return false;
       if (Number.isFinite(maxWeight) && entry.weight > maxWeight) return false;
       if (!searchValue) return true;
@@ -5497,12 +5480,7 @@ export default function App() {
       );
     });
 
-    const sorted = [...filtered].sort((a, b) => {
-      if (opsQuickPrintSort === 'weight_desc') return b.weight - a.weight;
-      if (opsQuickPrintSort === 'weight_asc') return a.weight - b.weight;
-      if (opsQuickPrintSort === 'lot_asc') return String(a.lot).localeCompare(String(b.lot), 'pt-BR');
-      return b.dateSort - a.dateSort;
-    });
+    const sorted = [...filtered].sort((a, b) => b.dateSort - a.dateSort);
 
     return { all: entries, filtered: sorted };
   };
@@ -5559,10 +5537,8 @@ export default function App() {
     opsQuickPrintSelectedIds,
     opsQuickPrintSearch,
     opsQuickPrintType,
-    opsQuickPrintDatePreset,
     opsQuickPrintMinWeight,
     opsQuickPrintMaxWeight,
-    opsQuickPrintSort,
     opsQuickPrintCopies,
     motherCoils,
     childCoils,
@@ -6245,7 +6221,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_180px_180px] gap-3 mb-3">
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_220px] gap-3 mb-3">
               <div className="relative">
                 <Search className="absolute left-4 top-4 text-gray-500" size={20} />
                 <input
@@ -6264,26 +6240,6 @@ export default function App() {
                 <option value="all">Todos os tipos</option>
                 <option value="MP">Somente MP</option>
                 <option value="B2">Somente B2</option>
-              </select>
-              <select
-                value={opsQuickPrintDatePreset}
-                onChange={(e) => setOpsQuickPrintDatePreset(e.target.value)}
-                className="w-full p-4 border-2 border-gray-600 rounded-xl bg-gray-900 text-white outline-none text-base focus:ring-2 focus:ring-amber-500"
-              >
-                <option value="all">Todas as datas</option>
-                <option value="today">Somente hoje</option>
-                <option value="7d">Ultimos 7 dias</option>
-                <option value="30d">Ultimos 30 dias</option>
-              </select>
-              <select
-                value={opsQuickPrintSort}
-                onChange={(e) => setOpsQuickPrintSort(e.target.value)}
-                className="w-full p-4 border-2 border-gray-600 rounded-xl bg-gray-900 text-white outline-none text-base focus:ring-2 focus:ring-amber-500"
-              >
-                <option value="date_desc">Mais novo</option>
-                <option value="weight_desc">Mais pesado</option>
-                <option value="weight_asc">Mais leve</option>
-                <option value="lot_asc">Codigo A-Z</option>
               </select>
             </div>
 
