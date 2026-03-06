@@ -2539,6 +2539,57 @@ export default function App() {
     return stock;
   };
 
+  const getShippingStock = () => {
+    const stock = { ...getFinishedStock() };
+    const drywallCodes = new Set();
+
+    const getChildFamily = (item) => {
+      const haystack = String(
+        `${item?.b2Name || item?.name || ''} ${item?.type || ''} ${item?.b2Code || item?.code || ''}`
+      ).toUpperCase();
+
+      if (
+        haystack.includes('DRY WALL') ||
+        haystack.includes('DRYWALL') ||
+        haystack.includes(' DW ') ||
+        haystack.includes('TETO F 47')
+      ) {
+        return 'DRYWALL';
+      }
+
+      if (haystack.includes('PERFIL')) return 'PERFIL';
+      return 'OUTROS';
+    };
+
+    (childCoils || []).forEach((coil) => {
+      if (coil?.status !== 'stock') return;
+      if (getChildFamily(coil) !== 'DRYWALL') return;
+
+      const code = String(coil?.b2Code || coil?.code || '').trim();
+      if (!code) return;
+
+      if (!stock[code]) {
+        stock[code] = {
+          code,
+          name: coil?.b2Name || coil?.name || code,
+          count: 0,
+        };
+      }
+
+      stock[code].count += 1;
+      drywallCodes.add(code);
+    });
+
+    shippingLogs.forEach((log) => {
+      const code = String(log?.productCode || '').trim();
+      if (drywallCodes.has(code) && stock[code]) {
+        stock[code].count -= parseInt(log.quantity, 10) || 0;
+      }
+    });
+
+    return stock;
+  };
+
     const addMotherCoil = async () => {
   const family = (newMotherCoil?.family || "").toUpperCase();
   const typeUpper = (newMotherCoil?.type || "").toUpperCase();
@@ -4594,21 +4645,12 @@ export default function App() {
   const registerShipping = async () => {
     if (!shipProduct || !shipQty) return alert("Preencha tudo");
 
-    // Validação de Estoque (Leitura Local)
-    const stock = {};
-    productionLogs.forEach(log => {
-      if (!stock[log.productCode]) stock[log.productCode] = 0;
-      stock[log.productCode] += (parseInt(log.pieces) || 0);
-    });
-    shippingLogs.forEach(log => {
-      if (stock[log.productCode]) stock[log.productCode] -= (parseInt(log.quantity) || 0);
-    });
-
-    const currentStock = stock[shipProduct] || 0;
+    const stock = getShippingStock();
+    const currentStock = stock[shipProduct]?.count || 0;
     const qty = parseInt(shipQty);
     if (qty > currentStock) return alert("Estoque insuficiente.");
 
-    const prodInfo = productCatalog.find(p => p.code === shipProduct);
+    const prodInfo = stock[shipProduct] || productCatalog.find(p => p.code === shipProduct);
 
     // --- 1. DADOS ---
     const tempId = `TEMP-SHIP-${Date.now()}`;
@@ -8031,7 +8073,7 @@ const getUnitWeight = (code) => {
     );
   };
   const renderShipping = () => {
-    const stock = getFinishedStock();
+    const stock = getShippingStock();
     const availableProducts = Object.values(stock).filter(i => i.count > 0);
 
     return (
@@ -8043,7 +8085,6 @@ const getUnitWeight = (code) => {
                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Produto em Estoque</label>
                  <select className="w-full p-3 border border-gray-700 rounded-lg bg-gray-900 text-gray-200 outline-none text-sm" value={shipProduct} onChange={e => setShipProduct(e.target.value)}>
   <option value="">Selecione...</option>
-  {/* AQUI ESTÁ A ALTERAÇÃO: Adicionei {p.code} e um traço separador */}
   {availableProducts.map(p => (
     <option key={p.code} value={p.code}>
       {p.code} - {p.name} (Saldo: {p.count})
