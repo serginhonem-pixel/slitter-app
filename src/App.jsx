@@ -7804,16 +7804,33 @@ const getUnitWeight = (code) => {
     );
   };
   const renderProduction = () => {
+    const normalizeCoilValue = (value) => String(value ?? '').trim().toLowerCase();
+    const isChildCoilInStock = (coil) => {
+      const status = normalizeCoilValue(coil?.status);
+      return status === 'stock' || status === 'estoque' || status === 'em estoque';
+    };
+    const getChildCoilSelectionKey = (coil) => [
+      String(coil?.id ?? '').trim(),
+      normalizeCoilValue(coil?.b2Code),
+      normalizeCoilValue(coil?.b2Name),
+      Number(coil?.weight) || 0,
+      normalizeCoilValue(coil?.motherCode),
+      normalizeCoilValue(coil?.entryDate || coil?.date || coil?.createdAt),
+      Number(coil?.width) || 0,
+      normalizeCoilValue(coil?.thickness),
+      normalizeCoilValue(coil?.type),
+    ].join('|');
+
     // 1. Filtros e Listas (Blindados contra erro de busca)
     const availableForSelect = childCoils.filter(c => {
-       if (c.status !== 'stock') return false;
-       if (selectedInputCoils.find(sel => sel.id === c.id)) return false; 
-       if (filterB2Type && c.type !== filterB2Type) return false;
+       if (!isChildCoilInStock(c)) return false;
+       if (selectedInputCoils.find(sel => getChildCoilSelectionKey(sel) === getChildCoilSelectionKey(c))) return false;
+       if (filterB2Type && normalizeCoilValue(c.type) !== normalizeCoilValue(filterB2Type)) return false;
        
        if (b2SearchQuery) {
-         const query = b2SearchQuery.toLowerCase();
-         const matchCode = String(c.b2Code).toLowerCase().includes(query);
-         const matchName = String(c.b2Name).toLowerCase().includes(query);
+         const query = normalizeCoilValue(b2SearchQuery);
+         const matchCode = normalizeCoilValue(c.b2Code).includes(query);
+         const matchName = normalizeCoilValue(c.b2Name).includes(query);
          if (!matchCode && !matchName) return false;
        }
        return true;
@@ -7855,8 +7872,8 @@ const getUnitWeight = (code) => {
     // Totais visuais (Mantido igual)
     const totalInputWeight = selectedInputCoils.reduce((acc, c) => acc + c.weight, 0);
     const stockByB2Code = (childCoils || []).reduce((acc, coil) => {
-      if (coil?.status !== 'stock') return acc;
-      const code = String(coil?.b2Code || '').trim();
+      if (!isChildCoilInStock(coil)) return acc;
+      const code = String(coil?.b2Code || '').trim().toUpperCase();
       if (!code) return acc;
       if (!acc[code]) acc[code] = { weight: 0, lots: 0 };
       acc[code].weight += Number(coil?.weight) || 0;
@@ -7865,7 +7882,7 @@ const getUnitWeight = (code) => {
     }, {});
     const selectedB2Summaries = Object.entries(
       selectedInputCoils.reduce((acc, coil) => {
-        const code = String(coil?.b2Code || '').trim();
+        const code = String(coil?.b2Code || '').trim().toUpperCase();
         if (!code) return acc;
         if (!acc[code]) {
           acc[code] = {
@@ -7921,9 +7938,9 @@ const getUnitWeight = (code) => {
                      className="w-full p-3 border border-gray-700 rounded-lg bg-gray-800 text-gray-200 outline-none text-sm focus:border-blue-500 transition-colors" 
                      value="" 
                      onChange={(e) => { 
-                        const newId = e.target.value;
-                        if (!newId) return;
-                        const coilToAdd = childCoils.find(c => String(c.id) === String(newId));
+                        const selectionKey = e.target.value;
+                        if (!selectionKey) return;
+                        const coilToAdd = availableForSelect.find(c => getChildCoilSelectionKey(c) === selectionKey);
                         if (coilToAdd) {
                              const newList = [...selectedInputCoils, coilToAdd];
                              setSelectedInputCoils(newList);
@@ -7936,7 +7953,7 @@ const getUnitWeight = (code) => {
                    >
                       <option value="">+ Adicionar bobina...</option>
                       {availableForSelect.map(c => (
-                        <option key={c.id} value={c.id}>{c.b2Code} - {c.b2Name} ({c.weight}kg)</option>
+                        <option key={getChildCoilSelectionKey(c)} value={getChildCoilSelectionKey(c)}>{String(c.id)} | {c.b2Code} - {c.b2Name} ({c.weight}kg)</option>
                       ))}
                     </select>
 
@@ -7944,8 +7961,8 @@ const getUnitWeight = (code) => {
                         <div className="mt-2 space-y-1 max-h-32 overflow-y-auto custom-scrollbar-dark">
                             {selectedInputCoils.map((coil, idx) => (
                                 <div key={idx} className="flex justify-between items-center bg-gray-800 px-2 py-1 rounded border border-gray-600 text-xs">
-                                    <span className="text-gray-300">{coil.b2Code} ({coil.weight}kg)</span>
-                                    <button onClick={() => setSelectedInputCoils(selectedInputCoils.filter(c => c.id !== coil.id))} className="text-red-400 hover:text-red-300"><Trash2 size={12}/></button>
+                                    <span className="text-gray-300">{String(coil.id)} | {coil.b2Code} ({coil.weight}kg)</span>
+                                    <button onClick={() => setSelectedInputCoils(selectedInputCoils.filter(c => getChildCoilSelectionKey(c) !== getChildCoilSelectionKey(coil)))} className="text-red-400 hover:text-red-300"><Trash2 size={12}/></button>
                                 </div>
                             ))}
                         </div>
