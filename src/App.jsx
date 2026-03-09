@@ -2377,8 +2377,8 @@ export default function App() {
         q,
         (snapshot) => {
           const data = snapshot.docs.map((doc) => ({
-            id: doc.id,
             ...doc.data(),
+            id: doc.id,
           }));
 
           if (collectionName.includes('Logs')) {

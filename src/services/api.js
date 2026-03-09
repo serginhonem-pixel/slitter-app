@@ -76,12 +76,13 @@ export const loadFromDb = async (collectionName) => {
 // --- ADICIONAR ---
 export const saveToDb = async (collectionName, data) => {
   try {
+    const { id: _ignoredId, ...payload } = data || {};
     if (isFirestoreBlocked()) {
       console.warn("[FIREBASE] saveToDb bloqueado no localhost:", collectionName);
-      return { ...data, id: `LOCAL-${Date.now()}` };
+      return { ...payload, id: `LOCAL-${Date.now()}` };
     }
-    const docRef = await addDoc(collection(db, collectionName), data);
-    return { ...data, id: docRef.id };
+    const docRef = await addDoc(collection(db, collectionName), payload);
+    return { ...payload, id: docRef.id };
   } catch (error) {
     console.error(`Erro ao salvar em ${collectionName}:`, error);
     throw error;
