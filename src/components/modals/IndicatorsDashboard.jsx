@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PieChart as PieIcon } from 'lucide-react';
+import { PieChart as PieIcon, X, ArrowUpDown, Search } from 'lucide-react';
 import {
   Area,
   Bar,
@@ -84,6 +84,11 @@ const IndicatorsDashboard = ({
   // filtros
   const [typeFilter, setTypeFilter] = useState('ALL'); // tipo MP
   const [windowDays, setWindowDays] = useState(15); // 15 / 30 / 60
+
+  // drill-down: { type: 'MP'|'B2', bucket: '0-30'|..., items: [...] }
+  const [drillDown, setDrillDown] = useState(null);
+  const [drillSort, setDrillSort] = useState({ key: 'dias', dir: 'desc' });
+  const [drillSearch, setDrillSearch] = useState('');
 
   // listas seguras
   const safeMother = Array.isArray(motherCoils) ? motherCoils : [];
@@ -284,6 +289,7 @@ const IndicatorsDashboard = ({
   const calculateSimpleAging = (list, dateField, weightField) => {
     const buckets = { '0-30': 0, '30-60': 0, '60-90': 0, '+90': 0 };
     const bucketsRaw = { '0-30': 0, '30-60': 0, '60-90': 0, '+90': 0 };
+    const itemsByBucket = { '0-30': [], '30-60': [], '60-90': [], '+90': [] };
 
     list.forEach((item) => {
       if (item.status !== 'stock' && item.status !== 'in_process') return;
@@ -309,13 +315,16 @@ const IndicatorsDashboard = ({
 
       buckets[bucketKey] += weight;
       bucketsRaw[bucketKey] += weight;
+      itemsByBucket[bucketKey].push({ ...item, _dias: diffDays, _peso: weight, _dataEntrada: norm });
     });
 
+    const bucketKeyByName = { '0-30 dias': '0-30', '30-60 dias': '30-60', '60-90 dias': '60-90', '+90 dias': '+90' };
+
     const data = [
-      { name: '0-30 dias', peso: buckets['0-30'], fill: '#10b981' },
-      { name: '30-60 dias', peso: buckets['30-60'], fill: '#3b82f6' },
-      { name: '60-90 dias', peso: buckets['60-90'], fill: '#f59e0b' },
-      { name: '+90 dias', peso: buckets['+90'], fill: '#ef4444' },
+      { name: '0-30 dias', peso: buckets['0-30'], fill: '#10b981', bucket: '0-30' },
+      { name: '30-60 dias', peso: buckets['30-60'], fill: '#3b82f6', bucket: '30-60' },
+      { name: '60-90 dias', peso: buckets['60-90'], fill: '#f59e0b', bucket: '60-90' },
+      { name: '+90 dias', peso: buckets['+90'], fill: '#ef4444', bucket: '+90' },
     ];
 
     const totalWeightWithDate = Object.values(bucketsRaw).reduce(
@@ -323,23 +332,32 @@ const IndicatorsDashboard = ({
       0
     );
 
-    return { data, bucketsRaw, totalWeightWithDate };
+    return { data, bucketsRaw, totalWeightWithDate, itemsByBucket };
   };
 
    const {
     data: agingMother,
     bucketsRaw: bucketsMother,
+    itemsByBucket: agingMotherItems,
   } = calculateSimpleAging(
     filteredMotherStock,
     'entryDate',
     'remainingWeight'
   );
 
-  const { data: agingB2 } = calculateSimpleAging(
+  const { data: agingB2, itemsByBucket: agingB2Items } = calculateSimpleAging(
     b2Stock,
     'createdAt',
     'weight'
   );
+
+  // handler de click no gráfico de aging
+  const handleAgingBarClick = (chartType, bucketKey, items) => {
+    if (!items || items.length === 0) return;
+    setDrillDown({ type: chartType, bucket: bucketKey, items });
+    setDrillSort({ key: 'dias', dir: 'desc' });
+    setDrillSearch('');
+  };
 
 
   // ---------- ESTOQUE POR TIPO ----------
@@ -784,6 +802,7 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
       {typeFilter === 'ALL' ? 'Todos os tipos' : `Tipo ${typeFilter}`}
     </span>
   </div>
+  <p className="text-[10px] text-gray-500 mb-1">Clique em uma barra para ver detalhes</p>
   <div className="flex-1 w-full min-h-0">
     <ResponsiveContainer width="100%" height="100%">
       <BarChart
@@ -817,7 +836,12 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
           }}
           formatter={(value) => [`${formatKg(value)}`, 'Peso']}
         />
-        <Bar dataKey="peso" radius={[0, 6, 6, 0]} barSize={18}>
+        <Bar dataKey="peso" radius={[0, 6, 6, 0]} barSize={18}
+          onClick={(data) => {
+            if (data && data.bucket) handleAgingBarClick('MP', data.bucket, agingMotherItems[data.bucket]);
+          }}
+          className="cursor-pointer"
+        >
           {agingMother.map((entry, index) => (
             <Cell key={`cell-mother-${index}`} fill={entry.fill} />
           ))}
@@ -900,6 +924,7 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
         Em processo
       </span>
     </div>
+    <p className="text-[10px] text-gray-500 mb-1">Clique em uma barra para ver detalhes</p>
     <div className="flex-1 w-full min-h-0">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
@@ -924,7 +949,12 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
             }}
             formatter={(value) => [`${formatKg(value)}`, 'Peso']}
           />
-          <Bar dataKey="peso" radius={[0, 6, 6, 0]} barSize={12}>
+          <Bar dataKey="peso" radius={[0, 6, 6, 0]} barSize={12}
+            onClick={(data) => {
+              if (data && data.bucket) handleAgingBarClick('B2', data.bucket, agingB2Items[data.bucket]);
+            }}
+            className="cursor-pointer"
+          >
             {agingB2.map((entry, index) => (
               <Cell key={`cell-b2-${index}`} fill={entry.fill} />
             ))}
@@ -1111,6 +1141,171 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
           </div>
         </div>
       </div>
+
+      {/* ===== DRILL-DOWN PANEL — Detalhes das bobinas ===== */}
+      {drillDown && (() => {
+        const { type, bucket, items } = drillDown;
+        const isMP = type === 'MP';
+        const title = isMP ? 'Bobinas Mãe (MP)' : 'Bobinas Slitter (B2)';
+        const bucketColors = { '0-30': '#10b981', '30-60': '#3b82f6', '60-90': '#f59e0b', '+90': '#ef4444' };
+
+        const filtered = items.filter((item) => {
+          if (!drillSearch) return true;
+          const s = drillSearch.toLowerCase();
+          const code = String(item.code || item.b2Code || '').toLowerCase();
+          const name = String(item.name || item.b2Name || item.material || '').toLowerCase();
+          const type2 = String(item.type || '').toLowerCase();
+          const nf = String(item.nf || '').toLowerCase();
+          const motherCode = String(item.motherCode || '').toLowerCase();
+          return code.includes(s) || name.includes(s) || type2.includes(s) || nf.includes(s) || motherCode.includes(s);
+        });
+
+        const sorted = [...filtered].sort((a, b) => {
+          const { key, dir } = drillSort;
+          let va, vb;
+          if (key === 'dias') { va = a._dias; vb = b._dias; }
+          else if (key === 'peso') { va = a._peso; vb = b._peso; }
+          else if (key === 'code') { va = String(a.code || a.b2Code || ''); vb = String(b.code || b.b2Code || ''); }
+          else if (key === 'type') { va = String(a.type || ''); vb = String(b.type || ''); }
+          else if (key === 'width') { va = Number(a.width) || 0; vb = Number(b.width) || 0; }
+          else if (key === 'thickness') { va = Number(a.thickness) || 0; vb = Number(b.thickness) || 0; }
+          else { va = a[key]; vb = b[key]; }
+
+          if (typeof va === 'string') {
+            const cmp = va.localeCompare(vb);
+            return dir === 'asc' ? cmp : -cmp;
+          }
+          return dir === 'asc' ? (va || 0) - (vb || 0) : (vb || 0) - (va || 0);
+        });
+
+        const toggleSort = (key) => {
+          setDrillSort((prev) =>
+            prev.key === key
+              ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+              : { key, dir: 'desc' }
+          );
+        };
+
+        const SortHeader = ({ label, sortKey, width }) => (
+          <th
+            className={`px-3 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide cursor-pointer hover:text-white transition-colors select-none ${width || ''}`}
+            onClick={() => toggleSort(sortKey)}
+          >
+            <span className="flex items-center gap-1">
+              {label}
+              <ArrowUpDown size={10} className={drillSort.key === sortKey ? 'text-cyan-400' : 'text-gray-600'} />
+            </span>
+          </th>
+        );
+
+        const totalPeso = sorted.reduce((acc, i) => acc + i._peso, 0);
+        const avgDias = sorted.length > 0 ? (sorted.reduce((acc, i) => acc + i._dias, 0) / sorted.length).toFixed(1) : 0;
+
+        return (
+          <div className="bg-slate-900/95 border border-slate-600/60 rounded-2xl px-5 py-4 shadow-2xl shadow-black/60 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <span className="inline-block w-2 h-6 rounded-full" style={{ backgroundColor: bucketColors[bucket] }} />
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    {title} — Faixa {bucket} dias
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {sorted.length} bobina{sorted.length !== 1 ? 's' : ''} · {formatKg(totalPeso)} · Idade média: {avgDias} dias
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDrillDown(null)}
+                className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-gray-400 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Busca */}
+            <div className="relative mb-3">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+              <input
+                type="text"
+                placeholder="Buscar por código, material, tipo, NF..."
+                value={drillSearch}
+                onChange={(e) => setDrillSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-slate-800/80 border border-slate-700/60 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/50"
+              />
+            </div>
+
+            {/* Tabela */}
+            <div className="max-h-[420px] overflow-y-auto rounded-xl border border-slate-700/40">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-800/90 sticky top-0 z-10">
+                  <tr>
+                    <SortHeader label="Código" sortKey="code" />
+                    {isMP ? (
+                      <>
+                        <SortHeader label="Tipo" sortKey="type" />
+                        <SortHeader label="Material" sortKey="material" />
+                        <SortHeader label="Larg." sortKey="width" />
+                        <SortHeader label="Esp." sortKey="thickness" />
+                      </>
+                    ) : (
+                      <>
+                        <SortHeader label="Nome" sortKey="name" />
+                        <SortHeader label="Mãe" sortKey="motherCode" />
+                        <SortHeader label="Larg." sortKey="width" />
+                        <SortHeader label="Esp." sortKey="thickness" />
+                      </>
+                    )}
+                    <SortHeader label="Peso (kg)" sortKey="peso" />
+                    <SortHeader label="Entrada" sortKey="dias" />
+                    <SortHeader label="Dias" sortKey="dias" />
+                    <th className="px-3 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase">NF</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-700/30">
+                  {sorted.length === 0 ? (
+                    <tr><td colSpan={isMP ? 9 : 9} className="text-center text-gray-500 py-6">Nenhuma bobina encontrada</td></tr>
+                  ) : sorted.map((item, idx) => {
+                    const code = item.code || item.b2Code || '-';
+                    const diasColor = item._dias > 90 ? 'text-red-400' : item._dias > 60 ? 'text-yellow-400' : item._dias > 30 ? 'text-blue-400' : 'text-green-400';
+                    return (
+                      <tr key={`drill-${idx}`} className="hover:bg-white/[0.03] transition-colors">
+                        <td className="px-3 py-2 text-cyan-300 font-mono text-xs">{code}</td>
+                        {isMP ? (
+                          <>
+                            <td className="px-3 py-2 text-gray-300 text-xs">{item.type || '-'}</td>
+                            <td className="px-3 py-2 text-gray-300 text-xs max-w-[140px] truncate" title={item.material}>{item.material || '-'}</td>
+                            <td className="px-3 py-2 text-gray-300 text-xs">{item.width || '-'}</td>
+                            <td className="px-3 py-2 text-gray-300 text-xs">{item.thickness || '-'}</td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-3 py-2 text-gray-300 text-xs max-w-[140px] truncate" title={item.name || item.b2Name}>{item.name || item.b2Name || '-'}</td>
+                            <td className="px-3 py-2 text-gray-400 font-mono text-xs">{item.motherCode || '-'}</td>
+                            <td className="px-3 py-2 text-gray-300 text-xs">{item.width || '-'}</td>
+                            <td className="px-3 py-2 text-gray-300 text-xs">{item.thickness || '-'}</td>
+                          </>
+                        )}
+                        <td className="px-3 py-2 text-gray-200 text-xs font-medium text-right">{formatKg(item._peso)}</td>
+                        <td className="px-3 py-2 text-gray-400 text-xs">{item._dataEntrada}</td>
+                        <td className={`px-3 py-2 text-xs font-bold ${diasColor}`}>{item._dias}d</td>
+                        <td className="px-3 py-2 text-gray-400 text-xs">{item.nf || '-'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Resumo rodapé */}
+            <div className="mt-3 flex items-center justify-between text-[11px] text-gray-500">
+              <span>Total: {sorted.length} bobina{sorted.length !== 1 ? 's' : ''}</span>
+              <span>Peso total: {formatKg(totalPeso)}</span>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
