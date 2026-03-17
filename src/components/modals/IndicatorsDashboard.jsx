@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { PieChart as PieIcon, X, ArrowUpDown, Search } from 'lucide-react';
+import { PieChart as PieIcon, X, ArrowUpDown, Search, FileDown } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
   Area,
   Bar,
@@ -481,7 +483,315 @@ const totalB2T = formatKgToT(totalB2KgReal).replace('t', '');
 
   const windowOptions = [15, 30, 60];
 
+  // ---------- FUNÇÕES DE RELATÓRIO PDF ----------
+  const dateStamp = now.toISOString().slice(0, 10);
 
+  const pdfHeader = (doc, title, subtitle) => {
+    doc.setFillColor(15, 23, 42);
+    doc.rect(0, 0, doc.internal.pageSize.getWidth(), 22, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.text(title, 14, 13);
+    if (subtitle) {
+      doc.setFontSize(8);
+      doc.text(subtitle, 14, 19);
+    }
+    doc.setTextColor(0, 0, 0);
+  };
+
+  const handleExportKpisPdf = () => {
+    const doc = new jsPDF('l', 'mm', 'a4');
+    pdfHeader(doc, 'Painel Tatico PCP - Resumo de KPIs', `Gerado em ${now.toLocaleDateString('pt-BR')} | Janela: ${windowDays} dias | Tipo MP: ${typeFilter === 'ALL' ? 'Todos' : typeFilter}`);
+    autoTable(doc, {
+      startY: 28,
+      head: [['Indicador', 'Valor', 'Unidade', 'Observacao']],
+      body: [
+        ['Estoque MP', estoqueTotalT, 't', `${formatKg(estoqueTotalKgReal)}`],
+        [`Consumo Total (${windowDays}d)`, formatKgToT(consumoTotalJanela).replace('t', ''), 't', `Media: ${consumoMedioDiario.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kg/dia`],
+        ['Cobertura de MP', coberturaEstoqueDias, 'dias', 'Estoque / consumo medio'],
+        [`Entrada MP (${windowDays}d)`, formatKgToT(entradaTotalJanela).replace('t', ''), 't', `Saldo: ${formatKgToT(saldoPeriodoKg)}`],
+        [`Producao PA (${windowDays}d)`, prodTotalT, 't', `${formatPcs(totalProdPiecesWindow)}`],
+        [`Expedicao PA (${windowDays}d)`, expedicaoTotalT, 't', `${formatPcs(totalShippingPiecesWindow)}`],
+        ['Estoque PA', formatKgToT(totalPaWeightKg).replace('t', ''), 't', `${formatPcs(totalPaPieces)}`],
+        ['Cobertura PA', coberturaPaDias, 'dias', 'Estoque / expedicao media'],
+        ['B2 em estoque', totalB2T, 't', `${totalB2Count} bobinas`],
+        ['Tempo medio B2', b2AvgAgeDays != null ? b2AvgAgeDays.toFixed(1) : 'N/A', 'dias', 'Bobinas em estoque'],
+      ],
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255] },
+      alternateRowStyles: { fillColor: [241, 245, 249] },
+    });
+    doc.save(`kpis_pcp_${dateStamp}.pdf`);
+  };
+
+  const handleExportAgingPdf = () => {
+    const doc = new jsPDF('l', 'mm', 'a4');
+    pdfHeader(doc, 'Relatorio de Aging - Bobinas Mae (MP) e B2', `Gerado em ${now.toLocaleDateString('pt-BR')} | Tipo MP: ${typeFilter === 'ALL' ? 'Todos' : typeFilter}`);
+
+    // Tabela resumo aging MP
+    doc.setFontSize(11);
+    doc.setTextColor(0, 0, 0);
+    doc.text('Aging - Bobinas Mae (MP)', 14, 30);
+    autoTable(doc, {
+      startY: 34,
+      head: [['Faixa', 'Peso (kg)', 'Peso (t)', '% do Total']],
+      body: agingMother.map((b) => [
+        b.name,
+        formatKg(b.peso),
+        formatKgToT(b.peso),
+        estoqueTotalKgReal > 0 ? `${((b.peso / estoqueTotalKgReal) * 100).toFixed(1)}%` : '0%',
+      ]),
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [88, 28, 135] },
+      alternateRowStyles: { fillColor: [245, 243, 255] },
+    });
+
+    // Tabela resumo aging B2
+    const y2 = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 10 : 80;
+    doc.text('Aging - Bobinas Slitter (B2)', 14, y2);
+    autoTable(doc, {
+      startY: y2 + 4,
+      head: [['Faixa', 'Peso (kg)', 'Peso (t)', '% do Total']],
+      body: agingB2.map((b) => [
+        b.name,
+        formatKg(b.peso),
+        formatKgToT(b.peso),
+        totalB2KgReal > 0 ? `${((b.peso / totalB2KgReal) * 100).toFixed(1)}%` : '0%',
+      ]),
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [67, 56, 202] },
+      alternateRowStyles: { fillColor: [238, 242, 255] },
+    });
+
+    // Detalhamento bobinas MP
+    const allMPItems = [...(agingMotherItems['0-30'] || []), ...(agingMotherItems['30-60'] || []), ...(agingMotherItems['60-90'] || []), ...(agingMotherItems['+90'] || [])];
+    if (allMPItems.length > 0) {
+      doc.addPage('a4', 'landscape');
+      pdfHeader(doc, 'Detalhamento - Bobinas Mae por Aging', `Total: ${allMPItems.length} bobinas | ${formatKg(allMPItems.reduce((a, i) => a + i._peso, 0))}`);
+      autoTable(doc, {
+        startY: 28,
+        head: [['Codigo', 'Tipo', 'Material', 'Largura', 'Espessura', 'Peso (kg)', 'Data Entrada', 'Dias', 'NF']],
+        body: allMPItems.sort((a, b) => b._dias - a._dias).map((item) => [
+          item.code || '-',
+          item.type || '-',
+          item.material || '-',
+          item.width || '-',
+          item.thickness || '-',
+          formatKg(item._peso),
+          item._dataEntrada || '-',
+          `${item._dias}d`,
+          item.nf || '-',
+        ]),
+        styles: { fontSize: 7, cellPadding: 2 },
+        headStyles: { fillColor: [88, 28, 135] },
+        alternateRowStyles: { fillColor: [250, 245, 255] },
+      });
+    }
+
+    // Detalhamento bobinas B2
+    const allB2Items = [...(agingB2Items['0-30'] || []), ...(agingB2Items['30-60'] || []), ...(agingB2Items['60-90'] || []), ...(agingB2Items['+90'] || [])];
+    if (allB2Items.length > 0) {
+      doc.addPage('a4', 'landscape');
+      pdfHeader(doc, 'Detalhamento - Bobinas B2 por Aging', `Total: ${allB2Items.length} bobinas | ${formatKg(allB2Items.reduce((a, i) => a + i._peso, 0))}`);
+      autoTable(doc, {
+        startY: 28,
+        head: [['Codigo', 'Nome', 'Bobina Mae', 'Largura', 'Espessura', 'Peso (kg)', 'Data Entrada', 'Dias', 'NF']],
+        body: allB2Items.sort((a, b) => b._dias - a._dias).map((item) => [
+          item.code || item.b2Code || '-',
+          item.name || item.b2Name || '-',
+          item.motherCode || '-',
+          item.width || '-',
+          item.thickness || '-',
+          formatKg(item._peso),
+          item._dataEntrada || '-',
+          `${item._dias}d`,
+          item.nf || '-',
+        ]),
+        styles: { fontSize: 7, cellPadding: 2 },
+        headStyles: { fillColor: [67, 56, 202] },
+        alternateRowStyles: { fillColor: [238, 242, 255] },
+      });
+    }
+
+    doc.save(`aging_bobinas_${dateStamp}.pdf`);
+  };
+
+  const handleExportFluxoPdf = () => {
+    const doc = new jsPDF('l', 'mm', 'a4');
+    pdfHeader(doc, `Fluxo de Aco - Entrada x Consumo (${windowDays} dias)`, `Gerado em ${now.toLocaleDateString('pt-BR')} | Tipo MP: ${typeFilter === 'ALL' ? 'Todos' : typeFilter}`);
+
+    autoTable(doc, {
+      startY: 28,
+      head: [['Data', 'Entrada (kg)', 'Consumo (kg)', 'Saldo Diario (kg)', 'Saldo Acumulado (kg)']],
+      body: flowData.map((d) => [
+        d.dateBR,
+        formatKg(d.entrada),
+        formatKg(d.consumo),
+        formatKg(d.saldoDiario),
+        formatKg(d.saldo),
+      ]),
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [30, 58, 138] },
+      alternateRowStyles: { fillColor: [239, 246, 255] },
+      foot: [[
+        'TOTAL',
+        formatKg(entradaTotalJanela),
+        formatKg(consumoTotalJanela),
+        formatKg(saldoPeriodoKg),
+        '',
+      ]],
+      footStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontStyle: 'bold' },
+    });
+
+    // Estoque por tipo
+    if (typeData.length > 0) {
+      const y2 = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 10 : 100;
+      doc.setFontSize(11);
+      doc.text('Estoque MP por Tipo', 14, y2);
+      autoTable(doc, {
+        startY: y2 + 4,
+        head: [['Tipo', 'Peso (kg)', 'Peso (t)', '% do Total']],
+        body: typeData.map((t) => [
+          t.name,
+          formatKg(t.value),
+          formatKgToT(t.value),
+          estoqueTotalKgReal > 0 ? `${((t.value / estoqueTotalKgReal) * 100).toFixed(1)}%` : '0%',
+        ]),
+        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: [30, 58, 138] },
+        alternateRowStyles: { fillColor: [239, 246, 255] },
+      });
+    }
+
+    doc.save(`fluxo_aco_${windowDays}d_${dateStamp}.pdf`);
+  };
+
+  const handleExportCompletoPdf = () => {
+    const doc = new jsPDF('l', 'mm', 'a4');
+    pdfHeader(doc, 'Relatorio Completo - Painel Tatico PCP', `Gerado em ${now.toLocaleDateString('pt-BR')} | Janela: ${windowDays} dias | Tipo MP: ${typeFilter === 'ALL' ? 'Todos' : typeFilter}`);
+
+    // KPIs
+    autoTable(doc, {
+      startY: 28,
+      head: [['Indicador', 'Valor', 'Unidade']],
+      body: [
+        ['Estoque MP', estoqueTotalT, 't'],
+        [`Consumo Total (${windowDays}d)`, formatKgToT(consumoTotalJanela).replace('t', ''), 't'],
+        ['Cobertura MP', coberturaEstoqueDias, 'dias'],
+        [`Producao PA (${windowDays}d)`, prodTotalT, 't'],
+        [`Expedicao PA (${windowDays}d)`, expedicaoTotalT, 't'],
+        ['Estoque B2', totalB2T, 't'],
+        ['Tempo medio B2', b2AvgAgeDays != null ? b2AvgAgeDays.toFixed(1) : 'N/A', 'dias'],
+      ],
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [30, 41, 59] },
+      alternateRowStyles: { fillColor: [241, 245, 249] },
+    });
+
+    // Aging MP
+    let yPos = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 10 : 80;
+    doc.setFontSize(11);
+    doc.setTextColor(0, 0, 0);
+    doc.text('Aging - Bobinas Mae', 14, yPos);
+    autoTable(doc, {
+      startY: yPos + 4,
+      head: [['Faixa', 'Peso (kg)', '% do Total']],
+      body: agingMother.map((b) => [b.name, formatKg(b.peso), estoqueTotalKgReal > 0 ? `${((b.peso / estoqueTotalKgReal) * 100).toFixed(1)}%` : '0%']),
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [88, 28, 135] },
+    });
+
+    // Aging B2
+    yPos = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 10 : 140;
+    doc.text('Aging - Bobinas B2', 14, yPos);
+    autoTable(doc, {
+      startY: yPos + 4,
+      head: [['Faixa', 'Peso (kg)', '% do Total']],
+      body: agingB2.map((b) => [b.name, formatKg(b.peso), totalB2KgReal > 0 ? `${((b.peso / totalB2KgReal) * 100).toFixed(1)}%` : '0%']),
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [67, 56, 202] },
+    });
+
+    // Fluxo de aço
+    doc.addPage('a4', 'landscape');
+    pdfHeader(doc, `Fluxo de Aco - Entrada x Consumo (${windowDays} dias)`, '');
+    autoTable(doc, {
+      startY: 28,
+      head: [['Data', 'Entrada (kg)', 'Consumo (kg)', 'Saldo Diario', 'Saldo Acumulado']],
+      body: flowData.map((d) => [d.dateBR, formatKg(d.entrada), formatKg(d.consumo), formatKg(d.saldoDiario), formatKg(d.saldo)]),
+      styles: { fontSize: 7, cellPadding: 2 },
+      headStyles: { fillColor: [30, 58, 138] },
+      alternateRowStyles: { fillColor: [239, 246, 255] },
+      foot: [['TOTAL', formatKg(entradaTotalJanela), formatKg(consumoTotalJanela), formatKg(saldoPeriodoKg), '']],
+      footStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontStyle: 'bold' },
+    });
+
+    // Top produtos
+    if (topProdData.length > 0 || topShipData.length > 0) {
+      doc.addPage('a4', 'landscape');
+      pdfHeader(doc, `Top Produtos - Producao e Expedicao (${windowDays}d)`, '');
+      if (topProdData.length > 0) {
+        doc.setFontSize(11);
+        doc.setTextColor(0, 0, 0);
+        doc.text('Top 5 - Producao', 14, 30);
+        autoTable(doc, {
+          startY: 34,
+          head: [['Codigo', 'Peso (kg)', 'Quantidade']],
+          body: topProdData.map((p) => [p.code, formatKg(p.weight), formatPcs(p.qty)]),
+          styles: { fontSize: 9, cellPadding: 3 },
+          headStyles: { fillColor: [5, 150, 105] },
+        });
+      }
+      if (topShipData.length > 0) {
+        const y3 = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 10 : 90;
+        doc.setFontSize(11);
+        doc.setTextColor(0, 0, 0);
+        doc.text('Top 5 - Expedicao', 14, y3);
+        autoTable(doc, {
+          startY: y3 + 4,
+          head: [['Codigo', 'Peso (kg)', 'Quantidade']],
+          body: topShipData.map((s) => [s.code, formatKg(s.weight), formatPcs(s.qty)]),
+          styles: { fontSize: 9, cellPadding: 3 },
+          headStyles: { fillColor: [217, 119, 6] },
+        });
+      }
+    }
+
+    // Detalhamento bobinas
+    const allMPItems = [...(agingMotherItems['0-30'] || []), ...(agingMotherItems['30-60'] || []), ...(agingMotherItems['60-90'] || []), ...(agingMotherItems['+90'] || [])];
+    if (allMPItems.length > 0) {
+      doc.addPage('a4', 'landscape');
+      pdfHeader(doc, 'Detalhamento - Bobinas Mae por Aging', `Total: ${allMPItems.length} bobinas`);
+      autoTable(doc, {
+        startY: 28,
+        head: [['Codigo', 'Tipo', 'Material', 'Largura', 'Espessura', 'Peso (kg)', 'Data Entrada', 'Dias', 'NF']],
+        body: allMPItems.sort((a, b) => b._dias - a._dias).map((item) => [
+          item.code || '-', item.type || '-', item.material || '-', item.width || '-',
+          item.thickness || '-', formatKg(item._peso), item._dataEntrada || '-', `${item._dias}d`, item.nf || '-',
+        ]),
+        styles: { fontSize: 7, cellPadding: 2 },
+        headStyles: { fillColor: [88, 28, 135] },
+      });
+    }
+
+    const allB2Items = [...(agingB2Items['0-30'] || []), ...(agingB2Items['30-60'] || []), ...(agingB2Items['60-90'] || []), ...(agingB2Items['+90'] || [])];
+    if (allB2Items.length > 0) {
+      doc.addPage('a4', 'landscape');
+      pdfHeader(doc, 'Detalhamento - Bobinas B2 por Aging', `Total: ${allB2Items.length} bobinas`);
+      autoTable(doc, {
+        startY: 28,
+        head: [['Codigo', 'Nome', 'Bobina Mae', 'Largura', 'Espessura', 'Peso (kg)', 'Data Entrada', 'Dias', 'NF']],
+        body: allB2Items.sort((a, b) => b._dias - a._dias).map((item) => [
+          item.code || item.b2Code || '-', item.name || item.b2Name || '-', item.motherCode || '-',
+          item.width || '-', item.thickness || '-', formatKg(item._peso), item._dataEntrada || '-', `${item._dias}d`, item.nf || '-',
+        ]),
+        styles: { fontSize: 7, cellPadding: 2 },
+        headStyles: { fillColor: [67, 56, 202] },
+      });
+    }
+
+    doc.save(`relatorio_completo_pcp_${dateStamp}.pdf`);
+  };
 
   // ---------- KpiCard ----------
   // ---------- KpiCard ----------
@@ -569,6 +879,34 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
               ))}
             </select>
           </div>
+        </div>
+
+        {/* Botões de relatório PDF */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleExportKpisPdf}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-lg bg-slate-800/80 border border-slate-700 text-gray-300 hover:bg-cyan-900/40 hover:text-cyan-300 hover:border-cyan-700/50 transition-all"
+          >
+            <FileDown size={13} /> KPIs
+          </button>
+          <button
+            onClick={handleExportAgingPdf}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-lg bg-slate-800/80 border border-slate-700 text-gray-300 hover:bg-purple-900/40 hover:text-purple-300 hover:border-purple-700/50 transition-all"
+          >
+            <FileDown size={13} /> Aging
+          </button>
+          <button
+            onClick={handleExportFluxoPdf}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-lg bg-slate-800/80 border border-slate-700 text-gray-300 hover:bg-blue-900/40 hover:text-blue-300 hover:border-blue-700/50 transition-all"
+          >
+            <FileDown size={13} /> Fluxo
+          </button>
+          <button
+            onClick={handleExportCompletoPdf}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-lg bg-cyan-900/50 border border-cyan-700/40 text-cyan-300 hover:bg-cyan-800/60 hover:text-cyan-200 transition-all"
+          >
+            <FileDown size={13} /> Completo
+          </button>
         </div>
 
         <div className="flex items-center gap-2 text-[10px] text-gray-500">
