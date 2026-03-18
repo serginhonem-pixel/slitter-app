@@ -2128,6 +2128,7 @@ export default function App() {
   const USE_LOCAL_JSON = isLocalHost();
   // true no npm run dev, false no build/Vercel
   const ADMIN_EMAIL = 'pcp@metalosa.com.br';
+  const ADMIN_EMAILS = [ADMIN_EMAIL, 'pcp5@metalosa.com.br'];
   const B2_CORRECTION_OWNER_EMAIL = 'pcp@metalosa.com.br';
   const OPERATIONS_ONLY_EMAIL = 'carlos@metalosa.com.br';
   const LOCAL_DEV_USER = {
@@ -2135,7 +2136,7 @@ export default function App() {
     email: ADMIN_EMAIL,
     displayName: 'Dev Local',
   };
-  const isAdminUser = user?.email?.toLowerCase() === ADMIN_EMAIL;
+  const isAdminUser = ADMIN_EMAILS.includes(String(user?.email || '').toLowerCase());
   const isOperationsOnlyUser =
     String(user?.email || '').toLowerCase() === OPERATIONS_ONLY_EMAIL;
   const canUseB2Correction =
