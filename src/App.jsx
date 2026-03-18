@@ -1998,6 +1998,7 @@ export default function App() {
     material: '',
     type: '',
     nf: '',
+    filialDestino: '',
     quantity: '1',
     entryDate: new Date().toISOString().split('T')[0],
   });
@@ -3271,6 +3272,7 @@ export default function App() {
     const basePayload = {
       code: adminMotherForm.code,
       nf: adminMotherForm.nf || '',
+      filialDestino: adminMotherForm.filialDestino || '',
       weight,
       originalWeight: weight,
       remainingWeight: weight,
@@ -3315,6 +3317,7 @@ export default function App() {
         material: '',
         type: '',
         nf: '',
+        filialDestino: '',
         quantity: '1',
         entryDate: new Date().toISOString().split('T')[0],
       });
@@ -10702,7 +10705,7 @@ safeCutting.forEach((c) => {
     const motherFiltered = motherStock.filter((coil) => {
       const search = normalizeSearch(adminMotherFilter);
       if (!search) return true;
-      const haystack = `${coil.code || ''} ${coil.material || ''} ${coil.nf || ''} ${coil.width || ''}`;
+      const haystack = `${coil.code || ''} ${coil.material || ''} ${coil.nf || ''} ${coil.width || ''} ${coil.filialDestino || ''}`;
       return normalizeSearch(haystack).includes(search);
     });
     const childFiltered = childStock.filter((coil) => {
@@ -10985,6 +10988,11 @@ safeCutting.forEach((c) => {
                   label="NF"
                   value={adminMotherForm.nf}
                   onChange={(e) => setAdminMotherForm((prev) => ({ ...prev, nf: e.target.value }))}
+                />
+                <Input
+                  label="Filial Destino"
+                  value={adminMotherForm.filialDestino}
+                  onChange={(e) => setAdminMotherForm((prev) => ({ ...prev, filialDestino: e.target.value }))}
                 />
                 <Input
                   label="Quantidade"
@@ -11434,6 +11442,7 @@ safeCutting.forEach((c) => {
                     <tr>
                       <th className="p-2">Código</th>
                       <th className="p-2">Material</th>
+                      <th className="p-2">Filial</th>
                       <th className="p-2 text-right">Largura</th>
                       <th className="p-2 text-right">Saldo (kg)</th>
                       <th className="p-2">NF</th>
@@ -11443,13 +11452,14 @@ safeCutting.forEach((c) => {
                   <tbody className="divide-y divide-gray-800">
                     {motherPageData.items.length === 0 ? (
                       <tr>
-                        <td colSpan="6" className="p-4 text-center text-gray-500">Sem saldo.</td>
+                        <td colSpan="7" className="p-4 text-center text-gray-500">Sem saldo.</td>
                       </tr>
                     ) : (
                       motherPageData.items.map((coil) => (
                         <tr key={coil.id} className="hover:bg-gray-800/40">
                           <td className="p-2 font-mono text-xs">{coil.code || '-'}</td>
                           <td className="p-2">{coil.material || '-'}</td>
+                          <td className="p-2 text-xs">{coil.filialDestino || '-'}</td>
                           <td className="p-2 text-right">{coil.width || '-'}</td>
                           <td className="p-2 text-right font-mono">
                             {Number(coil.remainingWeight ?? coil.weight ?? 0).toLocaleString('pt-BR', {

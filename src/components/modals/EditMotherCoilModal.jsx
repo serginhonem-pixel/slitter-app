@@ -62,6 +62,12 @@ const EditMotherCoilModal = ({ coil, onClose, onSave }) => {
              onChange={e => setEditData({...editData, entryDate: e.target.value})}
            />
 
+           <Input
+             label="Filial Destino"
+             value={editData.filialDestino || ''}
+             onChange={e => setEditData({...editData, filialDestino: e.target.value})}
+           />
+
            {/* PESO E LARGURA */}
            <div className="grid grid-cols-2 gap-4">
               <Input 
