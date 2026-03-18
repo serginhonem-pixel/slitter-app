@@ -1523,6 +1523,7 @@ const EditChildCoilModal = ({ coil, onClose, onSave }) => {
 const StockDetailsModal = ({ code, coils = [], onClose, onReprint, type, motherCatalog = [] }) => {
   const isMother = type === 'mother';
   const safeCoils = Array.isArray(coils) ? coils : [];
+  const [selectedFilialDestino, setSelectedFilialDestino] = useState('');
   const catalogMatch = isMother
     ? (motherCatalog || []).find((item) => String(item.code) === String(code))
     : null;
@@ -1531,13 +1532,25 @@ const StockDetailsModal = ({ code, coils = [], onClose, onReprint, type, motherC
     safeCoils[0]?.material ||
     safeCoils[0]?.b2Name ||
     (isMother ? `Bobina ${code}` : `Item ${code}`);
-  const totalWeight = safeCoils.reduce(
+  const filialDestinoOptions = [
+    ...new Set(
+      safeCoils
+        .map((coil) => String(coil.filialDestino || '').trim())
+        .filter(Boolean),
+    ),
+  ].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+  const filteredCoils = isMother && selectedFilialDestino
+    ? safeCoils.filter(
+        (coil) => String(coil.filialDestino || '').trim() === selectedFilialDestino,
+      )
+    : safeCoils;
+  const totalWeight = filteredCoils.reduce(
     (sum, coil) => sum + (Number(coil.remainingWeight ?? coil.weight) || 0),
     0,
   );
   const uniqueWidths = [
     ...new Set(
-      safeCoils.map((coil) => coil.width || catalogMatch?.width).filter(Boolean),
+      filteredCoils.map((coil) => coil.width || catalogMatch?.width).filter(Boolean),
     ),
   ];
   const normalizeThicknessValue = (value) => {
@@ -1583,7 +1596,7 @@ const StockDetailsModal = ({ code, coils = [], onClose, onReprint, type, motherC
 
   const uniqueThickness = [
     ...new Set(
-      safeCoils
+      filteredCoils
         .map((coil) => {
           const parsed = getThicknessNumber(coil);
           return parsed !== null ? `${formatThicknessNumber(parsed)}mm` : null;
@@ -1593,13 +1606,13 @@ const StockDetailsModal = ({ code, coils = [], onClose, onReprint, type, motherC
   ];
   const nfSet = [
     ...new Set(
-      safeCoils
+      filteredCoils
         .map((coil) => (isMother ? coil.nf : coil.motherCode))
         .filter(Boolean),
     ),
   ];
   const lastEntry =
-    safeCoils
+    filteredCoils
       .map((coil) => coil.entryDate || coil.date || coil.createdAt)
       .filter(Boolean)
       .sort((a, b) => new Date(b) - new Date(a))[0] || '-';
@@ -1609,7 +1622,7 @@ const StockDetailsModal = ({ code, coils = [], onClose, onReprint, type, motherC
       label: 'Peso Total',
       value: `${totalWeight.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kg`,
     },
-    { label: 'Bobinas em Estoque', value: safeCoils.length },
+    { label: 'Bobinas em Estoque', value: filteredCoils.length },
     { label: 'Larguras', value: uniqueWidths.length ? uniqueWidths.join(', ') : '-' },
     {
       label: 'Espessuras',
@@ -1620,13 +1633,14 @@ const StockDetailsModal = ({ code, coils = [], onClose, onReprint, type, motherC
   ];
 
   const handleExport = () => {
-    if (!safeCoils.length) return alert('Nada para exportar.');
+    if (!filteredCoils.length) return alert('Nada para exportar.');
 
-    const dataToExport = safeCoils.map((coil) => ({
+    const dataToExport = filteredCoils.map((coil) => ({
       'ID Rastreio': coil.id,
       'Data Entrada/Corte': coil.entryDate || coil.date || coil.createdAt || '-',
       'Codigo Item': code,
       Descricao: isMother ? catalogMatch?.description || coil.material : coil.b2Name,
+      ...(isMother ? { 'Filial Destino': coil.filialDestino || '-' } : {}),
       Largura: coil.width || catalogMatch?.width || '-',
       Espessura: (() => {
         const parsed = getThicknessNumber(coil);
@@ -1667,7 +1681,7 @@ const StockDetailsModal = ({ code, coils = [], onClose, onReprint, type, motherC
             <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Codigo</p>
             <h3 className="text-white font-bold text-2xl leading-tight">{code}</h3>
             <p className="text-emerald-400 font-semibold text-sm mb-1">{description}</p>
-            <p className="text-xs text-gray-500">{safeCoils.length} bobinas disponiveis</p>
+            <p className="text-xs text-gray-500">{filteredCoils.length} bobinas disponiveis</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white">
             <X size={20} />
@@ -1686,11 +1700,34 @@ const StockDetailsModal = ({ code, coils = [], onClose, onReprint, type, motherC
           ))}
         </div>
 
+        {isMother && (
+          <div className="p-4 border-b border-gray-800 bg-gray-900/40">
+            <div className="max-w-xs">
+              <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-2">
+                Filial Destino
+              </label>
+              <select
+                value={selectedFilialDestino}
+                onChange={(e) => setSelectedFilialDestino(e.target.value)}
+                className="w-full p-3 border border-gray-700 rounded-xl bg-gray-900 text-white outline-none text-sm"
+              >
+                <option value="">Todas</option>
+                {filialDestinoOptions.map((filial) => (
+                  <option key={filial} value={filial}>
+                    {filial}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto custom-scrollbar-dark">
           <table className="w-full text-xs md:text-sm text-left text-gray-300">
             <thead className="bg-gray-800 text-gray-400 sticky top-0 shadow-md text-[11px] uppercase tracking-wide">
               <tr>
                 <th className="p-3">ID Rastreio</th>
+                {isMother && <th className="p-3">Filial Destino</th>}
                 <th className="p-3">Largura</th>
                 <th className="p-3">Espessura</th>
                 <th className="p-3">Tipo</th>
@@ -1702,13 +1739,14 @@ const StockDetailsModal = ({ code, coils = [], onClose, onReprint, type, motherC
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
-              {safeCoils.map((coil) => {
+              {filteredCoils.map((coil) => {
                 const currentWeight = Number(coil.remainingWeight ?? coil.weight) || 0;
                 const statusLabel = coil.status === 'stock' ? 'Estoque' : 'Indisponivel';
                 const statusColor = coil.status === 'stock' ? 'text-emerald-400' : 'text-amber-300';
                 return (
                   <tr key={coil.id} className="hover:bg-gray-700/40 transition-colors">
                     <td className="p-3 font-mono text-[11px] text-blue-300">{coil.id}</td>
+                    {isMother && <td className="p-3 text-gray-300">{coil.filialDestino || '-'}</td>}
                     <td className="p-3 text-gray-200">
                       {coil.width || catalogMatch?.width
                         ? `${coil.width || catalogMatch?.width}mm`
