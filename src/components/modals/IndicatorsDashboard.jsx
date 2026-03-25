@@ -84,8 +84,10 @@ const IndicatorsDashboard = ({
   productionLogs = [],
 }) => {
   // filtros
-  const [typeFilter, setTypeFilter] = useState('ALL'); // tipo MP
+  const [selectedTypes, setSelectedTypes] = useState([]); // tipos MP
   const [windowDays, setWindowDays] = useState(15); // 15 / 30 / 60
+  const [customWindowInput, setCustomWindowInput] = useState('15');
+  const [isTypeFilterOpen, setIsTypeFilterOpen] = useState(false);
 
   // drill-down: { type: 'MP'|'B2', bucket: '0-30'|..., items: [...] }
   const [drillDown, setDrillDown] = useState(null);
@@ -198,12 +200,29 @@ const IndicatorsDashboard = ({
   const stockOnly = safeMother.filter((c) => c.status === 'stock');
   const typeOptionsSet = new Set(stockOnly.map((c) => c.type || 'OUTROS'));
   const typeOptions = Array.from(typeOptionsSet).sort();
+  const hasTypeFilter = selectedTypes.length > 0;
+  const typeFilterExportLabel = hasTypeFilter ? selectedTypes.join(', ') : 'Todos';
+  const typeFilterUiLabel = !hasTypeFilter
+    ? 'Todos os tipos'
+    : selectedTypes.length <= 2
+      ? selectedTypes.join(', ')
+      : `${selectedTypes.length} tipos`;
+
+  const isTypeSelected = (type) => selectedTypes.includes(type);
+
+  const toggleTypeSelection = (type) => {
+    setSelectedTypes((prev) => (
+      prev.includes(type)
+        ? prev.filter((item) => item !== type)
+        : [...prev, type]
+    ));
+  };
 
   // ---------- APLICA FILTRO DE TIPO ----------
   const filteredMotherStock = stockOnly.filter((c) => {
     const t = c.type || 'OUTROS';
-    if (typeFilter === 'ALL') return true;
-    return t === typeFilter;
+    if (!hasTypeFilter) return true;
+    return selectedTypes.includes(t);
   });
 
   // Estoque total em kg (MP) — usa remainingWeight, se tiver
@@ -214,9 +233,32 @@ const IndicatorsDashboard = ({
 
   const filteredMotherForFlow = safeMother.filter((c) => {
     const t = c.type || 'OUTROS';
-    if (typeFilter === 'ALL') return true;
-    return t === typeFilter;
+    if (!hasTypeFilter) return true;
+    return selectedTypes.includes(t);
   });
+
+  const motherTypeById = safeMother.reduce((acc, coil) => {
+    if (coil?.id != null) acc[String(coil.id)] = coil.type || 'OUTROS';
+    return acc;
+  }, {});
+
+  const motherTypeByCode = safeMother.reduce((acc, coil) => {
+    if (coil?.code != null) acc[String(coil.code)] = coil.type || 'OUTROS';
+    return acc;
+  }, {});
+
+  const getCutLogType = (log) => {
+    if (log?.motherType) return log.motherType;
+    if (log?.motherId != null) {
+      const byId = motherTypeById[String(log.motherId)];
+      if (byId) return byId;
+    }
+    if (log?.motherCode != null) {
+      const byCode = motherTypeByCode[String(log.motherCode)];
+      if (byCode) return byCode;
+    }
+    return 'OUTROS';
+  };
 
   // ---------- JANELA DE DATAS ----------
   const lastDays = getLastNDays(windowDays);
@@ -267,7 +309,10 @@ const IndicatorsDashboard = ({
       toNumber(item.weight ?? item.originalWeight ?? item.remainingWeight ?? 0)
   );
   const cutMap = groupByDate(
-    safeCutting,
+    safeCutting.filter((log) => {
+      if (!hasTypeFilter) return true;
+      return selectedTypes.includes(getCutLogType(log));
+    }),
     ['date', 'createdAt', 'timestamp'],
     (item) => toNumber(item.inputWeight ?? item.totalWeight ?? item.weight ?? 0)
   );
@@ -482,6 +527,11 @@ const totalB2T = formatKgToT(totalB2KgReal).replace('t', '');
   const topShipData = buildTopProducts(filteredShippingWindow, 'quantity');
 
   const windowOptions = [15, 30, 60];
+  const applyWindowDays = (rawValue) => {
+    const sanitized = Math.max(1, Math.min(365, parseInt(String(rawValue || '').replace(/\D/g, ''), 10) || windowDays));
+    setWindowDays(sanitized);
+    setCustomWindowInput(String(sanitized));
+  };
 
   // ---------- FUNÇÕES DE RELATÓRIO PDF ----------
   const dateStamp = now.toISOString().slice(0, 10);
@@ -501,7 +551,7 @@ const totalB2T = formatKgToT(totalB2KgReal).replace('t', '');
 
   const handleExportKpisPdf = () => {
     const doc = new jsPDF('l', 'mm', 'a4');
-    pdfHeader(doc, 'Painel Tatico PCP - Resumo de KPIs', `Gerado em ${now.toLocaleDateString('pt-BR')} | Janela: ${windowDays} dias | Tipo MP: ${typeFilter === 'ALL' ? 'Todos' : typeFilter}`);
+    pdfHeader(doc, 'Painel Tatico PCP - Resumo de KPIs', `Gerado em ${now.toLocaleDateString('pt-BR')} | Janela: ${windowDays} dias | Tipo MP: ${typeFilterExportLabel}`);
     autoTable(doc, {
       startY: 28,
       head: [['Indicador', 'Valor', 'Unidade', 'Observacao']],
@@ -526,7 +576,7 @@ const totalB2T = formatKgToT(totalB2KgReal).replace('t', '');
 
   const handleExportAgingPdf = () => {
     const doc = new jsPDF('l', 'mm', 'a4');
-    pdfHeader(doc, 'Relatorio de Aging - Bobinas Mae (MP) e B2', `Gerado em ${now.toLocaleDateString('pt-BR')} | Tipo MP: ${typeFilter === 'ALL' ? 'Todos' : typeFilter}`);
+    pdfHeader(doc, 'Relatorio de Aging - Bobinas Mae (MP) e B2', `Gerado em ${now.toLocaleDateString('pt-BR')} | Tipo MP: ${typeFilterExportLabel}`);
 
     // Tabela resumo aging MP
     doc.setFontSize(11);
@@ -618,7 +668,7 @@ const totalB2T = formatKgToT(totalB2KgReal).replace('t', '');
 
   const handleExportFluxoPdf = () => {
     const doc = new jsPDF('l', 'mm', 'a4');
-    pdfHeader(doc, `Fluxo de Aco - Entrada x Consumo (${windowDays} dias)`, `Gerado em ${now.toLocaleDateString('pt-BR')} | Tipo MP: ${typeFilter === 'ALL' ? 'Todos' : typeFilter}`);
+    pdfHeader(doc, `Fluxo de Aco - Entrada x Consumo (${windowDays} dias)`, `Gerado em ${now.toLocaleDateString('pt-BR')} | Tipo MP: ${typeFilterExportLabel}`);
 
     autoTable(doc, {
       startY: 28,
@@ -668,7 +718,7 @@ const totalB2T = formatKgToT(totalB2KgReal).replace('t', '');
 
   const handleExportCompletoPdf = () => {
     const doc = new jsPDF('l', 'mm', 'a4');
-    pdfHeader(doc, 'Relatorio Completo - Painel Tatico PCP', `Gerado em ${now.toLocaleDateString('pt-BR')} | Janela: ${windowDays} dias | Tipo MP: ${typeFilter === 'ALL' ? 'Todos' : typeFilter}`);
+    pdfHeader(doc, 'Relatorio Completo - Painel Tatico PCP', `Gerado em ${now.toLocaleDateString('pt-BR')} | Janela: ${windowDays} dias | Tipo MP: ${typeFilterExportLabel}`);
 
     // KPIs
     autoTable(doc, {
@@ -847,7 +897,7 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
                 <button
                   key={opt}
                   type="button"
-                  onClick={() => setWindowDays(opt)}
+                  onClick={() => applyWindowDays(opt)}
                   className={`px-3 py-1 text-[11px] font-medium rounded-full transition
                     ${
                       windowDays === opt
@@ -859,25 +909,75 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
                 </button>
               ))}
             </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                max="365"
+                value={customWindowInput}
+                onChange={(e) => setCustomWindowInput(e.target.value)}
+                onBlur={() => applyWindowDays(customWindowInput)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    applyWindowDays(customWindowInput);
+                  }
+                }}
+                className="w-20 bg-slate-900/80 border border-slate-700 text-xs text-gray-100 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+              />
+              <span className="text-[10px] uppercase text-gray-500 tracking-wide">
+                dias custom
+              </span>
+            </div>
           </div>
 
           {/* Filtro de tipo de MP */}
-          <div className="flex flex-col items-end gap-1">
+          <div className="relative flex flex-col items-end gap-1">
             <span className="text-[10px] uppercase text-gray-500 tracking-wide">
               Tipo de MP
             </span>
-            <select
-              className="bg-slate-900/80 border border-slate-700 text-xs text-gray-100 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-cyan-500"
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
+            <button
+              type="button"
+              onClick={() => setIsTypeFilterOpen((prev) => !prev)}
+              className="min-w-[180px] flex items-center justify-between gap-2 bg-slate-900/80 border border-slate-700 text-xs text-gray-100 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-cyan-500"
             >
-              <option value="ALL">Todos os tipos</option>
-              {typeOptions.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
+              <span className="truncate text-left">{typeFilterUiLabel}</span>
+              <ArrowUpDown size={12} className="text-gray-400 shrink-0" />
+            </button>
+            {isTypeFilterOpen && (
+              <div className="absolute right-0 top-full mt-1 z-30 w-56 rounded-xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/50 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTypes([]);
+                    setIsTypeFilterOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 text-left text-xs transition ${
+                    !hasTypeFilter
+                      ? 'bg-cyan-500/15 text-cyan-300'
+                      : 'text-gray-200 hover:bg-slate-800'
+                  }`}
+                >
+                  Todos os tipos
+                </button>
+                <div className="max-h-64 overflow-y-auto border-t border-slate-800">
+                  {typeOptions.map((t) => (
+                    <label
+                      key={t}
+                      className="flex items-center gap-2 px-3 py-2 text-xs text-gray-200 hover:bg-slate-800 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isTypeSelected(t)}
+                        onChange={() => toggleTypeSelection(t)}
+                        className="rounded border-slate-600 bg-slate-950 text-cyan-500 focus:ring-cyan-500"
+                      />
+                      <span className="truncate">{t}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -932,7 +1032,7 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
         color="text-red-400"
         subText={`Media: ${consumoMedioDiario.toLocaleString('pt-BR', {
           maximumFractionDigits: 0,
-        })} kg/dia`}
+        })} kg/dia${hasTypeFilter ? ` • ${typeFilterUiLabel}` : ''}`}
       />
       <KpiCard
         title="Consumo Medio"
@@ -941,7 +1041,7 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
         })}
         unit="kg/dia"
         color="text-indigo-400"
-        subText={`Total de ${formatKg(consumoTotalJanela)} em ${windowDays} dias`}
+        subText={`Total de ${formatKg(consumoTotalJanela)} em ${windowDays} dias${hasTypeFilter ? ` • ${typeFilterUiLabel}` : ''}`}
       />
       <KpiCard
         title="Cobertura de MP"
@@ -1033,7 +1133,7 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
         Fluxo de Aço: Entrada x Consumo
       </h3>
       <p className="text-[11px] text-gray-500 mt-0.5">
-        Janela de {windowDays} dias • saldo acumulado em kg
+        Janela de {windowDays} dias • saldo acumulado em kg{hasTypeFilter ? ` • ${typeFilterUiLabel}` : ''}
       </p>
     </div>
     <span className="text-[11px] text-gray-500">
@@ -1137,7 +1237,7 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
       Aging: Bobinas Mãe (MP)
     </h3>
     <span className="text-[10px] text-purple-300 bg-purple-900/30 px-2 py-0.5 rounded-full">
-      {typeFilter === 'ALL' ? 'Todos os tipos' : `Tipo ${typeFilter}`}
+      {typeFilterUiLabel}
     </span>
   </div>
   <p className="text-[10px] text-gray-500 mb-1">Clique em uma barra para ver detalhes</p>
