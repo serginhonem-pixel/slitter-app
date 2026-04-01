@@ -359,13 +359,78 @@ const InsightList = ({ title, items, valueLabel }) => (
   </Card>
 );
 
-const DailyGlobalModal = ({ group, onClose, onViewCutConsumption }) => {
-  const { type, date, events, totalQty, totalWeight } = group;
+const DailyGlobalModal = ({ group, childCoils = [], onClose, onViewCutConsumption }) => {
+  const { type, date, events } = group;
+  const [modalSearch, setModalSearch] = useState('');
 
   const typeKey = normalizeTypeKey(type);
   const displayEvents = Array.isArray(events) ? events : [];
+  const showCutAction = typeKey === 'CORTE' && typeof onViewCutConsumption === 'function';
+  const showB2Column = typeKey === 'PRODUCAO';
+  const productionEventsWithB2 = showB2Column
+    ? displayEvents.map((item) => {
+        const childIds = Array.isArray(item?.childIds) ? item.childIds.map(String) : [];
+        const linkedChildren = childIds
+          .map((childId) => childCoils.find((coil) => String(coil?.id) === childId))
+          .filter(Boolean);
+
+        if (linkedChildren.length === 0) {
+          return {
+            ...item,
+            b2Display: item?.b2Label || '-',
+            b2WeightDisplay: '-',
+          };
+        }
+
+        const uniqueB2 = Array.from(
+          linkedChildren.reduce((acc, coil) => {
+            const code = String(coil?.b2Code || coil?.code || item?.b2Code || '').trim();
+            const name = String(coil?.b2Name || coil?.name || item?.b2Name || '').trim();
+            const key = `${code}|${name}|${Number(coil?.weight || coil?.remainingWeight || 0)}`;
+            if (!acc.has(key)) {
+              const weight = Number(coil?.weight ?? coil?.remainingWeight ?? 0) || 0;
+              const labelBase = [code, name].filter(Boolean).join(' - ') || item?.b2Label || '-';
+              acc.set(key, {
+                label: labelBase,
+                weight: weight.toLocaleString('pt-BR', {
+                  minimumFractionDigits: 1,
+                  maximumFractionDigits: 1,
+                }),
+              });
+            }
+            return acc;
+          }, new Map()).values(),
+        );
+
+        return {
+          ...item,
+          b2Display: uniqueB2.map((entry) => entry.label).join(', ') || item?.b2Label || '-',
+          b2WeightDisplay: uniqueB2.map((entry) => `${entry.weight} kg`).join(', ') || '-',
+        };
+      })
+    : displayEvents;
+  const searchTerm = String(modalSearch || '').trim().toLowerCase();
+  const filteredEvents = !searchTerm
+    ? productionEventsWithB2
+    : productionEventsWithB2.filter((item) =>
+        [
+          item?.movementId,
+          item?.id,
+          item?.code,
+          item?.desc,
+          item?.b2Code,
+          item?.b2Name,
+          item?.b2Label,
+          item?.b2Display,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(searchTerm),
+      );
   const displayCount = displayEvents.length;
-  const displayTotals = displayEvents.reduce(
+  const filteredCount = filteredEvents.length;
+  const displayTotals = filteredEvents.reduce(
     (acc, item) => {
       const qty = Number(item?.qty) || 0;
       const weight = Number(item?.weight) || 0;
@@ -383,11 +448,14 @@ const DailyGlobalModal = ({ group, onClose, onViewCutConsumption }) => {
   };
 
   const title = titleMap[typeKey] || type;
-  const showCutAction = typeKey === 'CORTE' && typeof onViewCutConsumption === 'function';
+
+  useEffect(() => {
+    setModalSearch('');
+  }, [date, type]);
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-4xl max-h-[80vh] flex flex-col shadow-2xl">
+      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-5xl max-h-[80vh] flex flex-col shadow-2xl">
         <div className="p-4 border-b border-gray-700 flex justify-between items-center">
           <div>
             <h3 className="text-white font-bold text-lg">{title}</h3>
@@ -405,9 +473,28 @@ const DailyGlobalModal = ({ group, onClose, onViewCutConsumption }) => {
         </div>
 
         <div className="p-4 overflow-y-auto flex-1 custom-scrollbar-dark">
-          {displayEvents.length === 0 ? (
+          <div className="mb-4">
+            <input
+              type="text"
+              value={modalSearch}
+              onChange={(e) => setModalSearch(e.target.value)}
+              placeholder={
+                showB2Column
+                  ? 'Buscar por ID, lote, descricao ou bobina 2...'
+                  : 'Buscar por ID, codigo ou descricao...'
+              }
+              className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white outline-none focus:border-blue-500"
+            />
+            {modalSearch && (
+              <p className="mt-2 text-xs text-gray-500">
+                Mostrando {filteredCount} de {displayCount} registro
+                {displayCount !== 1 ? 's' : ''}.
+              </p>
+            )}
+          </div>
+          {filteredEvents.length === 0 ? (
             <div className="text-center text-gray-500 py-8">
-              Nenhum registro.
+              {displayEvents.length === 0 ? 'Nenhum registro.' : 'Nenhum registro encontrado na busca.'}
             </div>
           ) : (
             <table className="w-full text-sm text-left text-gray-300">
@@ -415,6 +502,8 @@ const DailyGlobalModal = ({ group, onClose, onViewCutConsumption }) => {
                 <tr>
                   <th className="p-2">Movimento ID</th>
                   <th className="p-2">{typeKey === 'PRODUCAO' ? 'Lote' : 'Produto'}</th>
+                  {showB2Column && <th className="p-2">Bobina 2</th>}
+                  {showB2Column && <th className="p-2 text-right">Peso B2</th>}
                   <th className="p-2">Descrição</th>
                   <th className="p-2 text-right">Qtd</th>
                   <th className="p-2 text-right">Peso</th>
@@ -422,7 +511,7 @@ const DailyGlobalModal = ({ group, onClose, onViewCutConsumption }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-700">
-                {displayEvents.map((e, idx) => (
+                {filteredEvents.map((e, idx) => (
                   <tr key={idx} className="hover:bg-gray-700/50">
                     <td className="p-2 font-mono text-xs text-blue-300">
                       {e.movementId || '-'}
@@ -430,6 +519,28 @@ const DailyGlobalModal = ({ group, onClose, onViewCutConsumption }) => {
                     <td className="p-2 font-mono text-xs text-blue-300">
                       {typeKey === 'PRODUCAO' ? e.id : (e.code || e.id)}
                     </td>
+                    {showB2Column && (
+                      <td className="p-2 text-xs text-amber-200">
+                        {(String(e.b2Display || e.b2Label || '-')
+                          .split(', ')
+                          .filter(Boolean)).map((line, lineIdx) => (
+                          <div key={`${e.movementId || e.id || idx}-b2-${lineIdx}`} className="leading-relaxed">
+                            {line}
+                          </div>
+                        ))}
+                      </td>
+                    )}
+                    {showB2Column && (
+                      <td className="p-2 text-xs text-right font-mono text-amber-200">
+                        {(String(e.b2WeightDisplay || '-')
+                          .split(', ')
+                          .filter(Boolean)).map((line, lineIdx) => (
+                          <div key={`${e.movementId || e.id || idx}-b2w-${lineIdx}`} className="leading-relaxed">
+                            {line}
+                          </div>
+                        ))}
+                      </td>
+                    )}
                     <td className="p-2 text-gray-300">
                       {e.desc}
                     </td>
@@ -8777,6 +8888,13 @@ safeCutting.forEach((c) => {
     movementId: p.id || '',
     code,
     desc: `${code} - ${p.productName || '-'}`,
+    b2Code: p.b2Code || '',
+    b2Name: p.b2Name || '',
+    b2Label:
+      [String(p.b2Code || '').trim(), String(p.b2Name || '').trim()]
+        .filter(Boolean)
+        .join(' - ') || '-',
+    childIds: Array.isArray(p.childIds) ? p.childIds : [],
     qty,
     unitWeight,                                // (se quiser usar depois)
     weight: totalWeight,                       // agora vem do mapa de peso
@@ -14451,6 +14569,7 @@ const handleUploadJSONToFirebase = async (e) => {
       {selectedGlobalGroup && (
         <DailyGlobalModal
           group={selectedGlobalGroup}
+          childCoils={childCoils}
           onViewCutConsumption={handleOpenCutConsumptionModal}
           onClose={() => setSelectedGlobalGroup(null)}
         />
