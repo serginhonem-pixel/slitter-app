@@ -8945,8 +8945,13 @@ safeCutting.forEach((c) => {
       const term = reportSearch.toLowerCase();
       const text = (
         String(e.id) +
+        String(e.code) +
         String(e.desc) +
-        String(e.type)
+        String(e.type) +
+        String(e.b2Code || '') +
+        String(e.b2Name || '') +
+        String(e.b2Label || '') +
+        String(e.b2WeightDisplay || '')
       ).toLowerCase();
       if (!text.includes(term)) return;
     }
