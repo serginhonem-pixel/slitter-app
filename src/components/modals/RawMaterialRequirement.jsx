@@ -3200,13 +3200,29 @@ const RawMaterialRequirement = ({
               );
               const hasFirm = groupOrders.some((o) => (o.status || "").toLowerCase() === "firme");
               const hasPred = groupOrders.some((o) => (o.status || "").toLowerCase() !== "firme");
+
+              // Cruzar com EDI Usiminas: mesmo tipo + espessura
+              const gType = g.type.trim().toUpperCase();
+              const gThick = parseFloat(String(g.thickness).replace(",", ".")) || 0;
+              const ediMatches = ediOrders.filter((o) => {
+                const oType = (o.productType || "").trim().toUpperCase();
+                const oThick = parseFloat(o.thickness) || 0;
+                const pendingKg = Math.max(0, (o.confirmedWeightKg || 0) - (o.dispatchedKg || 0));
+                return oType === gType && Math.abs(oThick - gThick) < 0.015 && pendingKg > 0;
+              });
+              const hasEdi = ediMatches.length > 0;
+              const hasEdiInTransit = ediMatches.some((o) =>
+                ["Em trânsito", "Estoque Usiminas", "Em produção"].includes(o.status)
+              );
+
               let purchaseStatus = "Sem pedido";
-              if (hasFirm) purchaseStatus = "Em trânsito";
-              else if (hasPred) purchaseStatus = "Pedido feito";
+              if (hasFirm || hasEdiInTransit) purchaseStatus = "Em trânsito";
+              else if (hasPred || hasEdi) purchaseStatus = "Pedido feito";
+
               const minStock = Number(mpMinStock) || 0;
               const coverageTag =
                 coverageDays < 10 ? "critico" : coverageDays < 30 ? "alerta" : "ok";
-              return { ...g, stock, coverageDays, purchaseStatus, coverageTag, groupOrders };
+              return { ...g, stock, coverageDays, purchaseStatus, coverageTag, groupOrders, ediMatches };
             });
 
             const filtered =
@@ -3221,12 +3237,17 @@ const RawMaterialRequirement = ({
               return Math.min(1, Math.max(0, current / target));
             };
 
-            const renderStatusPill = (status) => {
+            const renderStatusPill = (status, ediCount) => {
+              const ediTag = ediCount > 0 ? (
+                <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-orange-700/40 border border-orange-700 text-orange-300 font-semibold">
+                  EDI {ediCount}
+                </span>
+              ) : null;
               if (status === "Em trânsito")
-                return <span className="px-2 py-1 text-xs rounded-full bg-blue-900/50 border border-blue-600 text-blue-100">Em trânsito</span>;
+                return <span className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-blue-900/50 border border-blue-600 text-blue-100">Em trânsito{ediTag}</span>;
               if (status === "Pedido feito")
-                return <span className="px-2 py-1 text-xs rounded-full bg-amber-900/50 border border-amber-600 text-amber-100">Pedido feito</span>;
-              return <span className="px-2 py-1 text-xs rounded-full bg-gray-800 border border-gray-600 text-gray-200">Sem pedido</span>;
+                return <span className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-amber-900/50 border border-amber-600 text-amber-100">Pedido feito{ediTag}</span>;
+              return <span className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-gray-800 border border-gray-600 text-gray-200">Sem pedido{ediTag}</span>;
             };
 
             return (
@@ -3282,7 +3303,7 @@ const RawMaterialRequirement = ({
                                 {g.coverageDays === 999 ? "—" : `${g.coverageDays}d`}
                               </span>
                             </td>
-                            <td className="px-3 py-3">{renderStatusPill(g.purchaseStatus)}</td>
+                            <td className="px-3 py-3">{renderStatusPill(g.purchaseStatus, (g.ediMatches || []).length)}</td>
                             <td className="px-3 py-3 text-right">
                               <button
                                 onClick={(e) => {
