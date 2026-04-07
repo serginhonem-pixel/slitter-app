@@ -775,6 +775,72 @@ const RawMaterialRequirement = ({
       )
     : [];
 
+  // ---------- DEMANDA HISTÓRICA (baseada em cortes reais) ----------
+  const historicalDemand = useMemo(() => {
+    if (!selectedGroup) return null;
+    const groupType = selectedGroup.type.trim().toUpperCase();
+    const groupThk = parseFloat(selectedGroup.thickness.replace(",", ".")) || 0;
+    const thkTol = 0.06;
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    const daysBack = 90;
+    const cutoff = new Date(now); cutoff.setDate(cutoff.getDate() - daysBack);
+
+    // Iterar sobre TODAS as childCoils (stock + consumed) criadas nos últimos N dias
+    let totalKg = 0;
+    let cutCount = 0;
+    const dailyMap = {};
+
+    safeChild.forEach((b2) => {
+      // Parsear data de criação (DD/MM/YYYY ou ISO)
+      let dt = null;
+      const raw = b2.createdAt || b2.entryDate || "";
+      if (raw.includes("/")) {
+        const [d, m, y] = raw.split("/");
+        dt = new Date(+y, +m - 1, +d);
+      } else if (raw) {
+        dt = new Date(raw);
+      }
+      if (!dt || isNaN(dt.getTime()) || dt < cutoff) return;
+
+      // Matching: tipo e espessura do grupo
+      let mCode = b2.motherCode;
+      if (!mCode) {
+        const cat = safeCatalog.find((p) => String(p.b2Code) === String(b2.b2Code));
+        if (cat) mCode = cat.motherCode;
+      }
+      const meta = getMaterialMetadata(mCode, b2.b2Code);
+      const bType = meta.type.toUpperCase();
+      const bThk = parseFloat(meta.thickness.replace(",", ".")) || 0;
+      if (bType !== groupType || Math.abs(bThk - groupThk) > thkTol) return;
+
+      const w = Number(b2.weight) || 0;
+      totalKg += w;
+      cutCount++;
+      const dayKey = dt.toISOString().slice(0, 10);
+      dailyMap[dayKey] = (dailyMap[dayKey] || 0) + w;
+    });
+
+    const daysWithData = Object.keys(dailyMap).length;
+    if (daysWithData === 0) return { totalKg: 0, days: 0, daily: 0, weekly: 0, monthly: 0, cutCount: 0 };
+
+    // Calcular span real (primeiro ao último dia com corte)
+    const sortedDays = Object.keys(dailyMap).sort();
+    const firstDay = new Date(sortedDays[0]);
+    const lastDay = new Date(sortedDays[sortedDays.length - 1]);
+    const spanDays = Math.max(1, Math.round((lastDay - firstDay) / (24 * 60 * 60 * 1000)) + 1);
+
+    const daily = totalKg / spanDays;
+    return {
+      totalKg,
+      days: spanDays,
+      daysWithCuts: daysWithData,
+      daily,
+      weekly: daily * 7,
+      monthly: daily * 30,
+      cutCount,
+    };
+  }, [selectedGroup, safeChild, safeCatalog, safeMotherCatalog]);
+
   // ---------- SIMULAÇÃO (MODO MANUAL - BOBINAS) ----------
   let scenarioDaily = 0;
   let idealStock = 0;
@@ -1882,17 +1948,45 @@ const RawMaterialRequirement = ({
                     />
                   </label>
 
-                  <label className="flex flex-col">
-                    Demanda (kg):
-                    <input
-                      type="number"
-                      value={mpManualDemandValue}
-                      onChange={(e) =>
-                        setMpManualDemandValue(e.target.value)
-                      }
-                      className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"
-                    />
-                  </label>
+                  <div className="flex flex-col">
+                    <label className="flex flex-col flex-1">
+                      Demanda (kg):
+                      <input
+                        type="number"
+                        value={mpManualDemandValue}
+                        onChange={(e) =>
+                          setMpManualDemandValue(e.target.value)
+                        }
+                        className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"
+                      />
+                    </label>
+                    {historicalDemand && historicalDemand.cutCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = mpManualDemandGranularity === "day"
+                            ? Math.round(historicalDemand.daily)
+                            : mpManualDemandGranularity === "week"
+                            ? Math.round(historicalDemand.weekly)
+                            : Math.round(historicalDemand.monthly);
+                          setMpManualDemandValue(val);
+                        }}
+                        className="mt-1 text-xs text-cyan-400 hover:text-cyan-300 underline underline-offset-2 text-left"
+                        title={`Baseado em ${historicalDemand.cutCount} cortes nos últimos ${historicalDemand.days} dias (${historicalDemand.daysWithCuts} dias com corte)`}
+                      >
+                        Carregar histórico: {formatKg(
+                          mpManualDemandGranularity === "day"
+                            ? historicalDemand.daily
+                            : mpManualDemandGranularity === "week"
+                            ? historicalDemand.weekly
+                            : historicalDemand.monthly
+                        )} kg/{mpManualDemandGranularity === "day" ? "dia" : mpManualDemandGranularity === "week" ? "sem" : "mês"}
+                      </button>
+                    )}
+                    {historicalDemand && historicalDemand.cutCount === 0 && (
+                      <span className="mt-1 text-xs text-gray-500">Sem cortes nos últimos 90 dias</span>
+                    )}
+                  </div>
 
                   <label className="flex flex-col">
                     Granularidade:
@@ -1901,7 +1995,7 @@ const RawMaterialRequirement = ({
                       onChange={(e) =>
                         setMpManualDemandGranularity(e.target.value)
                       }
-                      className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text:white"
+                      className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"
                     >
                       <option value="day">Diária</option>
                       <option value="week">Semanal</option>
