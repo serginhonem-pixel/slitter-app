@@ -130,6 +130,7 @@ const RawMaterialRequirement = ({
   });
   const [ediDateTo, setEdiDateTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [ediLastSync, setEdiLastSync] = useState(null);
+  const [ediFormCollapsed, setEdiFormCollapsed] = useState(false);
   const ediFileRef = useRef(null);
 
   // Sincronizar via WebService SOAP (API proxy)
@@ -183,6 +184,7 @@ const RawMaterialRequirement = ({
       setEdiOrders(orders);
       setEdiFileName("");
       setEdiLastSync(new Date());
+      setEdiFormCollapsed(true);
     } catch (err) {
       setEdiError("Erro ao sincronizar: " + err.message);
     } finally {
@@ -3595,14 +3597,31 @@ const RawMaterialRequirement = ({
               {/* Header + Modos */}
               <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                  <div>
-                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                      <FileText size={20} className="text-orange-400" />
-                      Usiminas — Acompanhamento de Encomenda
-                    </h3>
-                    <p className="text-sm text-gray-400">
-                      Sincronize diretamente com o WebService Usiminas ou importe o arquivo WEBEDI.TXT.
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setEdiFormCollapsed((v) => !v)}
+                      className="text-gray-400 hover:text-white transition-colors"
+                      title={ediFormCollapsed ? "Expandir configurações" : "Recolher configurações"}
+                    >
+                      {ediFormCollapsed ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
+                    </button>
+                    <div>
+                      <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                        <FileText size={20} className="text-orange-400" />
+                        Usiminas — Acompanhamento de Encomenda
+                      </h3>
+                      {ediLastSync && ediFormCollapsed && (
+                        <p className="text-xs text-gray-400">
+                          Última sincronização: {ediLastSync.toLocaleString("pt-BR")}
+                        </p>
+                      )}
+                      {!ediFormCollapsed && (
+                        <p className="text-sm text-gray-400">
+                          Sincronize diretamente com o WebService Usiminas ou importe o arquivo WEBEDI.TXT.
+                        </p>
+                      )}
+                    </div>
                   </div>
                   <div className="inline-flex rounded-lg bg-gray-900 border border-gray-700 p-1">
                     <button
@@ -3621,6 +3640,10 @@ const RawMaterialRequirement = ({
                     </button>
                   </div>
                 </div>
+
+                {/* === FORMULÁRIO (recolhível) === */}
+                {!ediFormCollapsed && (
+                <>
 
                 {/* === MODO API === */}
                 {ediSyncMode === "api" && (
@@ -3722,6 +3745,9 @@ const RawMaterialRequirement = ({
                     </div>
                   </div>
                 )}
+
+                </>
+                )} {/* fim !ediFormCollapsed */}
 
                 {/* Resultado upload */}
                 {ediFileName && (
