@@ -775,71 +775,73 @@ const RawMaterialRequirement = ({
       )
     : [];
 
-  // ---------- DEMANDA HISTÓRICA (baseada em cortes reais) ----------
+  // ---------- DEMANDA HISTÓRICA (baseada em consumo de bobinas mãe) ----------
   const historicalDemand = useMemo(() => {
     if (!selectedGroup) return null;
     const groupType = selectedGroup.type.trim().toUpperCase();
     const groupThk = parseFloat(selectedGroup.thickness.replace(",", ".")) || 0;
     const thkTol = 0.06;
     const now = new Date(); now.setHours(0, 0, 0, 0);
-    const daysBack = 90;
-    const cutoff = new Date(now); cutoff.setDate(cutoff.getDate() - daysBack);
 
-    // Iterar sobre TODAS as childCoils (stock + consumed) criadas nos últimos N dias
-    let totalKg = 0;
-    let cutCount = 0;
-    const dailyMap = {};
+    // Iterar sobre TODAS as motherCoils que foram cortadas (consumed ou parcialmente cortadas)
+    let totalConsumedKg = 0;
+    let coilCount = 0;
+    const dates = []; // datas de referência para calcular span
 
-    safeChild.forEach((b2) => {
-      // Parsear data de criação (DD/MM/YYYY ou ISO)
-      let dt = null;
-      const raw = b2.createdAt || b2.entryDate || "";
-      if (raw.includes("/")) {
-        const [d, m, y] = raw.split("/");
-        dt = new Date(+y, +m - 1, +d);
-      } else if (raw) {
-        dt = new Date(raw);
-      }
-      if (!dt || isNaN(dt.getTime()) || dt < cutoff) return;
-
+    safeMother.forEach((m) => {
       // Matching: tipo e espessura do grupo
-      let mCode = b2.motherCode;
-      if (!mCode) {
-        const cat = safeCatalog.find((p) => String(p.b2Code) === String(b2.b2Code));
-        if (cat) mCode = cat.motherCode;
-      }
-      const meta = getMaterialMetadata(mCode, b2.b2Code);
-      const bType = meta.type.toUpperCase();
-      const bThk = parseFloat(meta.thickness.replace(",", ".")) || 0;
-      if (bType !== groupType || Math.abs(bThk - groupThk) > thkTol) return;
+      const meta = getMaterialMetadata(m.code, null);
+      const mType = meta.type.toUpperCase();
+      const mThk = parseFloat(meta.thickness.replace(",", ".")) || 0;
+      if (mType !== groupType || Math.abs(mThk - groupThk) > thkTol) return;
 
-      const w = Number(b2.weight) || 0;
-      totalKg += w;
-      cutCount++;
-      const dayKey = dt.toISOString().slice(0, 10);
-      dailyMap[dayKey] = (dailyMap[dayKey] || 0) + w;
+      const orig = Number(m.originalWeight) || 0;
+      const rem = Number(m.remainingWeight ?? m.weight) || 0;
+      const consumed = orig - rem;
+      if (consumed <= 0) return; // nenhum corte feito nesta mãe
+
+      // Parsear data (consumedDate DD/MM/YYYY, entryDate DD/MM/YYYY, ou ISO)
+      let dt = null;
+      const rawDate = m.consumedDate || m.entryDate || m.date || "";
+      if (typeof rawDate === "string" && rawDate.includes("/")) {
+        const [d, mo, y] = rawDate.split("/");
+        dt = new Date(+y, +mo - 1, +d);
+      } else if (rawDate) {
+        dt = new Date(rawDate);
+      }
+      // Firestore Timestamp
+      if (!dt && rawDate?.toDate) dt = rawDate.toDate();
+      if (dt && !isNaN(dt.getTime())) dates.push(dt);
+
+      totalConsumedKg += consumed;
+      coilCount++;
     });
 
-    const daysWithData = Object.keys(dailyMap).length;
-    if (daysWithData === 0) return { totalKg: 0, days: 0, daily: 0, weekly: 0, monthly: 0, cutCount: 0 };
+    if (coilCount === 0) return { totalKg: 0, days: 0, daily: 0, weekly: 0, monthly: 0, coilCount: 0 };
 
-    // Calcular span real (primeiro ao último dia com corte)
-    const sortedDays = Object.keys(dailyMap).sort();
-    const firstDay = new Date(sortedDays[0]);
-    const lastDay = new Date(sortedDays[sortedDays.length - 1]);
-    const spanDays = Math.max(1, Math.round((lastDay - firstDay) / (24 * 60 * 60 * 1000)) + 1);
+    // Calcular span: do registro mais antigo até hoje
+    let spanDays;
+    if (dates.length >= 2) {
+      dates.sort((a, b) => a - b);
+      const firstDate = dates[0];
+      spanDays = Math.max(1, Math.round((now - firstDate) / (24 * 60 * 60 * 1000)));
+    } else if (dates.length === 1) {
+      spanDays = Math.max(1, Math.round((now - dates[0]) / (24 * 60 * 60 * 1000)));
+    } else {
+      // Sem datas, assumir 90 dias
+      spanDays = 90;
+    }
 
-    const daily = totalKg / spanDays;
+    const daily = totalConsumedKg / spanDays;
     return {
-      totalKg,
+      totalKg: totalConsumedKg,
       days: spanDays,
-      daysWithCuts: daysWithData,
       daily,
       weekly: daily * 7,
       monthly: daily * 30,
-      cutCount,
+      coilCount,
     };
-  }, [selectedGroup, safeChild, safeCatalog, safeMotherCatalog]);
+  }, [selectedGroup, safeMother, safeMotherCatalog]);
 
   // ---------- SIMULAÇÃO (MODO MANUAL - BOBINAS) ----------
   let scenarioDaily = 0;
@@ -1960,7 +1962,7 @@ const RawMaterialRequirement = ({
                         className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"
                       />
                     </label>
-                    {historicalDemand && historicalDemand.cutCount > 0 && (
+                    {historicalDemand && historicalDemand.coilCount > 0 && (
                       <button
                         type="button"
                         onClick={() => {
@@ -1972,9 +1974,9 @@ const RawMaterialRequirement = ({
                           setMpManualDemandValue(val);
                         }}
                         className="mt-1 text-xs text-cyan-400 hover:text-cyan-300 underline underline-offset-2 text-left"
-                        title={`Baseado em ${historicalDemand.cutCount} cortes nos últimos ${historicalDemand.days} dias (${historicalDemand.daysWithCuts} dias com corte)`}
+                        title={`Baseado em ${historicalDemand.coilCount} bobinas mãe cortadas · ${formatKg(historicalDemand.totalKg)} kg consumidos em ${historicalDemand.days} dias`}
                       >
-                        Carregar histórico: {formatKg(
+                        ↻ Carregar histórico: {formatKg(
                           mpManualDemandGranularity === "day"
                             ? historicalDemand.daily
                             : mpManualDemandGranularity === "week"
@@ -1983,8 +1985,8 @@ const RawMaterialRequirement = ({
                         )} kg/{mpManualDemandGranularity === "day" ? "dia" : mpManualDemandGranularity === "week" ? "sem" : "mês"}
                       </button>
                     )}
-                    {historicalDemand && historicalDemand.cutCount === 0 && (
-                      <span className="mt-1 text-xs text-gray-500">Sem cortes nos últimos 90 dias</span>
+                    {historicalDemand && historicalDemand.coilCount === 0 && (
+                      <span className="mt-1 text-xs text-gray-500">Sem bobinas mãe cortadas neste grupo</span>
                     )}
                   </div>
 
