@@ -14035,8 +14035,8 @@ const handleUploadJSONToFirebase = async (e) => {
                     <RawMaterialRequirement
                       motherCoils={motherCoils}
                       childCoils={childCoils}
-                      productCatalog={INITIAL_PRODUCT_CATALOG}
-                      motherCatalog={INITIAL_MOTHER_CATALOG}
+                      productCatalog={productCatalog}
+                      motherCatalog={motherCatalog}
                     />
                   )}
 

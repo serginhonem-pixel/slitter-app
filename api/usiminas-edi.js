@@ -75,7 +75,7 @@ export default async function handler(req, res) {
     // Extrair o conteúdo retornado de dentro do SOAP envelope
     // O resultado vem dentro de <transmiteArquivoResult>...</transmiteArquivoResult>
     const resultMatch = xmlResponse.match(
-      /<transmiteArquivoRe(?:sult|turn)[^>]*>([\s\S]*?)<\/transmiteArquivoRe(?:sult|turn)>/
+      /<transmiteArquivoRe(?:sult|turn)[^>]*>([\s\S]+)<\/transmiteArquivoRe(?:sult|turn)>/
     );
 
     if (!resultMatch) {
@@ -97,7 +97,7 @@ export default async function handler(req, res) {
       .replace(/&#xD;/g, "\r").replace(/&#xA;/g, "\n");
 
     // Remover CDATA wrapper se presente
-    const cdataMatch = content.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+    const cdataMatch = content.match(/<!\[CDATA\[([\s\S]+)\]\]>/);
     if (cdataMatch) content = cdataMatch[1];
 
     return res.status(200).json({

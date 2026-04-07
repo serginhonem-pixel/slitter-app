@@ -10,6 +10,12 @@ import { parseUsiminasEdi, parseUsiminasXml, formatDezena } from "../../utils/ed
 
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const EDI_THICKNESS_MATCH_TOLERANCE = 0.06;
+
+const isEdiGroupMatch = (groupType, groupThickness, ediType, ediThickness) => {
+  if (groupType !== ediType) return false;
+  return Math.abs((Number(ediThickness) || 0) - (Number(groupThickness) || 0)) <= EDI_THICKNESS_MATCH_TOLERANCE;
+};
 
 // Helpers simples
 const formatKg = (v) =>
@@ -124,11 +130,8 @@ const RawMaterialRequirement = ({
   const [ediSyncMode, setEdiSyncMode] = useState("api"); // "api" | "file"
   const [ediLogin, setEdiLogin] = useState(() => localStorage.getItem("edi_user") || "");
   const [ediSenha, setEdiSenha] = useState("");
-  const [ediDateFrom, setEdiDateFrom] = useState(() => {
-    const d = new Date(); d.setMonth(d.getMonth() - 6);
-    return d.toISOString().slice(0, 10);
-  });
-  const [ediDateTo, setEdiDateTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [ediDateFrom, setEdiDateFrom] = useState("");
+  const [ediDateTo, setEdiDateTo] = useState("");
   const [ediLastSync, setEdiLastSync] = useState(null);
   const [ediFormCollapsed, setEdiFormCollapsed] = useState(false);
   const ediFileRef = useRef(null);
@@ -144,6 +147,8 @@ const RawMaterialRequirement = ({
     try {
       // Salvar usuário (não a senha) para conveniência
       localStorage.setItem("edi_user", ediLogin);
+      // Enviar datas vazias para trazer TODOS os pedidos ativos;
+      // preencher só se o usuário escolheu datas explicitamente.
       const fromDate = ediDateFrom
         ? new Date(ediDateFrom).toLocaleDateString("pt-BR")
         : "";
@@ -181,6 +186,7 @@ const RawMaterialRequirement = ({
       } else {
         ({ orders } = parseUsiminasEdi(data.content));
       }
+      console.log(`[EDI Sync] ${orders.length} itens parseados do WebService. Conteúdo: ${data.content.length} chars`);
       setEdiOrders(orders);
       setEdiFileName("");
       setEdiLastSync(new Date());
@@ -731,7 +737,7 @@ const RawMaterialRequirement = ({
       .filter((o) => {
         const ediType = (o.productType || "").trim().toUpperCase();
         const ediThickness = parseFloat(o.thickness) || 0;
-        return ediType === groupType && Math.abs(ediThickness - groupThickness) < 0.015;
+        return isEdiGroupMatch(groupType, groupThickness, ediType, ediThickness);
       })
       .map((o) => {
         const pendingKg = Math.max(0, (o.confirmedWeightKg || 0) - (o.dispatchedKg || 0));
@@ -3210,7 +3216,7 @@ const RawMaterialRequirement = ({
                 const oType = (o.productType || "").trim().toUpperCase();
                 const oThick = parseFloat(o.thickness) || 0;
                 const pendingKg = Math.max(0, (o.confirmedWeightKg || 0) - (o.dispatchedKg || 0));
-                return oType === gType && Math.abs(oThick - gThick) < 0.015 && pendingKg > 0;
+                return isEdiGroupMatch(gType, gThick, oType, oThick) && pendingKg > 0;
               });
               const hasEdi = ediMatches.length > 0;
               const hasEdiInTransit = ediMatches.some((o) =>
@@ -3353,7 +3359,7 @@ const RawMaterialRequirement = ({
           const oType = (o.productType || "").trim().toUpperCase();
           const oThick = parseFloat(o.thickness) || 0;
           const pendingKg = Math.max(0, (o.confirmedWeightKg || 0) - (o.dispatchedKg || 0));
-          return oType === gType && Math.abs(oThick - gThick) < 0.015 && pendingKg > 0;
+          return isEdiGroupMatch(gType, gThick, oType, oThick) && pendingKg > 0;
         })
         .map((o) => {
           const rawDate = o.deliveryDate instanceof Date ? o.deliveryDate : null;
@@ -4078,7 +4084,8 @@ const RawMaterialRequirement = ({
                                 if (search) {
                                   const haystack = [
                                     o.orderNum, o.productName, o.materialSpec,
-                                    o.reference, o.description, o.status,
+                                    o.purchaseRef, o.purchaseOrder, o.description,
+                                    o.status, o.productType,
                                   ].join(" ").toLowerCase();
                                   if (!haystack.includes(search)) return false;
                                 }
@@ -4246,7 +4253,7 @@ const RawMaterialRequirement = ({
                             if (ediFilterType !== "all" && o.productType !== ediFilterType) return false;
                             if (ediFilterStatus !== "all" && o.status !== ediFilterStatus) return false;
                             if (ediSearch) {
-                              const h = [o.orderNum, o.productName, o.materialSpec, o.reference, o.description, o.status].join(" ").toLowerCase();
+                              const h = [o.orderNum, o.productName, o.materialSpec, o.purchaseRef, o.purchaseOrder, o.description, o.status, o.productType].join(" ").toLowerCase();
                               if (!h.includes(ediSearch.toLowerCase())) return false;
                             }
                             return true;

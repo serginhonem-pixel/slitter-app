@@ -193,11 +193,33 @@ export function parseUsiminasEdi(text) {
 export function parseUsiminasXml(xmlText) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xmlText, "text/xml");
-  const pedidos = doc.querySelectorAll("PEDIDO");
+
+  // Tentar primeiro encontrar ITEM (sub-itens de cada PEDIDO).
+  // Se não existir, usar PEDIDO diretamente (estrutura flat).
+  let nodes = doc.querySelectorAll("ITEM");
+  if (!nodes.length) {
+    nodes = doc.querySelectorAll("PEDIDO");
+  }
+
+  // Fallback: se ainda vazio, pode ser que estejam dentro de PEDIDOS > PEDIDO
+  if (!nodes.length) {
+    nodes = doc.querySelectorAll("PEDIDOS > PEDIDO");
+  }
+
+  console.log(`[EDI Parser] Encontrados ${nodes.length} itens no XML (tags tentadas: ITEM, PEDIDO, PEDIDOS>PEDIDO)`);
+
   const orders = [];
 
-  pedidos.forEach((p) => {
-    const tag = (name) => (p.querySelector(name)?.textContent || "").trim();
+  nodes.forEach((p) => {
+    // Se o nó for ITEM, os dados de cabeçalho podem estar no PEDIDO pai
+    const parent = p.parentElement?.closest?.("PEDIDO") || p.parentElement || p;
+    const tag = (name) => {
+      // Busca primeiro no próprio nó, depois no pai (PEDIDO)
+      const val = (p.querySelector(name)?.textContent || "").trim();
+      if (val) return val;
+      if (parent !== p) return (parent.querySelector(name)?.textContent || "").trim();
+      return "";
+    };
     const num = (name) => parseInt(tag(name), 10) || 0;
     const flt = (name) => parseFloat((tag(name) || "0").replace(",", ".")) || 0;
 
