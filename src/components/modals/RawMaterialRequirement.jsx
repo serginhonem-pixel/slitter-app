@@ -717,6 +717,41 @@ const RawMaterialRequirement = ({
 
   const selectedGroup =
     filteredGroups.find((g) => g.groupId === selectedMpCode) || null;
+
+  // Cruzamento EDI Usiminas × grupo selecionado
+  const ediOrdersForGroup = useMemo(() => {
+    if (!selectedGroup || !ediOrders.length) return [];
+    const groupType = selectedGroup.type.trim().toUpperCase();
+    const groupThickness = parseFloat(String(selectedGroup.thickness).replace(",", ".")) || 0;
+    return ediOrders
+      .filter((o) => {
+        const ediType = (o.productType || "").trim().toUpperCase();
+        const ediThickness = parseFloat(o.thickness) || 0;
+        return ediType === groupType && Math.abs(ediThickness - groupThickness) < 0.015;
+      })
+      .map((o) => {
+        const pendingKg = Math.max(0, (o.confirmedWeightKg || 0) - (o.dispatchedKg || 0));
+        const etaStr = o.deliveryDate
+          ? o.deliveryDate instanceof Date
+            ? o.deliveryDate.toISOString().slice(0, 10)
+            : null
+          : null;
+        return {
+          id: `EDI-${o.orderNum}`,
+          groupKey: selectedGroup.groupId,
+          eta: etaStr,
+          weightKg: pendingKg,
+          status: "edi",
+          orderNum: o.orderNum,
+          purchaseOrder: o.purchaseOrder,
+          statusText: o.status,
+          deliveryDateRaw: o.deliveryDateRaw,
+          source: "usiminas-edi",
+        };
+      })
+      .filter((o) => o.eta && o.weightKg > 0);
+  }, [selectedGroup, ediOrders]);
+
   const simOrdersForSelectedGroup = selectedMpCode
     ? mpOrders.filter(
         (o) =>
@@ -777,7 +812,7 @@ const RawMaterialRequirement = ({
         (o.groupKey || o.groupId) === selectedMpCode ||
         (!selectedMpCode && o.groupId)
     );
-    activeOrders = allForGroup; // todos entram no gráfico
+    activeOrders = [...allForGroup, ...ediOrdersForGroup]; // pedidos manuais + EDI Usiminas
     openOrders = activeOrders.filter((o) => {
       const status = (o.status || "previsto").toLowerCase();
       return status !== "firme" && status !== "simulacao";
@@ -2294,6 +2329,78 @@ const RawMaterialRequirement = ({
                   </div>
                 )}
               </div>
+
+              {/* Pedidos Usiminas (EDI) cruzados */}
+              {ediOrdersForGroup.length > 0 && (
+                <div className="bg-gray-800 p-4 rounded-xl border border-orange-800/50">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-orange-700/30 border border-orange-700 text-orange-300 text-xs font-semibold">
+                      EDI Usiminas
+                    </span>
+                    <h3 className="text-sm font-semibold text-white">
+                      Pedidos em aberto — já incluídos no gráfico
+                    </h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-gray-300">
+                      <thead>
+                        <tr className="text-gray-500 border-b border-gray-700">
+                          <th className="text-left pb-2 pr-3">OV / Pedido</th>
+                          <th className="text-left pb-2 pr-3">Prazo confirmado</th>
+                          <th className="text-right pb-2 pr-3">Peso pendente</th>
+                          <th className="text-left pb-2">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ediOrdersForGroup.map((o) => (
+                          <tr key={o.id} className="border-b border-gray-700/50 hover:bg-gray-700/30">
+                            <td className="py-1.5 pr-3">
+                              <span className="text-white font-medium">{o.orderNum}</span>
+                              {o.purchaseOrder && (
+                                <span className="text-gray-500 ml-1">· {o.purchaseOrder}</span>
+                              )}
+                            </td>
+                            <td className="py-1.5 pr-3 text-orange-300">
+                              {o.deliveryDateRaw || formatDate(o.eta)}
+                            </td>
+                            <td className="py-1.5 pr-3 text-right font-mono text-green-400">
+                              {formatKg(o.weightKg)} kg
+                            </td>
+                            <td className="py-1.5">
+                              <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${
+                                o.statusText === "Em trânsito" ? "bg-blue-800/50 text-blue-300" :
+                                o.statusText === "Estoque Usiminas" ? "bg-yellow-800/50 text-yellow-300" :
+                                o.statusText === "Em produção" ? "bg-purple-800/50 text-purple-300" :
+                                "bg-gray-700 text-gray-300"
+                              }`}>
+                                {o.statusText || "Programado"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {!ediOrders.length && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      Sincronize a aba <span className="text-orange-400">Usiminas EDI</span> para ver os pedidos.
+                    </p>
+                  )}
+                </div>
+              )}
+              {!ediOrders.length && selectedGroup && (
+                <div className="bg-gray-800/50 border border-gray-700 rounded-xl px-4 py-3 text-xs text-gray-500 flex items-center gap-2">
+                  <span className="text-orange-400">⚠</span>
+                  Nenhum dado EDI carregado. Acesse a aba{" "}
+                  <button
+                    className="text-orange-400 underline hover:text-orange-300"
+                    onClick={() => setPurchaseTab("edi")}
+                  >
+                    Usiminas EDI
+                  </button>{" "}
+                  para sincronizar e ver os pedidos nesta simulação.
+                </div>
+              )}
 
               {/* Botão PDF */}
               <div className="flex justify-end">
