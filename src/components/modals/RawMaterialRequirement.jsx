@@ -3426,7 +3426,7 @@ const RawMaterialRequirement = ({
 
               <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
                 <div className="flex items-center justify-between text-sm text-gray-400 mb-2">
-                  <span>Projeção de estoque (ajuste demanda mensal acima)</span>
+                  <span>Projeção de estoque{monthlyDemand > 0 ? `` : " (informe o consumo mensal acima)"}</span>
                   <span className="text-xs text-gray-500">Estoque mínimo: {formatKg(minStock)} kg</span>
                 </div>
                 <svg viewBox="0 0 600 200" className="w-full h-48 bg-gray-900 rounded-lg border border-gray-800">
@@ -3547,10 +3547,7 @@ const RawMaterialRequirement = ({
               </div>
             </div>
 
-            <div className="sticky bottom-0 bg-gray-900 border-t border-gray-800 p-4 flex items-center justify-between gap-3">
-              <div className="text-sm text-gray-400">
-                Ajuste a demanda mensal para simular cobertura e risco de ruptura.
-              </div>
+            <div className="sticky bottom-0 bg-gray-900 border-t border-gray-800 p-4 flex items-center justify-end gap-3">
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => {
