@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { TrendingUp, FileText, Plus, CheckCircle, X, Tag, Trash2 } from "lucide-react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
+import { TrendingUp, FileText, Plus, CheckCircle, X, Tag, Trash2, Upload, Download, Search, Filter, ChevronDown, ChevronUp } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { INITIAL_INOX_BLANK_PRODUCTS, matchInoxProductByMeasures } from "../../data/inoxCatalog";
 import { deleteFromDb, isLocalHost, loadFromDb, saveToDb, updateInDb } from "../../services/api";
+import { parseUsiminasEdi, parseUsiminasXml, formatDezena } from "../../utils/ediParser";
 
 // ajusta o caminho se sua pasta for diferente
 
@@ -110,6 +111,118 @@ const RawMaterialRequirement = ({
   const [selectedPurchaseGroup, setSelectedPurchaseGroup] = useState(null);
   const [mpOrderQty, setMpOrderQty] = useState("");
   const [mpOrderDate, setMpOrderDate] = useState("");
+
+  // ---------- ESTADOS EDI USIMINAS ----------
+  const [ediOrders, setEdiOrders] = useState([]);
+  const [ediFileName, setEdiFileName] = useState("");
+  const [ediLoading, setEdiLoading] = useState(false);
+  const [ediError, setEdiError] = useState("");
+  const [ediSearch, setEdiSearch] = useState("");
+  const [ediFilterType, setEdiFilterType] = useState("all");
+  const [ediFilterStatus, setEdiFilterStatus] = useState("all");
+  const [ediExpandedOrder, setEdiExpandedOrder] = useState(null);
+  const [ediSyncMode, setEdiSyncMode] = useState("api"); // "api" | "file"
+  const [ediLogin, setEdiLogin] = useState(() => localStorage.getItem("edi_user") || "");
+  const [ediSenha, setEdiSenha] = useState("");
+  const [ediDateFrom, setEdiDateFrom] = useState(() => {
+    const d = new Date(); d.setMonth(d.getMonth() - 6);
+    return d.toISOString().slice(0, 10);
+  });
+  const [ediDateTo, setEdiDateTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [ediLastSync, setEdiLastSync] = useState(null);
+  const ediFileRef = useRef(null);
+
+  // Sincronizar via WebService SOAP (API proxy)
+  const handleEdiSync = async () => {
+    if (!ediLogin || !ediSenha) {
+      setEdiError("Preencha login e senha do Extranet Usiminas.");
+      return;
+    }
+    setEdiLoading(true);
+    setEdiError("");
+    try {
+      // Salvar usuário (não a senha) para conveniência
+      localStorage.setItem("edi_user", ediLogin);
+      const fromDate = ediDateFrom
+        ? new Date(ediDateFrom).toLocaleDateString("pt-BR")
+        : "";
+      const toDate = ediDateTo
+        ? new Date(ediDateTo).toLocaleDateString("pt-BR")
+        : "";
+
+      const resp = await fetch("/api/usiminas-edi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          login: ediLogin,
+          senha: ediSenha,
+          tipoArquivo: "XML",
+          dataInicial: fromDate,
+          dataFinal: toDate,
+        }),
+      });
+
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error(data.error || `HTTP ${resp.status}`);
+      }
+
+      if (!data.content) {
+        setEdiError(data.message || "Nenhum dado retornado.");
+        setEdiOrders([]);
+        return;
+      }
+
+      // Tentar parsear como XML primeiro, fallback para TXT
+      let orders;
+      if (data.content.trim().startsWith("<")) {
+        ({ orders } = parseUsiminasXml(data.content));
+      } else {
+        ({ orders } = parseUsiminasEdi(data.content));
+      }
+      setEdiOrders(orders);
+      setEdiFileName("");
+      setEdiLastSync(new Date());
+    } catch (err) {
+      setEdiError("Erro ao sincronizar: " + err.message);
+    } finally {
+      setEdiLoading(false);
+    }
+  };
+
+  // Upload manual de arquivo WEBEDI.TXT
+  const handleEdiUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setEdiLoading(true);
+    setEdiError("");
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const text = ev.target.result;
+        let orders;
+        if (text.trim().startsWith("<") || file.name.toLowerCase().endsWith(".xml")) {
+          ({ orders } = parseUsiminasXml(text));
+        } else {
+          ({ orders } = parseUsiminasEdi(text));
+        }
+        setEdiOrders(orders);
+        setEdiFileName(file.name);
+      } catch (err) {
+        setEdiError("Erro ao processar arquivo EDI: " + err.message);
+        setEdiOrders([]);
+      } finally {
+        setEdiLoading(false);
+      }
+    };
+    reader.onerror = () => {
+      setEdiError("Erro ao ler arquivo.");
+      setEdiLoading(false);
+    };
+    reader.readAsText(file, "latin1");
+    e.target.value = "";
+  };
+
   const isLocal = isLocalHost();
   const removeOrder = async (id) => {
     try {
@@ -2838,6 +2951,17 @@ const RawMaterialRequirement = ({
               >
                 Inox
               </button>
+              <button
+                type="button"
+                onClick={() => setPurchaseTab("edi")}
+                className={`ml-1 px-3 py-1 text-xs font-semibold rounded-md ${
+                  purchaseTab === "edi"
+                    ? "bg-orange-600 text-white"
+                    : "text-gray-300 hover:bg-gray-800"
+                }`}
+              >
+                Usiminas EDI
+              </button>
             </div>
           </div>
           {purchaseTab === "coil" && (
@@ -3464,6 +3588,453 @@ const RawMaterialRequirement = ({
               })()}
             </div>
           )}
+
+          {/* ===================== USIMINAS EDI ===================== */}
+          {purchaseTab === "edi" && (
+            <div className="space-y-4">
+              {/* Header + Modos */}
+              <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                      <FileText size={20} className="text-orange-400" />
+                      Usiminas — Acompanhamento de Encomenda
+                    </h3>
+                    <p className="text-sm text-gray-400">
+                      Sincronize diretamente com o WebService Usiminas ou importe o arquivo WEBEDI.TXT.
+                    </p>
+                  </div>
+                  <div className="inline-flex rounded-lg bg-gray-900 border border-gray-700 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setEdiSyncMode("api")}
+                      className={`px-3 py-1 text-xs font-semibold rounded-md ${ediSyncMode === "api" ? "bg-orange-600 text-white" : "text-gray-300 hover:bg-gray-800"}`}
+                    >
+                      Sincronizar Online
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEdiSyncMode("file")}
+                      className={`ml-1 px-3 py-1 text-xs font-semibold rounded-md ${ediSyncMode === "file" ? "bg-orange-600 text-white" : "text-gray-300 hover:bg-gray-800"}`}
+                    >
+                      Importar Arquivo
+                    </button>
+                  </div>
+                </div>
+
+                {/* === MODO API === */}
+                {ediSyncMode === "api" && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div>
+                        <label className="text-xs text-gray-400 block mb-1">Login Extranet</label>
+                        <input
+                          type="text"
+                          value={ediLogin}
+                          onChange={(e) => setEdiLogin(e.target.value)}
+                          placeholder="Seu usuário"
+                          className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white text-sm w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 block mb-1">Senha</label>
+                        <input
+                          type="password"
+                          value={ediSenha}
+                          onChange={(e) => setEdiSenha(e.target.value)}
+                          placeholder="Sua senha"
+                          className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white text-sm w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 block mb-1">Data inicial</label>
+                        <input
+                          type="date"
+                          value={ediDateFrom}
+                          onChange={(e) => setEdiDateFrom(e.target.value)}
+                          className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white text-sm w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 block mb-1">Data final</label>
+                        <input
+                          type="date"
+                          value={ediDateTo}
+                          onChange={(e) => setEdiDateTo(e.target.value)}
+                          className="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white text-sm w-full"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={handleEdiSync}
+                        disabled={ediLoading}
+                        className="flex items-center gap-2 px-5 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 rounded-lg text-white text-sm font-semibold"
+                      >
+                        <Download size={16} />
+                        {ediLoading ? "Sincronizando..." : "Sincronizar com Usiminas"}
+                      </button>
+                      {ediLastSync && (
+                        <span className="text-xs text-gray-400">
+                          Última sincronização: {ediLastSync.toLocaleString("pt-BR")}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      A senha não é armazenada. A conexão é feita via WebService SOAP oficial (cvwe.usiminas.com).
+                    </p>
+                  </div>
+                )}
+
+                {/* === MODO ARQUIVO === */}
+                {ediSyncMode === "file" && (
+                  <div className="space-y-3">
+                    <p className="text-sm text-gray-400">
+                      Baixe o <code className="text-orange-300">WEBEDI.TXT</code> do{" "}
+                      <a
+                        href="https://extranet.usiminas.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-orange-400 underline hover:text-orange-300"
+                      >
+                        Extranet Usiminas
+                      </a>{" "}
+                      e importe aqui.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        ref={ediFileRef}
+                        type="file"
+                        accept=".txt,.edi,.TXT,.EDI,.xml,.XML"
+                        onChange={handleEdiUpload}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => ediFileRef.current?.click()}
+                        disabled={ediLoading}
+                        className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 rounded-lg text-white text-sm font-semibold"
+                      >
+                        <Upload size={16} />
+                        {ediLoading ? "Processando..." : "Importar WEBEDI.TXT"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Resultado upload */}
+                {ediFileName && (
+                  <div className="mt-2 text-xs text-gray-400 flex items-center gap-2">
+                    <FileText size={14} className="text-orange-400" />
+                    Arquivo: <span className="text-white font-medium">{ediFileName}</span>
+                    <span className="text-gray-500">·</span>
+                    <span>{ediOrders.length} pedidos importados</span>
+                  </div>
+                )}
+                {ediError && (
+                  <div className="mt-2 text-sm text-red-400 bg-red-900/30 px-3 py-2 rounded border border-red-800">
+                    {ediError}
+                  </div>
+                )}
+              </div>
+
+              {ediOrders.length > 0 && (
+                <>
+                  {/* Filtros */}
+                  <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                      <Search size={16} className="text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Buscar pedido, produto, referência..."
+                        value={ediSearch}
+                        onChange={(e) => setEdiSearch(e.target.value)}
+                        className="bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-white text-sm w-full"
+                      />
+                    </div>
+                    <select
+                      value={ediFilterType}
+                      onChange={(e) => setEdiFilterType(e.target.value)}
+                      className="bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-white text-sm"
+                    >
+                      <option value="all">Todos os tipos</option>
+                      {[...new Set(ediOrders.map((o) => o.productType))].sort().map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={ediFilterStatus}
+                      onChange={(e) => setEdiFilterStatus(e.target.value)}
+                      className="bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-white text-sm"
+                    >
+                      <option value="all">Todos os status</option>
+                      {[...new Set(ediOrders.map((o) => o.status))].sort().map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Resumo KPIs */}
+                  {(() => {
+                    const totalOrders = ediOrders.length;
+                    const totalWeightKg = ediOrders.reduce((s, o) => s + (o.confirmedWeightKg || 0), 0);
+                    const totalDispatchedKg = ediOrders.reduce((s, o) => s + (o.dispatchedKg || 0), 0);
+                    const totalProductionKg = ediOrders.reduce((s, o) => s + (o.productionWeightKg || 0), 0);
+                    const estoqueCount = ediOrders.filter((o) => o.isEstoque).length;
+                    const pendingCount = ediOrders.filter((o) => !o.isEstoque && o.status !== "Entregue").length;
+                    return (
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                        <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
+                          <div className="text-2xl font-bold text-white">{totalOrders}</div>
+                          <div className="text-xs text-gray-400">Itens no EDI</div>
+                        </div>
+                        <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
+                          <div className="text-2xl font-bold text-orange-400">{formatKg(totalWeightKg)}</div>
+                          <div className="text-xs text-gray-400">Peso confirmado (kg)</div>
+                        </div>
+                        <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
+                          <div className="text-2xl font-bold text-blue-400">{formatKg(totalProductionKg)}</div>
+                          <div className="text-xs text-gray-400">Em produção (kg)</div>
+                        </div>
+                        <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
+                          <div className="text-2xl font-bold text-emerald-400">{formatKg(totalDispatchedKg)}</div>
+                          <div className="text-xs text-gray-400">Despachado (kg)</div>
+                        </div>
+                        <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
+                          <div className="text-2xl font-bold text-amber-400">{pendingCount}</div>
+                          <div className="text-xs text-gray-400">Pendentes</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Tabela de pedidos */}
+                  <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-gray-200">
+                        <thead className="text-xs uppercase bg-gray-900 text-gray-400">
+                          <tr>
+                            <th className="px-3 py-2 text-left">Pedido</th>
+                            <th className="px-3 py-2 text-left">Produto</th>
+                            <th className="px-3 py-2 text-left">Material</th>
+                            <th className="px-3 py-2 text-right">Espessura</th>
+                            <th className="px-3 py-2 text-right">Largura</th>
+                            <th className="px-3 py-2 text-right">Confirmado</th>
+                            <th className="px-3 py-2 text-left">Programação</th>
+                            <th className="px-3 py-2 text-left">Entrega</th>
+                            <th className="px-3 py-2 text-left">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(() => {
+                            const search = ediSearch.toLowerCase();
+                            return ediOrders
+                              .filter((o) => {
+                                if (ediFilterType !== "all" && o.productType !== ediFilterType) return false;
+                                if (ediFilterStatus !== "all" && o.status !== ediFilterStatus) return false;
+                                if (search) {
+                                  const haystack = [
+                                    o.orderNum, o.productName, o.materialSpec,
+                                    o.reference, o.description, o.status,
+                                  ].join(" ").toLowerCase();
+                                  if (!haystack.includes(search)) return false;
+                                }
+                                return true;
+                              })
+                              .map((o) => {
+                                const isExpanded = ediExpandedOrder === o.orderNum;
+                                const dispatched = o.dispatchedKg || 0;
+                                const confirmed = o.confirmedWeightKg || 0;
+                                const production = o.productionWeightKg || 0;
+                                const deliveryPct = confirmed > 0 ? Math.min(100, Math.round((dispatched / confirmed) * 100)) : 0;
+                                const statusColor =
+                                  o.status === "Entregue" ? "bg-emerald-900/50 border-emerald-600 text-emerald-100" :
+                                  o.status === "Parcial entregue" ? "bg-blue-900/50 border-blue-600 text-blue-100" :
+                                  o.status === "Em trânsito" ? "bg-cyan-900/50 border-cyan-600 text-cyan-100" :
+                                  o.status === "Em produção" ? "bg-indigo-900/50 border-indigo-600 text-indigo-100" :
+                                  o.status === "Estoque Usiminas" ? "bg-teal-900/50 border-teal-600 text-teal-100" :
+                                  o.status === "A confirmar" ? "bg-amber-900/50 border-amber-600 text-amber-100" :
+                                  "bg-gray-800 border-gray-600 text-gray-200";
+                                return (
+                                  <React.Fragment key={o.orderNum}>
+                                    <tr
+                                      className="border-b border-gray-700/70 hover:bg-gray-700/40 cursor-pointer"
+                                      onClick={() => setEdiExpandedOrder(isExpanded ? null : o.orderNum)}
+                                    >
+                                      <td className="px-3 py-2.5">
+                                        <div className="flex items-center gap-1">
+                                          {isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+                                          <span className="font-mono text-xs text-orange-300">{o.orderNum}</span>
+                                        </div>
+                                      </td>
+                                      <td className="px-3 py-2.5">
+                                        <div className="font-semibold text-white">{o.productType}</div>
+                                        <div className="text-xs text-gray-400">{o.productName}</div>
+                                      </td>
+                                      <td className="px-3 py-2.5 text-xs text-gray-300 max-w-[160px] truncate" title={o.materialSpec}>
+                                        {o.materialSpec}
+                                      </td>
+                                      <td className="px-3 py-2.5 text-right font-mono">
+                                        {o.thickness ? `${o.thickness.toFixed(2)}mm` : "—"}
+                                      </td>
+                                      <td className="px-3 py-2.5 text-right font-mono">
+                                        {o.width ? `${o.width.toFixed(0)}mm` : "—"}
+                                      </td>
+                                      <td className="px-3 py-2.5 text-right">
+                                        <div className="font-semibold">{formatKg(confirmed)} kg</div>
+                                        {production > 0 && (
+                                          <div className="text-xs text-blue-400">
+                                            {formatKg(production)} prod.
+                                          </div>
+                                        )}
+                                        {dispatched > 0 && (
+                                          <div className="text-xs text-emerald-400">
+                                            {formatKg(dispatched)} desp.
+                                          </div>
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-2.5 text-xs">
+                                        {formatDezena(o.scheduledDateRaw)}
+                                      </td>
+                                      <td className="px-3 py-2.5 text-xs">
+                                        {formatDezena(o.deliveryDateRaw)}
+                                      </td>
+                                      <td className="px-3 py-2.5">
+                                        <span className={`px-2 py-1 text-xs rounded-full border ${statusColor}`}>
+                                          {o.status}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                    {isExpanded && (
+                                      <tr className="bg-gray-900/60">
+                                        <td colSpan={9} className="px-4 py-3">
+                                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                            <div>
+                                              <span className="text-gray-400 text-xs">Referência pedido</span>
+                                              <div className="text-white">{o.purchaseRef || "—"}</div>
+                                            </div>
+                                            <div>
+                                              <span className="text-gray-400 text-xs">Pedido compra</span>
+                                              <div className="text-white">{o.purchaseOrder || "—"}</div>
+                                            </div>
+                                            <div>
+                                              <span className="text-gray-400 text-xs">Local entrega</span>
+                                              <div className="text-white">{o.deliveryLocation || "—"}</div>
+                                            </div>
+                                            <div>
+                                              <span className="text-gray-400 text-xs">Tipo prazo</span>
+                                              <div className="text-white">{o.deliveryType === "E" ? "Entrega" : o.deliveryType === "F" ? "Faturamento" : "—"}</div>
+                                            </div>
+                                          </div>
+                                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-3">
+                                            <div>
+                                              <span className="text-gray-400 text-xs">Despachado</span>
+                                              <div className="text-white">{formatKg(o.dispatchedKg || 0)} kg</div>
+                                            </div>
+                                            <div>
+                                              <span className="text-gray-400 text-xs">Estoque entreposto</span>
+                                              <div className="text-white">{formatKg(o.warehouseStockKg || 0)} kg</div>
+                                            </div>
+                                            <div>
+                                              <span className="text-gray-400 text-xs">Trânsito entreposto</span>
+                                              <div className="text-white">{formatKg(o.transitKg || 0)} kg</div>
+                                            </div>
+                                            <div>
+                                              <span className="text-gray-400 text-xs">Ag. despacho</span>
+                                              <div className="text-white">{formatKg(o.awaitingDispatchKg || 0)} kg</div>
+                                            </div>
+                                          </div>
+                                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-3">
+                                            <div>
+                                              <span className="text-gray-400 text-xs">Prev. decêndio 1</span>
+                                              <div className="text-white">{formatKg(o.forecastDec1Kg || 0)} kg</div>
+                                            </div>
+                                            <div>
+                                              <span className="text-gray-400 text-xs">Prev. decêndio 2</span>
+                                              <div className="text-white">{formatKg(o.forecastDec2Kg || 0)} kg</div>
+                                            </div>
+                                            <div>
+                                              <span className="text-gray-400 text-xs">Prev. decêndio 3</span>
+                                              <div className="text-white">{formatKg(o.forecastDec3Kg || 0)} kg</div>
+                                            </div>
+                                            <div>
+                                              <span className="text-gray-400 text-xs">Prev. &gt; 3 dec.</span>
+                                              <div className="text-white">{formatKg(o.forecastGt3Kg || 0)} kg</div>
+                                            </div>
+                                          </div>
+                                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-3">
+                                            <div>
+                                              <span className="text-gray-400 text-xs">Preço negociado (R$/ton)</span>
+                                              <div className="text-white">
+                                                {o.negotiatedPrice ? `R$ ${o.negotiatedPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
+                                              </div>
+                                            </div>
+                                            <div>
+                                              <span className="text-gray-400 text-xs">Preço unit. c/ impostos (R$/ton)</span>
+                                              <div className="text-white">
+                                                {o.unitPrice ? `R$ ${o.unitPrice.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
+                                              </div>
+                                            </div>
+                                            {dispatched > 0 && confirmed > 0 && (
+                                              <div className="col-span-2">
+                                                <span className="text-gray-400 text-xs">Progresso de entrega</span>
+                                                <div className="flex items-center gap-3 mt-1">
+                                                  <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+                                                    <div
+                                                      className="h-2 bg-emerald-500 rounded-full transition-all"
+                                                      style={{ width: `${deliveryPct}%` }}
+                                                    />
+                                                  </div>
+                                                  <span className="text-xs text-gray-300 font-semibold">
+                                                    {deliveryPct}%
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </React.Fragment>
+                                );
+                              });
+                          })()}
+                          {ediOrders.length > 0 && ediOrders.filter((o) => {
+                            if (ediFilterType !== "all" && o.productType !== ediFilterType) return false;
+                            if (ediFilterStatus !== "all" && o.status !== ediFilterStatus) return false;
+                            if (ediSearch) {
+                              const h = [o.orderNum, o.productName, o.materialSpec, o.reference, o.description, o.status].join(" ").toLowerCase();
+                              if (!h.includes(ediSearch.toLowerCase())) return false;
+                            }
+                            return true;
+                          }).length === 0 && (
+                            <tr>
+                              <td colSpan={9} className="px-3 py-6 text-center text-gray-400">
+                                Nenhum pedido encontrado para este filtro.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {ediOrders.length === 0 && !ediLoading && !ediError && (
+                <div className="bg-gray-800 p-8 rounded-xl border border-gray-700 text-center">
+                  <Download size={48} className="mx-auto text-gray-500 mb-4" />
+                  <h4 className="text-lg font-semibold text-gray-300 mb-2">Nenhum dado carregado</h4>
+                  <p className="text-sm text-gray-400 max-w-md mx-auto">
+                    Use <strong>"Sincronizar Online"</strong> para buscar dados diretamente do WebService Usiminas,
+                    ou <strong>"Importar Arquivo"</strong> para carregar o WEBEDI.TXT manualmente.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
       )}
     </div>
