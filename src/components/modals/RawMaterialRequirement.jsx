@@ -3407,6 +3407,24 @@ const RawMaterialRequirement = ({
             </div>
 
             <div className="p-5 space-y-4">
+              {/* Input de consumo mensal — controla o gráfico de projeção */}
+              <div className="flex items-center gap-3 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
+                <label className="text-xs text-gray-400 whitespace-nowrap">Consumo mensal (kg):</label>
+                <input
+                  type="number"
+                  min="0"
+                  className="flex-1 bg-gray-900 border border-gray-600 rounded px-2 py-1 text-white text-sm"
+                  placeholder="Ex: 30000"
+                  value={purchaseMonthlyDemand || ""}
+                  onChange={(e) => setPurchaseMonthlyDemand(e.target.value)}
+                />
+                {purchaseMonthlyDemand > 0 && (
+                  <span className="text-xs text-gray-400 whitespace-nowrap">
+                    ≈ {Math.round(purchaseMonthlyDemand / 30)} kg/dia
+                  </span>
+                )}
+              </div>
+
               <div className="flex items-center gap-2 text-sm text-gray-300">
                 <span className="text-gray-400">Status:</span>
                 {(() => {
