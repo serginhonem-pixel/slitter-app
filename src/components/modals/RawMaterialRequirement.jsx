@@ -3342,13 +3342,39 @@ const RawMaterialRequirement = ({
           (o.status || "previsto").toLowerCase() !== "simulacao" &&
           (o.groupId === g.groupId || o.groupKey === g.groupId)
       );
+      // Cruzar EDI Usiminas para este grupo (tipo + espessura)
+      const gType = g.type.trim().toUpperCase();
+      const gThick = parseFloat(String(g.thickness).replace(",", ".")) || 0;
+      const today = new Date(); today.setHours(0,0,0,0);
+      const ediForGroup = ediOrders
+        .filter((o) => {
+          const oType = (o.productType || "").trim().toUpperCase();
+          const oThick = parseFloat(o.thickness) || 0;
+          const pendingKg = Math.max(0, (o.confirmedWeightKg || 0) - (o.dispatchedKg || 0));
+          return oType === gType && Math.abs(oThick - gThick) < 0.015 && pendingKg > 0;
+        })
+        .map((o) => {
+          const rawDate = o.deliveryDate instanceof Date ? o.deliveryDate : null;
+          const effectiveDate = rawDate ? (rawDate < today ? today : rawDate) : today;
+          return {
+            id: `EDI-${o.orderNum}`,
+            eta: effectiveDate.toISOString().slice(0, 10),
+            weightKg: Math.max(0, (o.confirmedWeightKg || 0) - (o.dispatchedKg || 0)),
+            orderNum: o.orderNum,
+            purchaseOrder: o.purchaseOrder,
+            statusText: o.status,
+            deliveryDateRaw: o.deliveryDateRaw,
+            etaOverdue: rawDate && rawDate < today,
+          };
+        });
+      const allIncoming = [...ordersForGroup, ...ediForGroup];
       const now = new Date();
       const points = [];
       let balance = (Number(g.motherStockWeight) || 0) + (Number(g.b2StockWeight) || 0);
       for (let i = 0; i <= 120; i += 10) {
         const d = new Date(now);
         d.setDate(d.getDate() + i);
-        const incoming = ordersForGroup
+        const incoming = allIncoming
           .filter((o) => {
             const eta = o.eta || o.date;
             if (!eta) return false;
@@ -3386,10 +3412,14 @@ const RawMaterialRequirement = ({
                 {(() => {
                   const hasFirm = ordersForGroup.some((o) => (o.status || "").toLowerCase() === "firme");
                   const hasPred = ordersForGroup.some((o) => (o.status || "").toLowerCase() !== "firme");
-                  if (hasFirm) return <span className="text-blue-300">Em trânsito</span>;
-                  if (hasPred) return <span className="text-amber-300">Pedido feito</span>;
+                  const hasEdiTransit = ediForGroup.some((o) =>
+                    ["Em trânsito", "Estoque Usiminas", "Em produção"].includes(o.statusText)
+                  );
+                  const hasEdi = ediForGroup.length > 0;
+                  if (hasFirm || hasEdiTransit) return <span className="text-blue-300">Em trânsito</span>;
+                  if (hasPred || hasEdi) return <span className="text-amber-300">Pedido feito</span>;
                   return <span className="text-gray-300">Sem pedido</span>;
-    })()}
+                })()}
 
 
               </div>
@@ -3452,8 +3482,37 @@ const RawMaterialRequirement = ({
               <div className="space-y-2">
                 <div className="text-sm text-gray-400">Pedidos cadastrados</div>
                 <div className="flex flex-col gap-2">
-                  {ordersForGroup.length === 0 && (
+                  {ordersForGroup.length === 0 && ediForGroup.length === 0 && (
                     <div className="text-gray-500 text-sm">Nenhum pedido para esta MP.</div>
+                  )}
+                  {ediForGroup.length > 0 && (
+                    <div className="bg-orange-900/20 border border-orange-800/50 rounded-lg p-3 space-y-1.5">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-orange-700/40 border border-orange-700 text-orange-300">EDI Usiminas</span>
+                        <span className="text-xs text-gray-400">{ediForGroup.length} pedido(s) em aberto</span>
+                      </div>
+                      {ediForGroup.map((o) => (
+                        <div key={o.id} className="flex items-center justify-between text-xs text-gray-200">
+                          <div>
+                            <span className="font-medium text-white">OV {o.orderNum}</span>
+                            {o.purchaseOrder && <span className="text-gray-400 ml-1">· {o.purchaseOrder}</span>}
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-orange-300">
+                              {o.deliveryDateRaw || formatDate(o.eta)}
+                              {o.etaOverdue && <span className="text-red-400 ml-1">(vencido)</span>}
+                            </span>
+                            <span className="text-green-400 font-mono">{formatKg(o.weightKg)} kg</span>
+                            <span className={`px-1.5 py-0.5 rounded ${
+                              o.statusText === "Em trânsito" ? "bg-blue-800/50 text-blue-300" :
+                              o.statusText === "Estoque Usiminas" ? "bg-yellow-800/50 text-yellow-300" :
+                              o.statusText === "Em produção" ? "bg-purple-800/50 text-purple-300" :
+                              "bg-gray-700 text-gray-300"
+                            }`}>{o.statusText || "Programado"}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                   {ordersForGroup.map((o) => (
                     <div
