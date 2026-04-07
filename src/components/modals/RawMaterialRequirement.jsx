@@ -4017,6 +4017,9 @@ const RawMaterialRequirement = ({
                       className="bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-white text-sm"
                     >
                       <option value="all">Todos os status</option>
+                      <option value="leilao">Leilão</option>
+                      <option value="estoque">Estoque Usiminas</option>
+                      <option value="atrasado">Atrasados</option>
                       {[...new Set(ediOrders.map((o) => o.status))].sort().map((s) => (
                         <option key={s} value={s}>{s}</option>
                       ))}
@@ -4029,31 +4032,64 @@ const RawMaterialRequirement = ({
                     const totalWeightKg = ediOrders.reduce((s, o) => s + (o.confirmedWeightKg || 0), 0);
                     const totalDispatchedKg = ediOrders.reduce((s, o) => s + (o.dispatchedKg || 0), 0);
                     const totalProductionKg = ediOrders.reduce((s, o) => s + (o.productionWeightKg || 0), 0);
-                    const estoqueCount = ediOrders.filter((o) => o.isEstoque).length;
-                    const pendingCount = ediOrders.filter((o) => !o.isEstoque && o.status !== "Entregue").length;
+                    const totalPendingKg = ediOrders.reduce((s, o) => s + (o.pendingKg || 0), 0);
+                    const leilaoCount = ediOrders.filter((o) => o.isLeilao).length;
+                    const leilaoKg = ediOrders.filter((o) => o.isLeilao).reduce((s, o) => s + (o.pendingKg || 0), 0);
+                    const overdueCount = ediOrders.filter((o) => o.isOverdue).length;
+                    const pendingCount = ediOrders.filter((o) => o.status !== "Entregue" && (o.pendingKg || 0) > 0).length;
+                    const totalInvestment = ediOrders.reduce((s, o) => s + (o.investmentBrl || 0), 0);
                     return (
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                        <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
-                          <div className="text-2xl font-bold text-white">{totalOrders}</div>
-                          <div className="text-xs text-gray-400">Itens no EDI</div>
+                      <>
+                        {/* Linha 1 — KPIs principais: grid fixo 3x2 / 6 colunas */}
+                        <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+                          <div className="bg-gray-800/80 p-3 rounded-xl border border-gray-700 text-center">
+                            <div className="text-2xl font-bold text-white">{totalOrders}</div>
+                            <div className="text-xs text-gray-400 mt-0.5">Itens no EDI</div>
+                          </div>
+                          <div className="bg-gray-800/80 p-3 rounded-xl border border-gray-700 text-center">
+                            <div className="text-2xl font-bold text-orange-400">{formatKg(totalWeightKg)}</div>
+                            <div className="text-xs text-gray-400 mt-0.5">Confirmado (kg)</div>
+                          </div>
+                          <div className="bg-gray-800/80 p-3 rounded-xl border border-gray-700 text-center">
+                            <div className="text-2xl font-bold text-blue-400">{formatKg(totalProductionKg)}</div>
+                            <div className="text-xs text-gray-400 mt-0.5">Em produção (kg)</div>
+                          </div>
+                          <div className="bg-gray-800/80 p-3 rounded-xl border border-gray-700 text-center">
+                            <div className="text-2xl font-bold text-emerald-400">{formatKg(totalDispatchedKg)}</div>
+                            <div className="text-xs text-gray-400 mt-0.5">Despachado (kg)</div>
+                          </div>
+                          <div className="bg-gray-800/80 p-3 rounded-xl border border-gray-700 text-center">
+                            <div className="text-2xl font-bold text-amber-400">{pendingCount}</div>
+                            <div className="text-xs text-gray-400 mt-0.5">Pendentes</div>
+                          </div>
+                          <div className={`p-3 rounded-xl text-center ${overdueCount > 0 ? "bg-red-900/40 border border-red-700" : "bg-gray-800/80 border border-gray-700"}`}>
+                            <div className={`text-2xl font-bold ${overdueCount > 0 ? "text-red-400" : "text-gray-500"}`}>{overdueCount}</div>
+                            <div className={`text-xs mt-0.5 ${overdueCount > 0 ? "text-red-300" : "text-gray-500"}`}>Atrasados</div>
+                          </div>
                         </div>
-                        <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
-                          <div className="text-2xl font-bold text-orange-400">{formatKg(totalWeightKg)}</div>
-                          <div className="text-xs text-gray-400">Peso confirmado (kg)</div>
+
+                        {/* Linha 2 — Financeiro + Leilão: grid fixo 4 colunas */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div className="bg-gray-800/80 p-3 rounded-xl border border-gray-700 text-center">
+                            <div className="text-xl font-bold text-cyan-400">{formatKg(totalPendingKg)}</div>
+                            <div className="text-xs text-gray-400 mt-0.5">Saldo pendente (kg)</div>
+                          </div>
+                          <div className="bg-gray-800/80 p-3 rounded-xl border border-gray-700 text-center">
+                            <div className="text-xl font-bold text-yellow-400">{formatMoney(totalInvestment)}</div>
+                            <div className="text-xs text-gray-400 mt-0.5">Investimento em trânsito</div>
+                          </div>
+                          <div className="bg-gray-800/80 p-3 rounded-xl border border-gray-700 text-center">
+                            <div className="text-xl font-bold text-gray-300">{formatMoney(totalInvestment / Math.max(1, pendingCount))}</div>
+                            <div className="text-xs text-gray-400 mt-0.5">Ticket médio / pedido</div>
+                          </div>
+                          <div className={`p-3 rounded-xl text-center ${leilaoCount > 0 ? "bg-purple-900/40 border border-purple-600" : "bg-gray-800/80 border border-gray-700"}`}>
+                            <div className={`text-xl font-bold ${leilaoCount > 0 ? "text-purple-400" : "text-gray-500"}`}>{leilaoCount}</div>
+                            <div className={`text-xs mt-0.5 ${leilaoCount > 0 ? "text-purple-300" : "text-gray-500"}`}>
+                              Leilão {leilaoCount > 0 ? `(${formatKg(leilaoKg)} kg)` : ""}
+                            </div>
+                          </div>
                         </div>
-                        <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
-                          <div className="text-2xl font-bold text-blue-400">{formatKg(totalProductionKg)}</div>
-                          <div className="text-xs text-gray-400">Em produção (kg)</div>
-                        </div>
-                        <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
-                          <div className="text-2xl font-bold text-emerald-400">{formatKg(totalDispatchedKg)}</div>
-                          <div className="text-xs text-gray-400">Despachado (kg)</div>
-                        </div>
-                        <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
-                          <div className="text-2xl font-bold text-amber-400">{pendingCount}</div>
-                          <div className="text-xs text-gray-400">Pendentes</div>
-                        </div>
-                      </div>
+                      </>
                     );
                   })()}
 
@@ -4077,10 +4113,17 @@ const RawMaterialRequirement = ({
                         <tbody>
                           {(() => {
                             const search = ediSearch.toLowerCase();
+                            const applyStatusFilter = (o) => {
+                              if (ediFilterStatus === "all") return true;
+                              if (ediFilterStatus === "leilao") return o.isLeilao;
+                              if (ediFilterStatus === "estoque") return o.isEstoque;
+                              if (ediFilterStatus === "atrasado") return o.isOverdue;
+                              return o.status === ediFilterStatus;
+                            };
                             return ediOrders
                               .filter((o) => {
                                 if (ediFilterType !== "all" && o.productType !== ediFilterType) return false;
-                                if (ediFilterStatus !== "all" && o.status !== ediFilterStatus) return false;
+                                if (!applyStatusFilter(o)) return false;
                                 if (search) {
                                   const haystack = [
                                     o.orderNum, o.productName, o.materialSpec,
@@ -4103,18 +4146,30 @@ const RawMaterialRequirement = ({
                                   o.status === "Em trânsito" ? "bg-cyan-900/50 border-cyan-600 text-cyan-100" :
                                   o.status === "Em produção" ? "bg-indigo-900/50 border-indigo-600 text-indigo-100" :
                                   o.status === "Estoque Usiminas" ? "bg-teal-900/50 border-teal-600 text-teal-100" :
+                                  o.status === "Leilão Usiminas" ? "bg-purple-900/50 border-purple-600 text-purple-100" :
                                   o.status === "A confirmar" ? "bg-amber-900/50 border-amber-600 text-amber-100" :
                                   "bg-gray-800 border-gray-600 text-gray-200";
                                 return (
                                   <React.Fragment key={o.orderNum}>
                                     <tr
-                                      className="border-b border-gray-700/70 hover:bg-gray-700/40 cursor-pointer"
+                                      className={`border-b border-gray-700/70 hover:bg-gray-700/40 cursor-pointer ${o.isOverdue ? "bg-red-900/20" : ""}`}
                                       onClick={() => setEdiExpandedOrder(isExpanded ? null : o.orderNum)}
                                     >
                                       <td className="px-3 py-2.5">
                                         <div className="flex items-center gap-1">
                                           {isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
                                           <span className="font-mono text-xs text-orange-300">{o.orderNum}</span>
+                                        </div>
+                                        <div className="flex gap-1 mt-0.5">
+                                          {o.isLeilao && (
+                                            <span className="px-1.5 py-0.5 text-[10px] rounded bg-purple-800/60 border border-purple-600 text-purple-200 font-semibold">LEILÃO</span>
+                                          )}
+                                          {o.isEstoque && !o.isLeilao && (
+                                            <span className="px-1.5 py-0.5 text-[10px] rounded bg-teal-800/60 border border-teal-600 text-teal-200 font-semibold">ESTOQUE</span>
+                                          )}
+                                          {o.isOverdue && (
+                                            <span className="px-1.5 py-0.5 text-[10px] rounded bg-red-800/60 border border-red-600 text-red-200 font-semibold">{o.overdueDays}d ATRASO</span>
+                                          )}
                                         </div>
                                       </td>
                                       <td className="px-3 py-2.5">
@@ -4242,6 +4297,33 @@ const RawMaterialRequirement = ({
                                               </div>
                                             )}
                                           </div>
+                                          {/* Saldo pendente, investimento e alertas */}
+                                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-3">
+                                            <div>
+                                              <span className="text-gray-400 text-xs">Saldo pendente</span>
+                                              <div className={`font-semibold ${(o.pendingKg || 0) > 0 ? "text-amber-300" : "text-emerald-300"}`}>
+                                                {formatKg(o.pendingKg || 0)} kg
+                                              </div>
+                                            </div>
+                                            {o.investmentBrl > 0 && (
+                                              <div>
+                                                <span className="text-gray-400 text-xs">Investimento em trânsito</span>
+                                                <div className="text-yellow-300 font-semibold">{formatMoney(o.investmentBrl)}</div>
+                                              </div>
+                                            )}
+                                            {o.isLeilao && (
+                                              <div>
+                                                <span className="text-gray-400 text-xs">Tipo pedido</span>
+                                                <div className="text-purple-300 font-semibold">Leilão</div>
+                                              </div>
+                                            )}
+                                            {o.isOverdue && (
+                                              <div>
+                                                <span className="text-gray-400 text-xs">Atraso</span>
+                                                <div className="text-red-400 font-semibold">{o.overdueDays} dias em atraso</div>
+                                              </div>
+                                            )}
+                                          </div>
                                         </td>
                                       </tr>
                                     )}
@@ -4251,7 +4333,12 @@ const RawMaterialRequirement = ({
                           })()}
                           {ediOrders.length > 0 && ediOrders.filter((o) => {
                             if (ediFilterType !== "all" && o.productType !== ediFilterType) return false;
-                            if (ediFilterStatus !== "all" && o.status !== ediFilterStatus) return false;
+                            if (ediFilterStatus !== "all") {
+                              if (ediFilterStatus === "leilao" && !o.isLeilao) return false;
+                              else if (ediFilterStatus === "estoque" && !o.isEstoque) return false;
+                              else if (ediFilterStatus === "atrasado" && !o.isOverdue) return false;
+                              else if (!["leilao", "estoque", "atrasado"].includes(ediFilterStatus) && o.status !== ediFilterStatus) return false;
+                            }
                             if (ediSearch) {
                               const h = [o.orderNum, o.productName, o.materialSpec, o.purchaseRef, o.purchaseOrder, o.description, o.status, o.productType].join(" ").toLowerCase();
                               if (!h.includes(ediSearch.toLowerCase())) return false;

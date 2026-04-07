@@ -154,8 +154,24 @@ export function parseUsiminasEdi(text) {
     const awaitingDispatch = o.awaitingDispatchKg || 0;
     const warehouseStock = o.warehouseStockKg || 0;
     const transit = o.transitKg || 0;
-    const isEstoque = (o.purchaseRef || "").toUpperCase().includes("ESTOQUE");
+    const refUpper = (o.purchaseRef || "").toUpperCase();
+    const nameUpper = (o.productName || "").toUpperCase();
+    const poUpper = (o.purchaseOrder || "").toUpperCase();
+    const statusUpper = (o.statusOv || "").toUpperCase();
+    const matUpper = (o.materialSpec || "").toUpperCase();
+    const locUpper = (o.deliveryLocation || "").toUpperCase();
+    const isEstoque = refUpper.includes("ESTOQUE");
+    const isLeilao = [refUpper, nameUpper, poUpper, statusUpper, matUpper, locUpper].some(f => f.includes("LEIL"));
     const pendingConfirm = (o.deliveryDateRaw || "").toLowerCase().includes("confirma");
+    const pendingKg = Math.max(0, confirmed - dispatched);
+
+    // Detectar atraso: prazo confirmado já passou e ainda há saldo pendente
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const isOverdue = o.deliveryDate instanceof Date && o.deliveryDate < today && pendingKg > 0;
+    const overdueDays = isOverdue ? Math.round((today - o.deliveryDate) / (24 * 60 * 60 * 1000)) : 0;
+
+    // Investimento em trânsito (preço negociado × peso pendente em toneladas)
+    const investmentBrl = (o.negotiatedPrice || 0) * (pendingKg / 1000);
 
     let status = "Programado";
     if (dispatched > 0 && dispatched >= confirmed) {
@@ -166,8 +182,8 @@ export function parseUsiminasEdi(text) {
       status = "Em trânsito";
     } else if (production > 0) {
       status = "Em produção";
-    } else if (isEstoque) {
-      status = "Estoque Usiminas";
+    } else if (isEstoque || isLeilao) {
+      status = isLeilao ? "Leilão Usiminas" : "Estoque Usiminas";
     } else if (pendingConfirm) {
       status = "A confirmar";
     }
@@ -175,7 +191,7 @@ export function parseUsiminasEdi(text) {
     // Campo de compatibilidade (usado na UI)
     o.description = o.purchaseRef;
 
-    return { ...o, status, isEstoque };
+    return { ...o, status, isEstoque, isLeilao, pendingKg, isOverdue, overdueDays, investmentBrl };
   });
 
   // Ordenar por data (mais recentes primeiro)
@@ -231,16 +247,34 @@ export function parseUsiminasXml(xmlText) {
     const warehouseStock = num("PESO_ESTOQ_ENTREP");
     const transit = num("PESO_TRANS_ENTREP");
     const awaitingDispatch = num("PESO_AG_DESPACHO");
-    const isEstoque = tag("SIMBOLO_REFERENCIA").toUpperCase().includes("ESTOQUE");
+    const refUpper = tag("SIMBOLO_REFERENCIA").toUpperCase();
+    const nameUpper = tag("PRODUTO").toUpperCase();
+    const poUpper = tag("PEDIDO_COMPRA").toUpperCase();
+    const statusUpper = tag("STATUS").toUpperCase();
+    const matUpper = tag("QUALIDADE").toUpperCase();
+    const locUpper = tag("LOCAL_ENTREGA").toUpperCase();
+    const modalidade = tag("MODALIDADE").toUpperCase();
+    const isEstoque = refUpper.includes("ESTOQUE");
+    const isLeilao = [refUpper, nameUpper, poUpper, statusUpper, matUpper, locUpper, modalidade].some(f => f.includes("LEIL"));
     const pendingConfirm = !prazoConfirmado || prazoConfirmado === "";
+    const pendingKg = Math.max(0, confirmed - dispatched);
+
+    // Detectar atraso
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const deliveryDateParsed = parseDezenaDate(prazoConfirmado);
+    const isOverdue = deliveryDateParsed instanceof Date && deliveryDateParsed < today && pendingKg > 0;
+    const overdueDays = isOverdue ? Math.round((today - deliveryDateParsed) / (24 * 60 * 60 * 1000)) : 0;
 
     let status = "Programado";
     if (dispatched > 0 && dispatched >= confirmed) status = "Entregue";
     else if (dispatched > 0) status = "Parcial entregue";
     else if (awaitingDispatch > 0 || warehouseStock > 0 || transit > 0) status = "Em trânsito";
     else if (production > 0) status = "Em produção";
-    else if (isEstoque) status = "Estoque Usiminas";
+    else if (isEstoque || isLeilao) status = isLeilao ? "Leilão Usiminas" : "Estoque Usiminas";
     else if (pendingConfirm) status = "A confirmar";
+
+    const negPrice = flt("PRECO_NEGOC");
+    const investmentBrl = negPrice * (pendingKg / 1000);
 
     orders.push({
       orderNum: tag("NUM_OV") + (tag("ITEM_OV") ? tag("ITEM_OV").padStart(2, "0") : ""),
@@ -256,7 +290,7 @@ export function parseUsiminasXml(xmlText) {
       scheduledDateRaw: prazoDesejado,
       deliveryDateRaw: prazoConfirmado,
       scheduledDate: parseDezenaDate(prazoDesejado),
-      deliveryDate: parseDezenaDate(prazoConfirmado),
+      deliveryDate: deliveryDateParsed,
       deliveryType: tag("TP_PRAZO_CONFIRMADO"),
       deliveryLocation: tag("LOCAL_ENTREGA"),
       confirmedWeightKg: confirmed,
@@ -269,13 +303,18 @@ export function parseUsiminasXml(xmlText) {
       forecastDec2Kg: Math.round(flt("PESO_PREV_2_DEC") * 1000),
       forecastDec3Kg: Math.round(flt("PESO_PREV_3_DEC") * 1000),
       forecastGt3Kg: Math.round(flt("PESO_PREV_MAIOR_3_DEC") * 1000),
-      negotiatedPrice: flt("PRECO_NEGOC"),
+      negotiatedPrice: negPrice,
       unitPrice: flt("PRECO_UNIT_ITEM"),
       clientCode: tag("CLIENTE"),
       cnpj: tag("CNPJ_RECEBEDOR"),
       description: tag("PEDIDO_COMPRA") || tag("SIMBOLO_REFERENCIA"),
       status,
       isEstoque,
+      isLeilao,
+      pendingKg,
+      isOverdue,
+      overdueDays,
+      investmentBrl,
     });
   });
 
@@ -284,6 +323,25 @@ export function parseUsiminasXml(xmlText) {
     const db = b.scheduledDate ? b.scheduledDate.getTime() : 0;
     return db - da;
   });
+
+  // Debug: listar campos-chave de cada pedido para identificar padrão de leilão
+  const leilaoHits = orders.filter(o => o.isLeilao);
+  console.log(`[EDI Parser] Leilão detectados: ${leilaoHits.length} de ${orders.length}`);
+  if (leilaoHits.length === 0 && orders.length > 0) {
+    console.log("[EDI Parser] Nenhum leilão encontrado. Campos do primeiro pedido para referência:", {
+      purchaseRef: orders[0].purchaseRef,
+      purchaseOrder: orders[0].purchaseOrder,
+      productName: orders[0].productName,
+      statusOv: orders[0].statusOv,
+      materialSpec: orders[0].materialSpec,
+      deliveryLocation: orders[0].deliveryLocation,
+    });
+    // Listar todos os valores únicos de statusOv e purchaseRef
+    const uniqueStatus = [...new Set(orders.map(o => o.statusOv))];
+    const uniqueRefs = [...new Set(orders.map(o => o.purchaseRef))];
+    console.log("[EDI Parser] Status OV únicos:", uniqueStatus);
+    console.log("[EDI Parser] Referências únicas:", uniqueRefs);
+  }
 
   return { orders };
 }
