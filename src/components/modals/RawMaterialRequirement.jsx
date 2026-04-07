@@ -1688,7 +1688,9 @@ const RawMaterialRequirement = ({
             <TrendingUp className="text-indigo-400" />
             {activeTab === "coil"
               ? "SIMULADOR DE PLANEJAMENTO DE COMPRAS – BOBINAS"
-              : "PLANEJAMENTO DE MATERIAIS – INOX (BLANKS)"}
+              : activeTab === "inox"
+              ? "INOX (BLANKS)"
+              : "GESTAO DE COMPRAS"}
           </h2>
 
           <div className="mt-3 inline-flex rounded-lg bg-gray-900 border border-gray-700 p-1">
