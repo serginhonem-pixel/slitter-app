@@ -209,7 +209,7 @@ export function parseUsiminasXml(xmlText) {
     const warehouseStock = num("PESO_ESTOQ_ENTREP");
     const transit = num("PESO_TRANS_ENTREP");
     const awaitingDispatch = num("PESO_AG_DESPACHO");
-    const isEstoque = tag("PEDIDO_COMPRA").toUpperCase().includes("ESTOQUE");
+    const isEstoque = tag("SIMBOLO_REFERENCIA").toUpperCase().includes("ESTOQUE");
     const pendingConfirm = !prazoConfirmado || prazoConfirmado === "";
 
     let status = "Programado";
@@ -243,10 +243,10 @@ export function parseUsiminasXml(xmlText) {
       warehouseStockKg: warehouseStock,
       transitKg: transit,
       awaitingDispatchKg: awaitingDispatch,
-      forecastDec1Kg: num("PESO_PREV_1_DEC"),
-      forecastDec2Kg: num("PESO_PREV_2_DEC"),
-      forecastDec3Kg: num("PESO_PREV_3_DEC"),
-      forecastGt3Kg: num("PESO_PREV_MAIOR_3_DEC"),
+      forecastDec1Kg: Math.round(flt("PESO_PREV_1_DEC") * 1000),
+      forecastDec2Kg: Math.round(flt("PESO_PREV_2_DEC") * 1000),
+      forecastDec3Kg: Math.round(flt("PESO_PREV_3_DEC") * 1000),
+      forecastGt3Kg: Math.round(flt("PESO_PREV_MAIOR_3_DEC") * 1000),
       negotiatedPrice: flt("PRECO_NEGOC"),
       unitPrice: flt("PRECO_UNIT_ITEM"),
       clientCode: tag("CLIENTE"),

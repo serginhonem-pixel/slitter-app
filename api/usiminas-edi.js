@@ -53,7 +53,7 @@ export default async function handler(req, res) {
 </soapenv:Envelope>`;
 
   try {
-    const response = await fetch("https://cvwe.usiminas.com/EDIService.svc", {
+    const response = await fetch("https://cvwe.usiminas.com/EDIService.svc/soap", {
       method: "POST",
       headers: {
         "Content-Type": "text/xml; charset=utf-8",
@@ -75,7 +75,7 @@ export default async function handler(req, res) {
     // Extrair o conteúdo retornado de dentro do SOAP envelope
     // O resultado vem dentro de <transmiteArquivoResult>...</transmiteArquivoResult>
     const resultMatch = xmlResponse.match(
-      /<transmiteArquivoResult[^>]*>([\s\S]*?)<\/transmiteArquivoResult>/
+      /<transmiteArquivoRe(?:sult|turn)[^>]*>([\s\S]*?)<\/transmiteArquivoRe(?:sult|turn)>/
     );
 
     if (!resultMatch) {

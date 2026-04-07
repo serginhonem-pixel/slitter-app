@@ -49,7 +49,7 @@ function usiminasEdiProxy() {
   </soapenv:Body>
 </soapenv:Envelope>`;
 
-            const response = await fetch('https://cvwe.usiminas.com/EDIService.svc', {
+            const response = await fetch('https://cvwe.usiminas.com/EDIService.svc/soap', {
               method: 'POST',
               headers: {
                 'Content-Type': 'text/xml; charset=utf-8',
@@ -67,7 +67,7 @@ function usiminasEdiProxy() {
             }
 
             const xmlResponse = await response.text();
-            const resultMatch = xmlResponse.match(/<transmiteArquivoResult[^>]*>([\s\S]*?)<\/transmiteArquivoResult>/);
+            const resultMatch = xmlResponse.match(/<transmiteArquivoRe(?:sult|turn)[^>]*>([\s\S]*?)<\/transmiteArquivoRe(?:sult|turn)>/);
 
             if (!resultMatch) {
               res.setHeader('Content-Type', 'application/json');
