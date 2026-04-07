@@ -723,6 +723,10 @@ const RawMaterialRequirement = ({
     if (!selectedGroup || !ediOrders.length) return [];
     const groupType = selectedGroup.type.trim().toUpperCase();
     const groupThickness = parseFloat(String(selectedGroup.thickness).replace(",", ".")) || 0;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     return ediOrders
       .filter((o) => {
         const ediType = (o.productType || "").trim().toUpperCase();
@@ -731,11 +735,13 @@ const RawMaterialRequirement = ({
       })
       .map((o) => {
         const pendingKg = Math.max(0, (o.confirmedWeightKg || 0) - (o.dispatchedKg || 0));
-        const etaStr = o.deliveryDate
-          ? o.deliveryDate instanceof Date
-            ? o.deliveryDate.toISOString().slice(0, 10)
-            : null
+        // Prazo real conforme EDI (para exibição)
+        const rawDate = o.deliveryDate instanceof Date ? o.deliveryDate : null;
+        // Se o prazo já passou mas ainda há saldo pendente, tratar como chegando hoje
+        const effectiveDate = rawDate
+          ? rawDate < today ? today : rawDate
           : null;
+        const etaStr = effectiveDate ? effectiveDate.toISOString().slice(0, 10) : null;
         return {
           id: `EDI-${o.orderNum}`,
           groupKey: selectedGroup.groupId,
@@ -746,10 +752,13 @@ const RawMaterialRequirement = ({
           purchaseOrder: o.purchaseOrder,
           statusText: o.status,
           deliveryDateRaw: o.deliveryDateRaw,
+          etaOverdue: rawDate && rawDate < today, // prazo vencido
           source: "usiminas-edi",
         };
       })
-      .filter((o) => o.eta && o.weightKg > 0);
+      .filter((o) => o.eta && o.weightKg > 0)
+      // Ordenar por data de chegada (mais próxima primeiro)
+      .sort((a, b) => new Date(a.eta) - new Date(b.eta));
   }, [selectedGroup, ediOrders]);
 
   const simOrdersForSelectedGroup = selectedMpCode
@@ -2362,6 +2371,9 @@ const RawMaterialRequirement = ({
                             </td>
                             <td className="py-1.5 pr-3 text-orange-300">
                               {o.deliveryDateRaw || formatDate(o.eta)}
+                              {o.etaOverdue && (
+                                <span className="ml-1 text-[10px] text-red-400 font-medium">(vencido)</span>
+                              )}
                             </td>
                             <td className="py-1.5 pr-3 text-right font-mono text-green-400">
                               {formatKg(o.weightKg)} kg
