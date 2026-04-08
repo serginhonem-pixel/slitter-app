@@ -725,6 +725,13 @@ export default function TireManagement() {
   } = useTiresData();
 
   const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  const [jaSincronizado, setJaSincronizado] = useState(() => localStorage.getItem("tires_synced_once") === "true");
+
+  const handleSync = async () => {
+    await syncAllToFirebase(pedidos, estoqueBase);
+    localStorage.setItem("tires_synced_once", "true");
+    setJaSincronizado(true);
+  };
 
   const [subTab, setSubTab] = useState("dashboard");
   const [showForm, setShowForm] = useState(false);
@@ -783,9 +790,9 @@ export default function TireManagement() {
           {isLocal && (
             <span className="text-xs text-gray-500 italic">Sync disponível em produção</span>
           )}
-          {!isLocal && (
+          {!isLocal && !jaSincronizado && (
             <button
-              onClick={() => syncAllToFirebase(pedidos, estoqueBase)}
+              onClick={handleSync}
               disabled={syncStatus === "syncing"}
               className={`px-3 py-1.5 text-xs font-semibold rounded flex items-center gap-1.5 ${
                 syncStatus === "ok"
