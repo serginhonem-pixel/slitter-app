@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import {
   AlertTriangle, CheckCircle, Package, Truck, PlusCircle,
-  Edit2, Trash2, X, Save, ChevronDown, ChevronUp, Clock, CloudUpload, Loader, FileDown,
+  Edit2, Trash2, X, Save, ChevronDown, ChevronUp, Clock, FileDown,
 } from "lucide-react";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
@@ -721,27 +721,9 @@ export default function TireManagement() {
   const {
     pedidos, estoqueBase, prodHistorico, produtos,
     addPedido, updatePedido, deletePedido, updateNecessidade,
-    syncAllToFirebase, syncStatus,
   } = useTiresData();
 
   const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-  const [jaSincronizado, setJaSincronizado] = useState(() => localStorage.getItem("tires_synced_once") === "true");
-
-  const handleSync = async () => {
-    await syncAllToFirebase(pedidos, estoqueBase);
-    // syncStatus é atualizado assincronamente — usa useEffect para reagir ao resultado
-  };
-
-  // Quando sync termina com sucesso, aguarda 2s mostrando "Salvo" e depois esconde o botão
-  React.useEffect(() => {
-    if (syncStatus === "ok") {
-      const t = setTimeout(() => {
-        localStorage.setItem("tires_synced_once", "true");
-        setJaSincronizado(true);
-      }, 2000);
-      return () => clearTimeout(t);
-    }
-  }, [syncStatus]);
 
   const [subTab, setSubTab] = useState("dashboard");
   const [showForm, setShowForm] = useState(false);
@@ -797,32 +779,6 @@ export default function TireManagement() {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          {isLocal && (
-            <span className="text-xs text-gray-500 italic">Sync disponível em produção</span>
-          )}
-          {!isLocal && !jaSincronizado && (
-            <button
-              onClick={handleSync}
-              disabled={syncStatus === "syncing"}
-              className={`px-3 py-1.5 text-xs font-semibold rounded flex items-center gap-1.5 ${
-                syncStatus === "ok"
-                  ? "bg-emerald-700 text-white"
-                  : syncStatus === "error"
-                  ? "bg-red-700 text-white"
-                  : "bg-indigo-700 hover:bg-indigo-600 text-white"
-              } disabled:opacity-50`}
-            >
-              {syncStatus === "syncing" ? (
-                <><Loader size={12} className="animate-spin" /> Sincronizando...</>
-              ) : syncStatus === "ok" ? (
-                <><CheckCircle size={12} /> Salvo no Firebase</>
-              ) : syncStatus === "error" ? (
-                <><AlertTriangle size={12} /> Erro no sync</>
-              ) : (
-                <><CloudUpload size={12} /> Salvar no Firebase</>
-              )}
-            </button>
-          )}
         </div>
       </div>
 
