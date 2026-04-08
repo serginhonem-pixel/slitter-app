@@ -291,7 +291,12 @@ function Dashboard({ pedidos, estoqueBase, produtos }) {
                                             {p.status}
                                           </span>
                                         </td>
-                                        <td className="px-2 py-1.5 text-gray-300">{fmtDate(p.embarque) || "—"}</td>
+                                        <td className="px-2 py-1.5">
+                                          {p.embarque
+                                            ? <span className="text-gray-300">{fmtDate(p.embarque)}</span>
+                                            : <span className="flex items-center gap-1 text-yellow-400 font-semibold"><AlertTriangle size={10} /> Sem embarque</span>
+                                          }
+                                        </td>
                                         <td className="px-2 py-1.5 text-gray-300">{fmtDate(p.previsaoChegada) || "—"}</td>
                                         <td className="px-2 py-1.5">
                                           {p._mesEfetivo?.estimado ? (
