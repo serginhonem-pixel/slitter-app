@@ -37,35 +37,125 @@ export function gerarProximosMeses(n = 12) {
   return result;
 }
 
+// Calcula a média de necessidade dos últimos N meses com valor > 0 para um produto
+function mediaNecessidade(produto, estoqueBase, n = 3) {
+  const hoje = new Date();
+  // Pega todos os registros do produto com necessidade > 0, ordenados do mais recente
+  const historico = estoqueBase
+    .filter((e) => e.produto === produto && (e.necessidadeProd || 0) > 0)
+    .map((e) => {
+      // Converte mes para Date para ordenação
+      const parts = normalizeMes(e.mes).split("/"); // ["Jan","26"]
+      const mesesAbrev = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+      const mIdx = mesesAbrev.indexOf(parts[0]);
+      const ano = mIdx >= 0 && parts[1] ? 2000 + parseInt(parts[1], 10) : 0;
+      return { ...e, _date: new Date(ano, mIdx, 1) };
+    })
+    .filter((e) => e._date < hoje) // apenas meses passados
+    .sort((a, b) => b._date - a._date)
+    .slice(0, n);
+
+  if (historico.length === 0) return { media: 0, mesesUsados: 0 };
+  const total = historico.reduce((s, e) => s + (e.necessidadeProd || 0), 0);
+  return { media: Math.round(total / historico.length), mesesUsados: historico.length };
+}
+
+// Converte "DD/MM/YYYY" para Date
+function parseDateBR(str) {
+  if (!str || str === "-" || str.toLowerCase().includes("definir")) return null;
+  const p = String(str).split("/");
+  if (p.length !== 3) return null;
+  const d = new Date(+p[2], +p[1] - 1, +p[0]);
+  return isNaN(d) ? null : d;
+}
+
+// Retorna o mes no formato "Jan/26" a partir de uma Date
+function dateToMes(d) {
+  if (!d) return null;
+  const meses = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  return `${meses[d.getMonth()]}/${String(d.getFullYear()).substring(2)}`;
+}
+
+// Para pedidos sem mesChegada definido, estima a chegada:
+// "Embarque Confirmado" com data de embarque → embarque + 30d
+// Caso contrário: previsaoChegada → aprovacao+90d → hoje+90d
+function mesChegadaEfetivo(pedido) {
+  const mc = normalizeMes(pedido.mesChegada || "");
+  if (mc && mc !== "" && !pedido.mesChegada?.toLowerCase().includes("definir")) return { mes: mc, estimado: false, criterio: null };
+
+  // Embarque confirmado com data → +30 dias
+  if (pedido.status === "Embarque Confirmado") {
+    const emb = parseDateBR(pedido.embarque);
+    if (emb) {
+      const est = new Date(emb.getTime() + 30 * 24 * 60 * 60 * 1000);
+      return { mes: dateToMes(est), estimado: true, criterio: "embarque+30d" };
+    }
+  }
+
+  // Previsão de chegada direta
+  const prev = parseDateBR(pedido.previsaoChegada);
+  if (prev) return { mes: dateToMes(prev), estimado: true, criterio: "previsão chegada" };
+
+  // Aprovação + 90 dias
+  const aprov = parseDateBR(pedido.aprovacao);
+  if (aprov) {
+    const est = new Date(aprov.getTime() + 90 * 24 * 60 * 60 * 1000);
+    return { mes: dateToMes(est), estimado: true, criterio: "aprovação+90d" };
+  }
+
+  // Último recurso: hoje + 90 dias
+  const hoje90 = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+  return { mes: dateToMes(hoje90), estimado: true, criterio: "hoje+90d" };
+}
+
 // Calcula estoque projetado para um produto ao longo dos meses
 export function calcularProjecao(produto, pedidos, estoqueBase) {
   const meses = gerarProximosMeses(12);
   let rows = [];
   let saldoAnterior = null;
 
+  // Calcula média dos últimos 3 meses uma vez só
+  const { media: mediaDefault, mesesUsados } = mediaNecessidade(produto, estoqueBase, 3);
+
+  // Pré-computa o mês efetivo de cada pedido em aberto do produto
+  const pedidosAtivos = pedidos
+    .filter((p) => p.produto === produto && p.status !== "Entregue")
+    .map((p) => ({ ...p, _mesEfetivo: mesChegadaEfetivo(p) }));
+
   for (const mes of meses) {
     const baseRow = estoqueBase.find(
       (e) => normalizeMes(e.mes) === mes && e.produto === produto
     );
 
-    const comprasHHT = pedidos
-      .filter((p) => p.produto === produto && normalizeMes(p.mesChegada) === mes && p.fornecedor === "HUATIAN" && p.status !== "Entregue")
+    const comprasHHT = pedidosAtivos
+      .filter((p) => p._mesEfetivo.mes === mes && p.fornecedor === "HUATIAN")
       .reduce((s, p) => s + (p.quantidade || 0), 0);
 
-    const comprasEAS = pedidos
-      .filter((p) => p.produto === produto && normalizeMes(p.mesChegada) === mes && p.fornecedor === "EASTERN" && p.status !== "Entregue")
+    const comprasEAS = pedidosAtivos
+      .filter((p) => p._mesEfetivo.mes === mes && p.fornecedor === "EASTERN")
       .reduce((s, p) => s + (p.quantidade || 0), 0);
 
-    const comprasGRN = pedidos
-      .filter((p) => p.produto === produto && normalizeMes(p.mesChegada) === mes && p.fornecedor === "GUANRUI" && p.status !== "Entregue")
+    const comprasGRN = pedidosAtivos
+      .filter((p) => p._mesEfetivo.mes === mes && p.fornecedor === "GUANRUI")
       .reduce((s, p) => s + (p.quantidade || 0), 0);
+
+    // Conta quantos pedidos do mês são estimados e agrupa por critério
+    const estimadosDoMes = pedidosAtivos.filter((p) => p._mesEfetivo.mes === mes && p._mesEfetivo.estimado);
+    const qtdEstimados = estimadosDoMes.length;
+    const criteriosUsados = [...new Set(estimadosDoMes.map((p) => p._mesEfetivo.criterio).filter(Boolean))];
 
     const totalCompras = comprasHHT + comprasEAS + comprasGRN;
-    const necessidade = baseRow?.necessidadeProd || 0;
+
+    // Se há valor cadastrado usa ele; senão usa a média (marcando como estimativa)
+    const temValorCadastrado = baseRow && (baseRow.necessidadeProd || 0) > 0;
+    const necessidade = temValorCadastrado ? baseRow.necessidadeProd : mediaDefault;
+    const isMedia = !temValorCadastrado && mediaDefault > 0;
+
     const estoqueInicial = saldoAnterior !== null ? saldoAnterior : (baseRow?.estoqueInicial || 0);
     const saldo = estoqueInicial + totalCompras - necessidade;
 
-    rows.push({ mes, estoqueInicial, comprasHHT, comprasEAS, comprasGRN, totalCompras, necessidade, saldo });
+    const pedidosDoMes = pedidosAtivos.filter((p) => p._mesEfetivo.mes === mes);
+    rows.push({ mes, estoqueInicial, comprasHHT, comprasEAS, comprasGRN, totalCompras, necessidade, saldo, isMedia, mesesUsados, qtdEstimados, criteriosUsados, pedidosDoMes });
     saldoAnterior = saldo;
   }
   return rows;

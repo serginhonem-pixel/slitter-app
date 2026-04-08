@@ -3,6 +3,10 @@ import {
   AlertTriangle, CheckCircle, Package, Truck, PlusCircle,
   Edit2, Trash2, X, Save, ChevronDown, ChevronUp, Clock, CloudUpload, Loader,
 } from "lucide-react";
+import {
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, Legend, ReferenceLine, ResponsiveContainer,
+} from "recharts";
 import { useTiresData, calcularProjecao, normalizeMes, gerarProximosMeses } from "../../hooks/useTiresData";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -73,6 +77,7 @@ function Semaforo({ saldo, necessidade }) {
 // ─── Tela 1 — Dashboard ─────────────────────────────────────────────────────
 function Dashboard({ pedidos, estoqueBase, produtos }) {
   const [produtoFiltro, setProdutoFiltro] = useState("PNEU 3,25");
+  const [rowExpandida, setRowExpandida] = useState(null);
 
   const projecao = useMemo(
     () => calcularProjecao(produtoFiltro, pedidos, estoqueBase),
@@ -135,6 +140,44 @@ function Dashboard({ pedidos, estoqueBase, produtos }) {
         </div>
       </div>
 
+      {/* Gráfico projeção */}
+      <div className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+        <h4 className="font-semibold text-white text-sm mb-4">Projeção 12 meses — {produtoFiltro}</h4>
+        <ResponsiveContainer width="100%" height={260}>
+          <ComposedChart data={projecao} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+            <XAxis dataKey="mes" tick={{ fill: "#9ca3af", fontSize: 11 }} />
+            <YAxis
+              tickFormatter={(v) => v >= 1000 || v <= -1000 ? `${(v/1000).toFixed(0)}k` : v}
+              tick={{ fill: "#9ca3af", fontSize: 11 }}
+              width={48}
+            />
+            <Tooltip
+              contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151", borderRadius: 8 }}
+              labelStyle={{ color: "#e5e7eb", fontWeight: "bold" }}
+              formatter={(value, name) => [Number(value).toLocaleString("pt-BR"), name]}
+            />
+            <Legend wrapperStyle={{ fontSize: 11, color: "#9ca3af" }} />
+            <ReferenceLine y={0} stroke="#ef4444" strokeDasharray="4 2" strokeWidth={1.5} />
+            <ReferenceLine y={50000} stroke="#f59e0b" strokeDasharray="4 2" strokeWidth={1} label={{ value: "50k", fill: "#f59e0b", fontSize: 10 }} />
+            <Bar dataKey="totalCompras" name="Compras" fill="#3b82f6" opacity={0.7} radius={[3,3,0,0]} />
+            <Bar dataKey="necessidade" name="Necessidade" fill="#f97316" opacity={0.6} radius={[3,3,0,0]} />
+            <Line
+              dataKey="saldo"
+              name="Saldo"
+              type="monotone"
+              stroke="#10b981"
+              strokeWidth={2.5}
+              dot={(props) => {
+                const { cx, cy, payload } = props;
+                const color = payload.saldo < 0 ? "#ef4444" : payload.saldo < 50000 ? "#f59e0b" : "#10b981";
+                return <circle key={`dot-${payload.mes}`} cx={cx} cy={cy} r={4} fill={color} stroke="#1f2937" strokeWidth={1.5} />;
+              }}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
       {/* Tabela projeção */}
       <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-700">
@@ -152,25 +195,141 @@ function Dashboard({ pedidos, estoqueBase, produtos }) {
             <tbody>
               {projecao.map((row) => {
                 const cob = row.necessidade > 0 ? (row.saldo / row.necessidade).toFixed(1) : "∞";
+                const isOpen = rowExpandida === row.mes;
                 return (
-                  <tr key={row.mes} className="border-t border-gray-700/60 hover:bg-gray-700/30">
-                    <td className="px-3 py-2 font-mono text-gray-300">{row.mes}</td>
-                    <td className="px-3 py-2 text-right">{fmt(row.estoqueInicial)}</td>
-                    <td className="px-3 py-2 text-right text-blue-300">{fmt(row.comprasHHT)}</td>
-                    <td className="px-3 py-2 text-right text-emerald-300">{fmt(row.comprasEAS)}</td>
-                    <td className="px-3 py-2 text-right text-purple-300">{fmt(row.comprasGRN)}</td>
-                    <td className="px-3 py-2 text-right font-semibold text-white">{fmt(row.totalCompras)}</td>
-                    <td className="px-3 py-2 text-right text-orange-300">{fmt(row.necessidade)}</td>
-                    <td className={`px-3 py-2 text-right font-bold ${row.saldo < 0 ? "text-red-400" : row.saldo < 50000 ? "text-yellow-400" : "text-emerald-400"}`}>
-                      {fmt(row.saldo)}
-                    </td>
-                    <td className="px-3 py-2"><Semaforo saldo={row.saldo} necessidade={row.necessidade} /></td>
-                    <td className="px-3 py-2 text-gray-300">{cob} m</td>
-                  </tr>
+                  <React.Fragment key={row.mes}>
+                    <tr
+                      className="border-t border-gray-700/60 hover:bg-gray-700/30 cursor-pointer select-none"
+                      onClick={() => setRowExpandida(isOpen ? null : row.mes)}
+                    >
+                      <td className="px-3 py-2 font-mono text-gray-300">
+                        <span className="flex items-center gap-1">
+                          {isOpen
+                            ? <ChevronUp size={11} className="text-gray-500 shrink-0" />
+                            : <ChevronDown size={11} className="text-gray-500 shrink-0" />}
+                          {row.mes}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right">{fmt(row.estoqueInicial)}</td>
+                      <td className="px-3 py-2 text-right text-blue-300">{fmt(row.comprasHHT)}</td>
+                      <td className="px-3 py-2 text-right text-emerald-300">{fmt(row.comprasEAS)}</td>
+                      <td className="px-3 py-2 text-right text-purple-300">{fmt(row.comprasGRN)}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-white">
+                        <div className="flex items-center justify-end gap-1">
+                          <span>{fmt(row.totalCompras)}</span>
+                          {row.qtdEstimados > 0 && (
+                            <span
+                              title={`${row.qtdEstimados} pedido(s) com chegada estimada — critério: ${(row.criteriosUsados || []).join(", ")}`}
+                              className="px-1 py-0.5 text-[9px] rounded bg-amber-900/60 border border-amber-600 text-amber-300 leading-none cursor-help"
+                            >
+                              ~prev
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <span className={row.isMedia ? "text-gray-400" : "text-orange-300"}>{fmt(row.necessidade)}</span>
+                          {row.isMedia && (
+                            <span
+                              title={`Estimativa: média dos últimos ${row.mesesUsados} mês(es)`}
+                              className="px-1 py-0.5 text-[9px] rounded bg-gray-700 border border-gray-500 text-gray-400 leading-none cursor-help"
+                            >
+                              ~méd
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className={`px-3 py-2 text-right font-bold ${row.saldo < 0 ? "text-red-400" : row.saldo < 50000 ? "text-yellow-400" : "text-emerald-400"}`}>
+                        {fmt(row.saldo)}
+                      </td>
+                      <td className="px-3 py-2"><Semaforo saldo={row.saldo} necessidade={row.necessidade} /></td>
+                      <td className="px-3 py-2 text-gray-300">{cob} m</td>
+                    </tr>
+                    {isOpen && (
+                      <tr className="border-t border-gray-700 bg-gray-900/60">
+                        <td colSpan={10} className="px-4 py-3">
+                          <div className="space-y-3">
+                            {/* Resumo do mês */}
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-xs font-semibold text-gray-200">
+                                Pedidos previstos para {row.mes}
+                              </span>
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400">
+                                <span>Est. inicial: <span className="text-white font-semibold">{fmt(row.estoqueInicial)}</span></span>
+                                <span>Total compras: <span className="text-blue-300 font-semibold">{fmt(row.totalCompras)}</span></span>
+                                <span>Necessidade: <span className="text-orange-300 font-semibold">{fmt(row.necessidade)}{row.isMedia ? " (~méd)" : ""}</span></span>
+                                <span>Saldo: <span className={`font-semibold ${row.saldo < 0 ? "text-red-400" : row.saldo < 50000 ? "text-yellow-400" : "text-emerald-400"}`}>{fmt(row.saldo)}</span></span>
+                              </div>
+                            </div>
+                            {/* Tabela de pedidos */}
+                            {(row.pedidosDoMes || []).length === 0 ? (
+                              <p className="text-xs text-gray-500 italic">Nenhum pedido previsto para este mês.</p>
+                            ) : (
+                              <table className="w-full text-xs border border-gray-700 rounded overflow-hidden">
+                                <thead className="bg-gray-800">
+                                  <tr>
+                                    {["PI","Fornecedor","Qtd","Status","Embarque","Prev. Chegada","Critério"].map((h) => (
+                                      <th key={h} className="px-2 py-1.5 text-left text-gray-400 font-medium whitespace-nowrap">{h}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {(row.pedidosDoMes || []).map((p) => {
+                                    const fornColor = p.fornecedor === "HUATIAN"
+                                      ? "text-blue-300"
+                                      : p.fornecedor === "EASTERN"
+                                      ? "text-emerald-300"
+                                      : "text-purple-300";
+                                    return (
+                                      <tr key={p.id || p.pi} className="border-t border-gray-700/60 hover:bg-gray-700/20">
+                                        <td className="px-2 py-1.5 text-gray-200 font-mono">{p.pi || "—"}</td>
+                                        <td className={`px-2 py-1.5 font-semibold ${fornColor}`}>{p.fornecedor}</td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums text-white">{fmt(p.quantidade)}</td>
+                                        <td className="px-2 py-1.5">
+                                          <span className={`px-1.5 py-0.5 rounded text-[10px] border ${STATUS_COLOR[p.status] || "border-gray-600 text-gray-300"}`}>
+                                            {p.status}
+                                          </span>
+                                        </td>
+                                        <td className="px-2 py-1.5 text-gray-300">{fmtDate(p.embarque) || "—"}</td>
+                                        <td className="px-2 py-1.5 text-gray-300">{fmtDate(p.previsaoChegada) || "—"}</td>
+                                        <td className="px-2 py-1.5">
+                                          {p._mesEfetivo?.estimado ? (
+                                            <span className="flex items-center gap-1.5">
+                                              <span className="px-1 py-0.5 text-[9px] rounded bg-amber-900/60 border border-amber-600 text-amber-300 leading-none">~prev</span>
+                                              <span className="text-gray-500">{p._mesEfetivo.criterio}</span>
+                                            </span>
+                                          ) : (
+                                            <span className="flex items-center gap-1 text-emerald-400">
+                                              <CheckCircle size={10} /> Definido
+                                            </span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
           </table>
+        </div>
+        <div className="px-4 py-2 border-t border-gray-700/60 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <div className="flex items-center gap-1.5">
+            <span className="px-1 py-0.5 text-[9px] rounded bg-gray-700 border border-gray-500 text-gray-400 leading-none">~méd</span>
+            <span className="text-xs text-gray-500">= necessidade estimada (média 3 meses)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="px-1 py-0.5 text-[9px] rounded bg-amber-900/60 border border-amber-600 text-amber-300 leading-none">~prev</span>
+            <span className="text-xs text-gray-500">= chegada estimada (embarque+30d / previsão chegada / aprovação+90d)</span>
+          </div>
         </div>
       </div>
     </div>
