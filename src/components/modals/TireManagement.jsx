@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import {
   AlertTriangle, CheckCircle, Package, Truck, PlusCircle,
-  Edit2, Trash2, X, Save, ChevronDown, ChevronUp, Clock, CloudUpload, Loader,
+  Edit2, Trash2, X, Save, ChevronDown, ChevronUp, Clock, CloudUpload, Loader, FileDown,
 } from "lucide-react";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
@@ -16,6 +16,70 @@ const fmtDate = (d) => {
   if (typeof d === "string" && d.includes("/")) return d;
   return d;
 };
+
+// ─── Exportação PDF — Projeção ───────────────────────────────────────────────
+async function exportProjecaoPDF(projecao, produto) {
+  const { default: jsPDF } = await import("jspdf");
+  const { default: autoTable } = await import("jspdf-autotable");
+  const doc = new jsPDF({ orientation: "landscape" });
+  doc.setFontSize(14);
+  doc.text(`Projeção 12 meses — ${produto}`, 14, 16);
+  doc.setFontSize(9);
+  doc.text(`Gerado em ${new Date().toLocaleDateString("pt-BR")} ${new Date().toLocaleTimeString("pt-BR")}`, 14, 22);
+  autoTable(doc, {
+    startY: 28,
+    head: [["Mês","Est. Inicial","HHT","EAS","GRN","Total Compras","Necessidade","Saldo","Cobertura"]],
+    body: projecao.map((r) => [
+      r.mes,
+      fmt(r.estoqueInicial),
+      fmt(r.comprasHHT),
+      fmt(r.comprasEAS),
+      fmt(r.comprasGRN),
+      fmt(r.totalCompras) + (r.qtdEstimados > 0 ? " (~prev)" : ""),
+      fmt(r.necessidade) + (r.isMedia ? " (~méd)" : ""),
+      fmt(r.saldo),
+      r.necessidade > 0 ? `${(r.saldo / r.necessidade).toFixed(1)} m` : "∞",
+    ]),
+    styles: { fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: [31, 41, 55], textColor: 255 },
+    alternateRowStyles: { fillColor: [249, 250, 251] },
+    didParseCell: (data) => {
+      if (data.section === "body" && data.column.index === 7) {
+        const saldo = projecao[data.row.index]?.saldo;
+        if (saldo < 0) data.cell.styles.textColor = [239, 68, 68];
+        else if (saldo < 50000) data.cell.styles.textColor = [245, 158, 11];
+        else data.cell.styles.textColor = [16, 185, 129];
+      }
+    },
+  });
+  doc.save(`projecao-pneus-${produto.replace(/[^a-z0-9]/gi, "_")}-${new Date().toISOString().slice(0,10)}.pdf`);
+}
+
+// ─── Exportação Excel — Pedidos ──────────────────────────────────────────────
+async function exportPedidosExcel(pedidos, produto) {
+  const XLSX = await import("xlsx");
+  const filtrados = produto === "todos" ? pedidos : pedidos.filter((p) => p.produto === produto);
+  const dados = filtrados.map((p) => ({
+    PI: p.pi,
+    Fornecedor: p.fornecedor,
+    Produto: p.produto,
+    Código: p.codigo,
+    Quantidade: p.quantidade,
+    Aprovação: p.aprovacao || "",
+    "Prev. Chegada": p.previsaoChegada || "",
+    Embarque: p.embarque || "",
+    "Chegada Real": p.chegadaReal || "",
+    "Mês Chegada": p.mesChegada || "",
+    "Free Time": p.freeTime || "",
+    Status: p.status,
+    Transportador: p.transportador || "",
+    Canal: p.canal || "",
+  }));
+  const ws = XLSX.utils.json_to_sheet(dados);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Pedidos");
+  XLSX.writeFile(wb, `pedidos-pneus-${new Date().toISOString().slice(0,10)}.xlsx`);
+}
 
 function diasAteVencer(dateStr) {
   if (!dateStr || dateStr === "-" || dateStr === "A definir") return null;
@@ -180,8 +244,15 @@ function Dashboard({ pedidos, estoqueBase, produtos }) {
 
       {/* Tabela projeção */}
       <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-700">
+        <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
           <h4 className="font-semibold text-white text-sm">Projeção 12 meses — {produtoFiltro}</h4>
+          <button
+            onClick={() => exportProjecaoPDF(projecao, produtoFiltro)}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-gray-700 hover:bg-gray-600 text-gray-300 border border-gray-600"
+            title="Exportar PDF"
+          >
+            <FileDown size={12} /> PDF
+          </button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -269,7 +340,7 @@ function Dashboard({ pedidos, estoqueBase, produtos }) {
                               <table className="w-full text-xs border border-gray-700 rounded overflow-hidden">
                                 <thead className="bg-gray-800">
                                   <tr>
-                                    {["PI","Fornecedor","Qtd","Status","Embarque","Prev. Chegada","Critério"].map((h) => (
+                                    {["PI","Fornecedor","Qtd","Status","Aprovação","Embarque","Prev. Chegada","Critério"].map((h) => (
                                       <th key={h} className="px-2 py-1.5 text-left text-gray-400 font-medium whitespace-nowrap">{h}</th>
                                     ))}
                                   </tr>
@@ -291,6 +362,7 @@ function Dashboard({ pedidos, estoqueBase, produtos }) {
                                             {p.status}
                                           </span>
                                         </td>
+                                        <td className="px-2 py-1.5 text-gray-300">{fmtDate(p.aprovacao) || "—"}</td>
                                         <td className="px-2 py-1.5">
                                           {p.embarque
                                             ? <span className="text-gray-300">{fmtDate(p.embarque)}</span>
@@ -299,7 +371,17 @@ function Dashboard({ pedidos, estoqueBase, produtos }) {
                                         </td>
                                         <td className="px-2 py-1.5 text-gray-300">{fmtDate(p.previsaoChegada) || "—"}</td>
                                         <td className="px-2 py-1.5">
-                                          {p._mesEfetivo?.estimado ? (
+                                          {p._mesEfetivo?.atrasado ? (
+                                            <span className="flex flex-col gap-0.5">
+                                              <span className="flex items-center gap-1">
+                                                <span className="px-1 py-0.5 text-[9px] rounded bg-red-900/60 border border-red-600 text-red-300 leading-none flex items-center gap-0.5">
+                                                  <AlertTriangle size={8} /> atrasado
+                                                </span>
+                                                <span className="text-red-400 font-semibold">{p._mesEfetivo.mesesAtraso}m</span>
+                                              </span>
+                                              <span className="text-gray-500 text-[10px]">prev: {p._mesEfetivo.mesOriginal}</span>
+                                            </span>
+                                          ) : p._mesEfetivo?.estimado ? (
                                             <span className="flex items-center gap-1.5">
                                               <span className="px-1 py-0.5 text-[9px] rounded bg-amber-900/60 border border-amber-600 text-amber-300 leading-none">~prev</span>
                                               <span className="text-gray-500">{p._mesEfetivo.criterio}</span>
@@ -386,6 +468,13 @@ function PedidosAbertos({ pedidos, produtos, onEdit, onDelete }) {
           {FORNECEDORES.map((f) => <option key={f} value={f}>{f}</option>)}
         </select>
         <span className="text-xs text-gray-400 ml-auto">{filtrados.length} pedidos</span>
+        <button
+          onClick={() => exportPedidosExcel(filtrados, "todos")}
+          className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-emerald-900/50 hover:bg-emerald-800/60 text-emerald-300 border border-emerald-700"
+          title="Exportar Excel"
+        >
+          <FileDown size={12} /> Excel
+        </button>
       </div>
 
       <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
@@ -393,7 +482,7 @@ function PedidosAbertos({ pedidos, produtos, onEdit, onDelete }) {
           <table className="w-full text-xs">
             <thead className="bg-gray-900/60 sticky top-0 z-10">
               <tr>
-                {["PI","Fornecedor","Produto","Qtd","Prev. Chegada","Embarque","Mês Chegada","Free Time","Status","Canal",""].map((h) => (
+                {["PI","Fornecedor","Produto","Qtd","Aprovação","Prev. Chegada","Embarque","Mês Chegada","Free Time","Status","Canal",""].map((h) => (
                   <th key={h} className="px-3 py-2 text-left text-gray-400 font-medium whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -412,6 +501,7 @@ function PedidosAbertos({ pedidos, produtos, onEdit, onDelete }) {
                     <td className="px-3 py-2 text-gray-300">{p.fornecedor}</td>
                     <td className="px-3 py-2 text-white">{p.produto}</td>
                     <td className="px-3 py-2 text-right">{fmt(p.quantidade)}</td>
+                    <td className="px-3 py-2 text-gray-300">{fmtDate(p.aprovacao) || "—"}</td>
                     <td className="px-3 py-2 text-gray-300">{fmtDate(p.previsaoChegada)}</td>
                     <td className="px-3 py-2">
                       {p.embarque

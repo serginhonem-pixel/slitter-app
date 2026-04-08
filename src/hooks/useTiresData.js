@@ -15,8 +15,8 @@ export function normalizeMes(mes) {
   };
   // Já está no formato abreviado (Jan/26)
   if (/^[A-Za-z]{3}\/\d{2}$/.test(mes.trim())) return mes.trim();
-  // Formato "Janeiro 26" ou "Janeiro/26"
-  const m = mes.trim().match(/^(\w+)[\s\/](\d{2,4})$/);
+  // Formato "Janeiro 26" ou "Janeiro/26" (suporta acentos: Março, Fevereiro etc.)
+  const m = mes.trim().match(/^([^\s\/]+)[\s\/](\d{2,4})$/);
   if (m) {
     const abrev = meses[m[1]] || m[1].substring(0, 3);
     const ano = m[2].length === 4 ? m[2].substring(2) : m[2];
@@ -81,19 +81,36 @@ function dateToMes(d) {
 // Caso contrário: previsaoChegada → aprovacao+90d → hoje+90d
 function mesChegadaEfetivo(pedido) {
   const mc = normalizeMes(pedido.mesChegada || "");
-  if (mc && mc !== "" && !pedido.mesChegada?.toLowerCase().includes("definir")) return { mes: mc, estimado: false, criterio: null };
-
-  // Embarque confirmado com data → +30 dias
-  if (pedido.status === "Embarque Confirmado") {
-    const emb = parseDateBR(pedido.embarque);
-    if (emb) {
-      const est = new Date(emb.getTime() + 30 * 24 * 60 * 60 * 1000);
-      return { mes: dateToMes(est), estimado: true, criterio: "embarque+30d" };
+  if (mc && mc !== "" && !pedido.mesChegada?.toLowerCase().includes("definir")) {
+    // Verifica se o mês previsto já passou
+    const mesesAbrev = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+    const parts = mc.split("/");
+    const mIdx = mesesAbrev.indexOf(parts[0]);
+    const ano = mIdx >= 0 && parts[1] ? 2000 + parseInt(parts[1], 10) : 0;
+    if (mIdx === -1 || ano === 0) return { mes: mc, estimado: false, criterio: null }; // fallback se parsing falhar
+    const mesDate = new Date(ano, mIdx, 1);
+    const hoje = new Date();
+    const mesAtual = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    if (mesDate < mesAtual) {
+      const mesAtualStr = `${mesesAbrev[hoje.getMonth()]}/${String(hoje.getFullYear()).substring(2)}`;
+      const mesesAtraso = (hoje.getFullYear() - ano) * 12 + hoje.getMonth() - mIdx;
+      return { mes: mesAtualStr, estimado: true, criterio: "atrasado", atrasado: true, mesOriginal: mc, mesesAtraso };
     }
+    return { mes: mc, estimado: false, criterio: null };
   }
 
-  // Previsão de chegada direta
+  // Previsão de chegada direta (ETD = chegada no Brasil) — prioridade máxima após mesChegada
   const prev = parseDateBR(pedido.previsaoChegada);
+  if (prev && prev > new Date()) return { mes: dateToMes(prev), estimado: true, criterio: "previsão chegada" };
+
+  // Se há data de embarque (ETA = saída da China) → +30d como estimativa de chegada
+  const emb = parseDateBR(pedido.embarque);
+  if (emb) {
+    const est = new Date(emb.getTime() + 30 * 24 * 60 * 60 * 1000);
+    return { mes: dateToMes(est), estimado: true, criterio: "embarque+30d" };
+  }
+
+  // Previsão de chegada mesmo que passada (último recurso antes de aprovação)
   if (prev) return { mes: dateToMes(prev), estimado: true, criterio: "previsão chegada" };
 
   // Aprovação + 90 dias
