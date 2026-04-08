@@ -161,7 +161,7 @@ export function parseUsiminasEdi(text) {
     const matUpper = (o.materialSpec || "").toUpperCase();
     const locUpper = (o.deliveryLocation || "").toUpperCase();
     const isEstoque = refUpper.includes("ESTOQUE");
-    const isLeilao = [refUpper, nameUpper, poUpper, statusUpper, matUpper, locUpper].some(f => f.includes("LEIL"));
+    const isLeilao = poUpper.length > 0 && !poUpper.startsWith("METALOSA") && !poUpper.startsWith("COMETA");
     const pendingConfirm = (o.deliveryDateRaw || "").toLowerCase().includes("confirma");
     const pendingKg = Math.max(0, confirmed - dispatched);
 
@@ -255,7 +255,7 @@ export function parseUsiminasXml(xmlText) {
     const locUpper = tag("LOCAL_ENTREGA").toUpperCase();
     const modalidade = tag("MODALIDADE").toUpperCase();
     const isEstoque = refUpper.includes("ESTOQUE");
-    const isLeilao = [refUpper, nameUpper, poUpper, statusUpper, matUpper, locUpper, modalidade].some(f => f.includes("LEIL"));
+    const isLeilao = poUpper.length > 0 && !poUpper.startsWith("METALOSA") && !poUpper.startsWith("COMETA");
     const pendingConfirm = !prazoConfirmado || prazoConfirmado === "";
     const pendingKg = Math.max(0, confirmed - dispatched);
 
