@@ -1770,10 +1770,21 @@ const RawMaterialRequirement = ({
           <div className="mt-3 inline-flex rounded-lg bg-gray-900 border border-gray-700 p-1">
             <button
               type="button"
-              onClick={() => setActiveTab("coil")}
+              onClick={() => setActiveTab("purchases")}
               className={`px-3 py-1 text-xs font-semibold rounded-md ${
+                activeTab === "purchases"
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-300 hover:bg-gray-800"
+              }`}
+            >
+              Gestão de Compras
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("coil")}
+              className={`ml-1 px-3 py-1 text-xs font-semibold rounded-md ${
                 activeTab === "coil"
-                  ? "bg-indigo-600 text:white"
+                  ? "bg-indigo-600 text-white"
                   : "text-gray-300 hover:bg-gray-800"
               }`}
             >
@@ -1789,17 +1800,6 @@ const RawMaterialRequirement = ({
               }`}
             >
               Inox (Blanks)
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("purchases")}
-              className={`ml-1 px-3 py-1 text-xs font-semibold rounded-md ${
-                activeTab === "purchases"
-                  ? "bg-blue-600 text-white"
-                  : "text-gray-300 hover:bg-gray-800"
-              }`}
-            >
-              Gestão de Compras
             </button>
           </div>
         </div>

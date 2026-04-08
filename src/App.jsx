@@ -13877,7 +13877,7 @@ const handleUploadJSONToFirebase = async (e) => {
                 : "group-hover:text-blue-300 transition-colors"
               } 
             />
-            <span className="font-medium">Necessidade MP</span>
+            <span className="font-medium">Gestão de Compras</span>
           </button>
 
           
@@ -13985,7 +13985,7 @@ const handleUploadJSONToFirebase = async (e) => {
                   {activeTab === 'reports' && "Relatórios"}
                   {activeTab === 'b2report' && "Relatório B2"}
                   {activeTab === 'bi' && "BI & Gráficos"}
-                  {activeTab === 'mpNeed' && "Necessidade MP"}
+                  {activeTab === 'mpNeed' && "Gestão de Compras"}
                   {activeTab === 'steelDemand' && "Demanda de Aço"}
                   {activeTab === 'inoxBlanks' && "Planejamento Inox"}
                   {activeTab === 'admin' && "Admin"}
