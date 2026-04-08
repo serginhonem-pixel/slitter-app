@@ -729,9 +729,19 @@ export default function TireManagement() {
 
   const handleSync = async () => {
     await syncAllToFirebase(pedidos, estoqueBase);
-    localStorage.setItem("tires_synced_once", "true");
-    setJaSincronizado(true);
+    // syncStatus é atualizado assincronamente — usa useEffect para reagir ao resultado
   };
+
+  // Quando sync termina com sucesso, aguarda 2s mostrando "Salvo" e depois esconde o botão
+  React.useEffect(() => {
+    if (syncStatus === "ok") {
+      const t = setTimeout(() => {
+        localStorage.setItem("tires_synced_once", "true");
+        setJaSincronizado(true);
+      }, 2000);
+      return () => clearTimeout(t);
+    }
+  }, [syncStatus]);
 
   const [subTab, setSubTab] = useState("dashboard");
   const [showForm, setShowForm] = useState(false);
