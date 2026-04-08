@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { TrendingUp, FileText, Plus, CheckCircle, X, Tag, Trash2, Upload, Download, Search, Filter, ChevronDown, ChevronUp } from "lucide-react";
+import TireManagement from "./TireManagement";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { INITIAL_INOX_BLANK_PRODUCTS, matchInoxProductByMeasures } from "../../data/inoxCatalog";
@@ -3164,12 +3165,8 @@ const RawMaterialRequirement = ({
 
       {/* ===================== PNEUS ===================== */}
       {activeTab === "tires" && (
-        <div className="space-y-6">
-          <div className="bg-gray-800 rounded-xl border border-gray-700 p-8 text-center">
-            <div className="text-5xl mb-4">🚗</div>
-            <h3 className="text-lg font-semibold text-white mb-2">Controle de Pneus</h3>
-            <p className="text-sm text-gray-400">Em breve: controle de compras e acompanhamento do consumo de pneus.</p>
-          </div>
+        <div className="space-y-4">
+          <TireManagement />
         </div>
       )}
 
