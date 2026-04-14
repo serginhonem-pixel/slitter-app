@@ -144,7 +144,16 @@ export const useStockData = (...args) => {
         stock[log.productCode].count -= parseInt(log.quantity, 10) || 0;
       }
     });
-    const finishedStockList = Object.values(stock).filter((item) => item.count > 0);
+    const isPerfilProduct = (name) => {
+      const h = String(name || '').toUpperCase();
+      if (h.includes('DRY WALL') || h.includes('DRYWALL') || h.includes(' DW ') || h.includes('TETO F 47')) return false;
+      if (h.includes('LSF') || h.includes('STEELFRAME') || h.includes('STEEL FRAME')) return false;
+      return true;
+    };
+
+    const finishedStockList = Object.values(stock).filter(
+      (item) => item.count > 0 && isPerfilProduct(item.name),
+    );
 
     const totalMotherWeight = safeMother
       .filter((m) => m.status === 'stock')

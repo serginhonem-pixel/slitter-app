@@ -215,9 +215,7 @@ export const StockTabs = ({
 
   const filteredMotherData = applyStatusFilter(motherData, statusByMotherCode);
   const filteredChildData = applyStatusFilter(childDataByProfile, statusByChildCode);
-  const filteredFinishedData = applyStatusFilter(finishedData, statusByFinishedCode).filter(
-    (item) => getChildFamily(item) === 'PERFIL',
-  );
+  const filteredFinishedData = applyStatusFilter(finishedData, statusByFinishedCode);
 
   const tabs = useMemo(
     () => [
