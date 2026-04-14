@@ -300,8 +300,16 @@ function Dashboard({ pedidos, estoqueBase, produtos }) {
                       </td>
                       <td className="px-3 py-2 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <span className={row.isMedia ? "text-gray-400" : "text-orange-300"}>{fmt(row.necessidade)}</span>
-                          {row.isMedia && (
+                          <span className={row.isConsumoReal ? "text-emerald-300 font-semibold" : row.isMedia ? "text-gray-400" : "text-orange-300"}>{fmt(row.necessidade)}</span>
+                          {row.isConsumoReal && (
+                            <span
+                              title="Consumo real lançado"
+                              className="px-1 py-0.5 text-[9px] rounded bg-emerald-900/60 border border-emerald-600 text-emerald-300 leading-none cursor-help"
+                            >
+                              real
+                            </span>
+                          )}
+                          {!row.isConsumoReal && row.isMedia && (
                             <span
                               title={`Estimativa: média dos últimos ${row.mesesUsados} mês(es)`}
                               className="px-1 py-0.5 text-[9px] rounded bg-gray-700 border border-gray-500 text-gray-400 leading-none cursor-help"
@@ -409,6 +417,10 @@ function Dashboard({ pedidos, estoqueBase, produtos }) {
           </table>
         </div>
         <div className="px-4 py-2 border-t border-gray-700/60 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <div className="flex items-center gap-1.5">
+            <span className="px-1 py-0.5 text-[9px] rounded bg-emerald-900/60 border border-emerald-600 text-emerald-300 leading-none">real</span>
+            <span className="text-xs text-gray-500">= consumo real lançado (substitui simulação)</span>
+          </div>
           <div className="flex items-center gap-1.5">
             <span className="px-1 py-0.5 text-[9px] rounded bg-gray-700 border border-gray-500 text-gray-400 leading-none">~méd</span>
             <span className="text-xs text-gray-500">= necessidade estimada (média 3 meses)</span>
@@ -638,16 +650,71 @@ function FormPedido({ pedido, produtos, onSave, onCancel }) {
 }
 
 // ─── Tela 4 — Atualizar Produção ─────────────────────────────────────────────
-function AtualizarProducao({ produtos, prodHistorico, onUpdate }) {
+function AtualizarProducao({ produtos, prodHistorico, consumoHistorico, onUpdate, onUpdateConsumo }) {
   const [produto, setProduto] = useState(produtos[0] || "PNEU 3,25");
   const [mes, setMes] = useState(MESES_OPCOES[2] || "");
   const [valor, setValor] = useState("");
+
+  const [produtoC, setProdutoC] = useState(produtos[0] || "PNEU 3,25");
+  const [mesC, setMesC] = useState(MESES_OPCOES[2] || "");
+  const [valorC, setValorC] = useState("");
+
   const allProdutos = useMemo(() => [...new Set([...PRODUTOS_PADRAO, ...produtos])].sort(), [produtos]);
 
   return (
     <div className="space-y-4">
+      {/* Bloco 1 — Produção real lançada */}
+      <div className="bg-gray-800 rounded-xl border border-emerald-800/60 p-5">
+        <h4 className="font-semibold text-white mb-1 flex items-center gap-2">
+          <span className="px-2 py-0.5 text-xs rounded bg-emerald-700 text-white font-bold">REAL</span>
+          Lançar Produção Real
+        </h4>
+        <p className="text-xs text-gray-400 mb-4">Desconta do estoque o que foi efetivamente produzido. Substitui a simulação no mês informado.</p>
+        <div className="grid grid-cols-3 gap-3 text-xs">
+          <div>
+            <label className="block text-gray-400 mb-1">Produto</label>
+            <select className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-white" value={produtoC} onChange={(e) => setProdutoC(e.target.value)}>
+              {allProdutos.map((p) => <option key={p}>{p}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-gray-400 mb-1">Mês</label>
+            <select className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1.5 text-white" value={mesC} onChange={(e) => setMesC(e.target.value)}>
+              {MESES_OPCOES.map((m) => <option key={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-gray-400 mb-1">Qtd. produzida (unid.)</label>
+            <input
+              type="number"
+              className="w-full bg-gray-900 border border-emerald-700 rounded px-2 py-1.5 text-white"
+              value={valorC}
+              onChange={(e) => setValorC(e.target.value)}
+              placeholder="Ex: 72500"
+            />
+          </div>
+        </div>
+        <div className="mt-3 flex justify-end">
+          <button
+            onClick={() => {
+              if (!produtoC || !mesC || !valorC) return;
+              onUpdateConsumo(produtoC, mesC, Number(valorC));
+              setValorC("");
+            }}
+            className="px-4 py-2 text-xs rounded bg-emerald-700 hover:bg-emerald-600 text-white font-semibold flex items-center gap-1"
+          >
+            <Save size={12} /> Lançar
+          </button>
+        </div>
+      </div>
+
+      {/* Bloco 2 — Necessidade simulada */}
       <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
-        <h4 className="font-semibold text-white mb-4">Atualizar Necessidade de Produção</h4>
+        <h4 className="font-semibold text-white mb-1 flex items-center gap-2">
+          <span className="px-2 py-0.5 text-xs rounded bg-orange-700 text-white font-bold">SIM</span>
+          Necessidade de Produção (Simulação)
+        </h4>
+        <p className="text-xs text-gray-400 mb-4">Valor de planejamento usado na projeção quando não há lançamento real.</p>
         <div className="grid grid-cols-3 gap-3 text-xs">
           <div>
             <label className="block text-gray-400 mb-1">Produto</label>
@@ -686,32 +753,53 @@ function AtualizarProducao({ produtos, prodHistorico, onUpdate }) {
         </div>
       </div>
 
-      {prodHistorico.length > 0 && (
-        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-700">
-            <h4 className="text-sm font-semibold text-white">Últimas Atualizações</h4>
-          </div>
-          <table className="w-full text-xs">
-            <thead className="bg-gray-900/60">
-              <tr>
-                {["Produto","Mês","Valor","Data"].map((h) => (
-                  <th key={h} className="px-3 py-2 text-left text-gray-400">{h}</th>
+      {/* Históricos lado a lado */}
+      <div className="grid grid-cols-2 gap-4">
+        {consumoHistorico.length > 0 && (
+          <div className="bg-gray-800 rounded-xl border border-emerald-800/60 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-700">
+              <h4 className="text-sm font-semibold text-white">Lançamentos Reais</h4>
+            </div>
+            <table className="w-full text-xs">
+              <thead className="bg-gray-900/60">
+                <tr>{["Produto","Mês","Qtd","Data"].map((h) => <th key={h} className="px-3 py-2 text-left text-gray-400">{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {consumoHistorico.map((r, i) => (
+                  <tr key={i} className="border-t border-gray-700/60">
+                    <td className="px-3 py-2 text-white">{r.produto}</td>
+                    <td className="px-3 py-2 text-gray-300">{r.mes}</td>
+                    <td className="px-3 py-2 text-right text-emerald-300">{fmt(r.valor)}</td>
+                    <td className="px-3 py-2 text-gray-400">{new Date(r.timestamp).toLocaleString("pt-BR")}</td>
+                  </tr>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {prodHistorico.map((r, i) => (
-                <tr key={i} className="border-t border-gray-700/60">
-                  <td className="px-3 py-2 text-white">{r.produto}</td>
-                  <td className="px-3 py-2 text-gray-300">{r.mes}</td>
-                  <td className="px-3 py-2 text-right text-emerald-300">{fmt(r.valor)}</td>
-                  <td className="px-3 py-2 text-gray-400">{new Date(r.timestamp).toLocaleString("pt-BR")}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {prodHistorico.length > 0 && (
+          <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-700">
+              <h4 className="text-sm font-semibold text-white">Simulações Atualizadas</h4>
+            </div>
+            <table className="w-full text-xs">
+              <thead className="bg-gray-900/60">
+                <tr>{["Produto","Mês","Valor","Data"].map((h) => <th key={h} className="px-3 py-2 text-left text-gray-400">{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {prodHistorico.map((r, i) => (
+                  <tr key={i} className="border-t border-gray-700/60">
+                    <td className="px-3 py-2 text-white">{r.produto}</td>
+                    <td className="px-3 py-2 text-gray-300">{r.mes}</td>
+                    <td className="px-3 py-2 text-right text-orange-300">{fmt(r.valor)}</td>
+                    <td className="px-3 py-2 text-gray-400">{new Date(r.timestamp).toLocaleString("pt-BR")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -719,8 +807,8 @@ function AtualizarProducao({ produtos, prodHistorico, onUpdate }) {
 // ─── Componente principal ────────────────────────────────────────────────────
 export default function TireManagement() {
   const {
-    pedidos, estoqueBase, prodHistorico, produtos,
-    addPedido, updatePedido, deletePedido, updateNecessidade,
+    pedidos, estoqueBase, prodHistorico, consumoHistorico, produtos,
+    addPedido, updatePedido, deletePedido, updateNecessidade, updateConsumoReal,
   } = useTiresData();
 
   const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
@@ -822,7 +910,9 @@ export default function TireManagement() {
         <AtualizarProducao
           produtos={allProdutos}
           prodHistorico={prodHistorico}
+          consumoHistorico={consumoHistorico}
           onUpdate={updateNecessidade}
+          onUpdateConsumo={updateConsumoReal}
         />
       )}
     </div>

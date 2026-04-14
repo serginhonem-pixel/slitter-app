@@ -163,16 +163,18 @@ export function calcularProjecao(produto, pedidos, estoqueBase) {
 
     const totalCompras = comprasHHT + comprasEAS + comprasGRN;
 
-    // Se há valor cadastrado usa ele; senão usa a média (marcando como estimativa)
+    // Consumo real tem prioridade; senão usa necessidadeProd cadastrado; senão usa média
+    const consumoReal = baseRow?.consumoReal || 0;
+    const isConsumoReal = consumoReal > 0;
     const temValorCadastrado = baseRow && (baseRow.necessidadeProd || 0) > 0;
-    const necessidade = temValorCadastrado ? baseRow.necessidadeProd : mediaDefault;
-    const isMedia = !temValorCadastrado && mediaDefault > 0;
+    const necessidade = isConsumoReal ? consumoReal : (temValorCadastrado ? baseRow.necessidadeProd : mediaDefault);
+    const isMedia = !isConsumoReal && !temValorCadastrado && mediaDefault > 0;
 
     const estoqueInicial = saldoAnterior !== null ? saldoAnterior : (baseRow?.estoqueInicial || 0);
     const saldo = estoqueInicial + totalCompras - necessidade;
 
     const pedidosDoMes = pedidosAtivos.filter((p) => p._mesEfetivo.mes === mes);
-    rows.push({ mes, estoqueInicial, comprasHHT, comprasEAS, comprasGRN, totalCompras, necessidade, saldo, isMedia, mesesUsados, qtdEstimados, criteriosUsados, pedidosDoMes });
+    rows.push({ mes, estoqueInicial, comprasHHT, comprasEAS, comprasGRN, totalCompras, necessidade, saldo, isMedia, isConsumoReal, mesesUsados, qtdEstimados, criteriosUsados, pedidosDoMes });
     saldoAnterior = saldo;
   }
   return rows;
@@ -200,6 +202,7 @@ export function useTiresData() {
   const [loading, setLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState(null); // null | "syncing" | "ok" | "error"
   const [prodHistorico, setProdHistorico] = useState([]);
+  const [consumoHistorico, setConsumoHistorico] = useState([]);
 
   // Ao montar: tenta carregar do Firebase (só em produção)
   useEffect(() => {
@@ -276,14 +279,41 @@ export function useTiresData() {
   }, [pedidos, savePedidos]);
 
   const updatePedido = useCallback(async (id, data) => {
+    const pedidoAtual = pedidos.find((p) => p.id === id);
     const novaLista = pedidos.map((p) => p.id === id ? { ...p, ...data } : p);
     savePedidos(novaLista);
+
+    // Quando marcado como Entregue, soma a quantidade ao estoqueInicial do mês atual
+    if (data.status === "Entregue" && pedidoAtual && pedidoAtual.status !== "Entregue") {
+      const { produto, quantidade } = pedidoAtual;
+      const mesesAbrev = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+      const hoje = new Date();
+      const mesAtual = `${mesesAbrev[hoje.getMonth()]}/${String(hoje.getFullYear()).substring(2)}`;
+      const existente = estoqueBase.find((e) => e.produto === produto && normalizeMes(e.mes) === mesAtual);
+      let novaEstoqueBase;
+      if (existente) {
+        novaEstoqueBase = estoqueBase.map((e) =>
+          e.produto === produto && normalizeMes(e.mes) === mesAtual
+            ? { ...e, estoqueInicial: (e.estoqueInicial || 0) + (quantidade || 0) }
+            : e
+        );
+      } else {
+        novaEstoqueBase = [...estoqueBase, {
+          mes: mesAtual, produto,
+          estoqueInicial: quantidade || 0,
+          comprasHHT: 0, comprasEAS: 0, comprasGRN: 0,
+          totalCompras: 0, necessidadeProd: 0, saldo: quantidade || 0,
+        }];
+      }
+      saveEstoque(novaEstoqueBase);
+    }
+
     try {
       if (!id.startsWith("init-") && !id.startsWith("LOCAL-")) {
         await updateInDb("tiresPedidos", id, data);
       }
     } catch { /* silent */ }
-  }, [pedidos, savePedidos]);
+  }, [pedidos, savePedidos, estoqueBase, saveEstoque]);
 
   const deletePedido = useCallback(async (id) => {
     savePedidos(pedidos.filter((p) => p.id !== id));
@@ -313,12 +343,31 @@ export function useTiresData() {
     try { saveToDb("tiresNecessidade", registro); } catch { /* silent */ }
   }, [estoqueBase, saveEstoque]);
 
+  const updateConsumoReal = useCallback((produto, mes, valor) => {
+    const mesNorm = normalizeMes(mes);
+    const existente = estoqueBase.find((e) => e.produto === produto && normalizeMes(e.mes) === mesNorm);
+    let novaLista;
+    if (existente) {
+      novaLista = estoqueBase.map((e) =>
+        e.produto === produto && normalizeMes(e.mes) === mesNorm
+          ? { ...e, consumoReal: valor }
+          : e
+      );
+    } else {
+      novaLista = [...estoqueBase, { mes: mesNorm, produto, estoqueInicial: 0, comprasHHT: 0, comprasEAS: 0, comprasGRN: 0, totalCompras: 0, necessidadeProd: 0, consumoReal: valor, saldo: -valor }];
+    }
+    saveEstoque(novaLista);
+    const registro = { produto, mes: mesNorm, valor, timestamp: new Date().toISOString() };
+    setConsumoHistorico((prev) => [registro, ...prev].slice(0, 20));
+    try { saveToDb("tiresConsumoReal", registro); } catch { /* silent */ }
+  }, [estoqueBase, saveEstoque]);
+
   const produtos = useMemo(() => [...new Set(pedidos.map((p) => p.produto).filter(Boolean))].sort(), [pedidos]);
 
   return {
-    pedidos, estoqueBase, loading, syncStatus, prodHistorico,
+    pedidos, estoqueBase, loading, syncStatus, prodHistorico, consumoHistorico,
     produtos,
-    addPedido, updatePedido, deletePedido, updateNecessidade,
+    addPedido, updatePedido, deletePedido, updateNecessidade, updateConsumoReal,
     syncAllToFirebase,
   };
 }
