@@ -317,7 +317,10 @@ const IndicatorsDashboard = ({
     (item) => toNumber(item.inputWeight ?? item.totalWeight ?? item.weight ?? 0)
   );
 
-  let saldoAcumulado = 0;
+  // Estima o estoque no início da janela: estoque_atual - entradas_janela + consumos_janela
+  const _entradaTotalJanela = dateLabels.reduce((acc, d) => acc + (entryMap[d] || 0), 0);
+  const _consumoTotalJanela = dateLabels.reduce((acc, d) => acc + (cutMap[d] || 0), 0);
+  let saldoAcumulado = estoqueTotalKgReal - _entradaTotalJanela + _consumoTotalJanela;
   const flowData = dateLabels.map((dateBR) => {
     const entrada = entryMap[dateBR] || 0;
     const consumo = cutMap[dateBR] || 0;
