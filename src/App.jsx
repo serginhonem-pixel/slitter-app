@@ -12032,6 +12032,33 @@ safeCutting.forEach((c) => {
           </div>
         )}
 
+        <Card>
+          <h3 className="text-lg font-bold text-white mb-1">Manutenção do Sistema</h3>
+          <p className="text-xs text-gray-400 mb-4">Execute apenas uma vez para otimizar as leituras do Firebase nos logs.</p>
+          <div className="flex items-center gap-4">
+            <Button
+              onClick={migrateCreatedAt}
+              disabled={migrateStatus === 'running' || (migrateStatus && migrateStatus.startsWith('ok'))}
+              variant="secondary"
+              className="text-sm"
+            >
+              {migrateStatus === 'running'
+                ? 'Migrando...'
+                : migrateStatus && migrateStatus.startsWith('ok')
+                ? 'Migração concluída'
+                : 'Migrar campo de data dos logs'}
+            </Button>
+            {migrateStatus && migrateStatus.startsWith('ok') && (
+              <span className="text-xs text-emerald-400">
+                {migrateStatus.split(':')[1]} documentos atualizados
+              </span>
+            )}
+            {migrateStatus === 'error' && (
+              <span className="text-xs text-red-400">Erro na migração. Veja o console.</span>
+            )}
+          </div>
+        </Card>
+
       </div>
     );
   };
@@ -13327,33 +13354,6 @@ const renderB2DynamicReport = () => {
               )}
             </tbody>
           </table>
-        </div>
-      </Card>
-
-      <Card>
-        <h3 className="text-lg font-bold text-white mb-1">Manutenção do Sistema</h3>
-        <p className="text-xs text-gray-400 mb-4">Execute apenas uma vez para otimizar as leituras do Firebase nos logs.</p>
-        <div className="flex items-center gap-4">
-          <Button
-            onClick={migrateCreatedAt}
-            disabled={migrateStatus === 'running' || (migrateStatus && migrateStatus.startsWith('ok'))}
-            variant="secondary"
-            className="text-sm"
-          >
-            {migrateStatus === 'running'
-              ? 'Migrando...'
-              : migrateStatus && migrateStatus.startsWith('ok')
-              ? 'Migração concluída'
-              : 'Migrar campo de data dos logs'}
-          </Button>
-          {migrateStatus && migrateStatus.startsWith('ok') && (
-            <span className="text-xs text-emerald-400">
-              {migrateStatus.split(':')[1]} documentos atualizados
-            </span>
-          )}
-          {migrateStatus === 'error' && (
-            <span className="text-xs text-red-400">Erro na migração. Veja o console.</span>
-          )}
         </div>
       </Card>
     </div>
