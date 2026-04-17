@@ -17,6 +17,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import {
   collection,
   doc,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
@@ -2103,6 +2104,7 @@ export default function App() {
   const [adminMovementsPage, setAdminMovementsPage] = useState(1);
   const [adminInventoryReport, setAdminInventoryReport] = useState(null);
   const [adminInventoryMovementsModal, setAdminInventoryMovementsModal] = useState(null);
+  const [migrateStatus, setMigrateStatus] = useState(null);
   const [adminMotherForm, setAdminMotherForm] = useState({
     code: '',
     weight: '',
@@ -2423,6 +2425,50 @@ export default function App() {
     return Array.from(map.values());
   };
 
+  const migrateCreatedAt = async () => {
+    const parseLocaleTimestamp = (str) => {
+      if (!str) return 0;
+      const parts = str.replace(', ', ' ').split(' ');
+      const [day, month, year] = (parts[0] || '').split('/');
+      const [hours, minutes, seconds] = (parts[1] || '00:00:00').split(':');
+      if (!year || !month || !day) return 0;
+      return new Date(+year, +month - 1, +day, +(hours||0), +(minutes||0), +(seconds||0)).getTime();
+    };
+
+    setMigrateStatus('running');
+    try {
+      const colNames = ['productionLogs', 'cuttingLogs', 'shippingLogs'];
+      let total = 0;
+      let updated = 0;
+
+      for (const colName of colNames) {
+        const snap = await getDocs(collection(db, colName));
+        const docs = snap.docs.filter(d => d.data().createdAt == null);
+        total += snap.docs.length;
+
+        let batch = writeBatch(db);
+        let count = 0;
+        for (const d of docs) {
+          const ts = parseLocaleTimestamp(d.data().timestamp);
+          batch.update(doc(db, colName, d.id), { createdAt: ts });
+          count++;
+          updated++;
+          if (count >= 450) {
+            await batch.commit();
+            batch = writeBatch(db);
+            count = 0;
+          }
+        }
+        if (count > 0) await batch.commit();
+      }
+
+      setMigrateStatus(`ok:${updated}/${total}`);
+    } catch (err) {
+      console.error('Erro na migração:', err);
+      setMigrateStatus('error');
+    }
+  };
+
   const logUserAction = async (action, payload = {}) => {
     if (!user) return;
     try {
@@ -2574,11 +2620,11 @@ export default function App() {
   setupListener('motherCatalog', setMotherCatalog);
   setupListener('productCatalog', setProductCatalog);
   setupListener('productionLogs', setProductionLogs,
-    query(collection(db, 'productionLogs'), orderBy('timestamp', 'desc'), limit(200)));
+    query(collection(db, 'productionLogs'), orderBy('createdAt', 'desc'), limit(200)));
   setupListener('cuttingLogs', setCuttingLogs,
-    query(collection(db, 'cuttingLogs'), orderBy('timestamp', 'desc'), limit(200)));
+    query(collection(db, 'cuttingLogs'), orderBy('createdAt', 'desc'), limit(200)));
   setupListener('shippingLogs', setShippingLogs,
-    query(collection(db, 'shippingLogs'), orderBy('timestamp', 'desc'), limit(200)));
+    query(collection(db, 'shippingLogs'), orderBy('createdAt', 'desc'), limit(200)));
 
   return () => {
     unsubs.forEach((u) => u && u());
@@ -3959,7 +4005,7 @@ export default function App() {
       id: tempLogId,
       date: dateNow, motherCode: mother.code, motherMaterial: mother.material,
       inputWeight: totalConsumed, outputCount: tempChildCoils.length, scrap: manualScrap,
-      generatedItems: itemsSummary, timestamp: new Date().toLocaleString()
+      generatedItems: itemsSummary, timestamp: new Date().toLocaleString(), createdAt: Date.now()
     };
 
     const tempNewChildren = tempChildCoils
@@ -4692,7 +4738,8 @@ export default function App() {
     const dateParts = productionDate.split('-');
     const date = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
     const timestamp = new Date().toLocaleString();
-    
+    const createdAt = Date.now();
+
     const sourceIds = selectedInputCoils.map(c => c.id);
     const uniqueB2Codes = [...new Set(selectedInputCoils.map(c => c.b2Code))].join(', ');
     const uniqueMotherCodes = [...new Set(selectedInputCoils.map(c => c.motherCode))].filter(Boolean).join(', ');
@@ -4715,7 +4762,7 @@ export default function App() {
             childIds: sourceIds, motherCode: uniqueMotherCodes, b2Code: uniqueB2Codes, b2Name: selectedInputCoils[0].b2Name,
             productCode: productInfo.code, productName: productInfo.name, pieces: packSize,
             packIndex: `${i + 1}/${totalLabels}`, scrap: i === 0 ? parseFloat(prodScrap) || 0 : 0,
-            date: date, timestamp: timestamp, userEmail: user?.email || 'offline@local'
+            date: date, timestamp: timestamp, createdAt, userEmail: user?.email || 'offline@local'
         });
     }
     // Cria Pacote Resto
@@ -4725,7 +4772,7 @@ export default function App() {
             trackingId: `${baseTrackingId}-F`,
             childIds: sourceIds, motherCode: uniqueMotherCodes, b2Code: uniqueB2Codes, b2Name: selectedInputCoils[0].b2Name,
             productCode: productInfo.code, productName: productInfo.name, pieces: remainder,
-            packIndex: `${totalLabels}/${totalLabels}`, scrap: 0, date: date, timestamp: timestamp, userEmail: user?.email || 'offline@local'
+            packIndex: `${totalLabels}/${totalLabels}`, scrap: 0, date: date, timestamp: timestamp, createdAt, userEmail: user?.email || 'offline@local'
         });
     }
 
@@ -4816,7 +4863,7 @@ export default function App() {
       id: tempId,
       productCode: shipProduct, productName: prodInfo ? prodInfo.name : shipProduct,
       quantity: qty, destination: shipDest,
-      date: new Date().toLocaleDateString(), timestamp: new Date().toLocaleString()
+      date: new Date().toLocaleDateString(), timestamp: new Date().toLocaleString(), createdAt: Date.now()
     };
 
     // --- 2. BACKUP ---
@@ -5838,7 +5885,7 @@ export default function App() {
     const newCutLog = {
       id: tempLogId, date: dateNow, motherCode: mother.code, motherMaterial: mother.material,
       inputWeight: totalConsumed, outputCount: opsTempCuts.length, scrap: manualScrap,
-      generatedItems: itemsSummary, timestamp: new Date().toLocaleString()
+      generatedItems: itemsSummary, timestamp: new Date().toLocaleString(), createdAt: Date.now()
     };
 
     const tempNewChildren = opsTempCuts.map((temp, index) => ({
@@ -13280,6 +13327,33 @@ const renderB2DynamicReport = () => {
               )}
             </tbody>
           </table>
+        </div>
+      </Card>
+
+      <Card>
+        <h3 className="text-lg font-bold text-white mb-1">Manutenção do Sistema</h3>
+        <p className="text-xs text-gray-400 mb-4">Execute apenas uma vez para otimizar as leituras do Firebase nos logs.</p>
+        <div className="flex items-center gap-4">
+          <Button
+            onClick={migrateCreatedAt}
+            disabled={migrateStatus === 'running' || (migrateStatus && migrateStatus.startsWith('ok'))}
+            variant="secondary"
+            className="text-sm"
+          >
+            {migrateStatus === 'running'
+              ? 'Migrando...'
+              : migrateStatus && migrateStatus.startsWith('ok')
+              ? 'Migração concluída'
+              : 'Migrar campo de data dos logs'}
+          </Button>
+          {migrateStatus && migrateStatus.startsWith('ok') && (
+            <span className="text-xs text-emerald-400">
+              {migrateStatus.split(':')[1]} documentos atualizados
+            </span>
+          )}
+          {migrateStatus === 'error' && (
+            <span className="text-xs text-red-400">Erro na migração. Veja o console.</span>
+          )}
         </div>
       </Card>
     </div>
