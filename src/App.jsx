@@ -64,7 +64,6 @@ import EditMotherCoilModal from './components/modals/EditMotherCoilModal';
 import InoxBlanksPlanner from "./components/modals/InoxBlanksPlanner";
 import ProductHistoryModal from './components/modals/ProductHistoryModal';
 import RawMaterialRequirement from "./components/modals/RawMaterialRequirement";
-import DemandFocus from "./data/demandFocus.jsx";
 import { PESO_UNITARIO_PA } from './data/peso_unitario_pa';
 import { ESTOQUE_PERFIL_CONSOLIDADO } from './data/estoque_perfil_consolidado';
 import { useEventLogs } from './hooks/useEventLogs';
@@ -13881,24 +13880,6 @@ const handleUploadJSONToFirebase = async (e) => {
           </button>
 
           
-          <button 
-            onClick={() => handleSidebarNavigate('steelDemand')}
-            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group 
-              ${activeTab === 'steelDemand' 
-                ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' 
-                : 'text-gray-400 hover:bg-white/5 hover:text-white'
-              }`}
-          >
-            <TrendingUp 
-              size={20} 
-              className={activeTab === 'steelDemand' 
-                ? "text-blue-300" 
-                : "group-hover:text-blue-300 transition-colors"
-              } 
-            />
-            <span className="font-medium">Demanda de Aço</span>
-          </button>
-
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mt-8 mb-4">Gestão</p>
 
            {isAdminUser && (
@@ -13986,7 +13967,7 @@ const handleUploadJSONToFirebase = async (e) => {
                   {activeTab === 'b2report' && "Relatório B2"}
                   {activeTab === 'bi' && "BI & Gráficos"}
                   {activeTab === 'mpNeed' && "Gestão de Compras"}
-                  {activeTab === 'steelDemand' && "Demanda de Aço"}
+
                   {activeTab === 'inoxBlanks' && "Planejamento Inox"}
                   {activeTab === 'admin' && "Admin"}
                                                 
@@ -14038,10 +14019,6 @@ const handleUploadJSONToFirebase = async (e) => {
                       productCatalog={productCatalog}
                       motherCatalog={motherCatalog}
                     />
-                  )}
-
-                  {activeTab === "steelDemand" && (
-                    <DemandFocus />
                   )}
 
                   {activeTab === "inoxBlanks" && (
