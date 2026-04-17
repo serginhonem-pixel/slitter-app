@@ -17,7 +17,10 @@ import { onAuthStateChanged } from 'firebase/auth';
 import {
   collection,
   doc,
+  limit,
   onSnapshot,
+  orderBy,
+  query,
   writeBatch
 } from 'firebase/firestore';
 
@@ -2519,9 +2522,9 @@ export default function App() {
   // 2) MODO PRODUÇÃO -> usa Firebase normalmente
   const unsubs = []; // conexões abertas, para limpar depois
 
-  const setupListener = (collectionName, setter) => {
+  const setupListener = (collectionName, setter, firestoreQuery = null) => {
     try {
-      const q = collection(db, collectionName);
+      const q = firestoreQuery ?? collection(db, collectionName);
 
       const unsubscribe = onSnapshot(
         q,
@@ -2570,9 +2573,12 @@ export default function App() {
   setupListener('pendingApprovals', setPendingApprovals);
   setupListener('motherCatalog', setMotherCatalog);
   setupListener('productCatalog', setProductCatalog);
-  setupListener('productionLogs', setProductionLogs);
-  setupListener('cuttingLogs', setCuttingLogs);
-  setupListener('shippingLogs', setShippingLogs);
+  setupListener('productionLogs', setProductionLogs,
+    query(collection(db, 'productionLogs'), orderBy('timestamp', 'desc'), limit(200)));
+  setupListener('cuttingLogs', setCuttingLogs,
+    query(collection(db, 'cuttingLogs'), orderBy('timestamp', 'desc'), limit(200)));
+  setupListener('shippingLogs', setShippingLogs,
+    query(collection(db, 'shippingLogs'), orderBy('timestamp', 'desc'), limit(200)));
 
   return () => {
     unsubs.forEach((u) => u && u());
