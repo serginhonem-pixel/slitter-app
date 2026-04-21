@@ -22,6 +22,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  where,
   writeBatch
 } from 'firebase/firestore';
 
@@ -2615,7 +2616,8 @@ export default function App() {
 
   // aqui você liga todas as coleções que já usava no Firebase
   setupListener('motherCoils', setMotherCoils);
-  setupListener('childCoils', setChildCoils);
+  setupListener('childCoils', setChildCoils,
+    query(collection(db, 'childCoils'), where('status', '!=', 'consumed'), limit(500)));
   setupListener('pendingApprovals', setPendingApprovals);
   setupListener('motherCatalog', setMotherCatalog);
   setupListener('productCatalog', setProductCatalog);
@@ -2650,21 +2652,6 @@ export default function App() {
   }, [currentFileName, motherCoils, childCoils, pendingApprovals, productionLogs, shippingLogs, cuttingLogs]);
 
   // ... (Sua função updateMotherCoil continua igual)
-
-    // BACKUP LOCAL: sempre que mudar, salva cópia no navegador
-  useEffect(() => {
-    try {
-      localStorage.setItem('currentFileName', currentFileName);
-      localStorage.setItem('motherCoils', JSON.stringify(motherCoils));
-      localStorage.setItem('childCoils', JSON.stringify(childCoils));
-      localStorage.setItem('pendingApprovals', JSON.stringify(pendingApprovals));
-      localStorage.setItem('productionLogs', JSON.stringify(productionLogs));
-      localStorage.setItem('shippingLogs', JSON.stringify(shippingLogs));
-      localStorage.setItem('cuttingLogs', JSON.stringify(cuttingLogs));
-    } catch (error) {
-      console.error('Erro ao salvar backup local', error);
-    }
-  }, [currentFileName, motherCoils, childCoils, pendingApprovals, productionLogs, shippingLogs, cuttingLogs]);
 
 
       const updateMotherCoil = async (updatedCoil) => {
@@ -6121,7 +6108,6 @@ export default function App() {
     opsQuickPrintMaxWeight,
     opsQuickPrintCopies,
     motherCoils,
-    childCoils,
   ]);
 
   const renderOperationsPanel = () => {
