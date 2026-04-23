@@ -130,6 +130,7 @@ const NfSearchPanel = ({ records = [], onViewDetails }) => {
 
 export const StockTabs = ({
   motherData,
+  rawMotherCoils = [],
   childData,
   finishedData,
   shipments = [],
@@ -155,6 +156,7 @@ export const StockTabs = ({
   const [activeTab, setActiveTab] = useState('mother');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [childProfileFilter, setChildProfileFilter] = useState('ALL');
+  const [filialDestinoFilter, setFilialDestinoFilter] = useState('ALL');
 
   const normalizeText = (value) => String(value || '').toUpperCase();
   const getChildFamily = (item) => {
@@ -213,7 +215,26 @@ export const StockTabs = ({
     return counts;
   }, [childData]);
 
-  const filteredMotherData = applyStatusFilter(motherData, statusByMotherCode);
+  const filialDestinoOptions = useMemo(() => {
+    const values = rawMotherCoils
+      .filter((c) => c.status === 'stock')
+      .map((c) => String(c.filialDestino || '').trim())
+      .filter(Boolean);
+    return [...new Set(values)].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+  }, [rawMotherCoils]);
+
+  const motherDataByFilial = useMemo(() => {
+    if (!Array.isArray(motherData)) return [];
+    if (filialDestinoFilter === 'ALL') return motherData;
+    const matchingKeys = new Set(
+      rawMotherCoils
+        .filter((c) => c.status === 'stock' && String(c.filialDestino || '').trim() === filialDestinoFilter)
+        .map((c) => `${String(c.code || '').trim()}-${c.width}`),
+    );
+    return motherData.filter((item) => matchingKeys.has(`${String(item.code || '').trim()}-${item.width}`));
+  }, [motherData, rawMotherCoils, filialDestinoFilter]);
+
+  const filteredMotherData = applyStatusFilter(motherDataByFilial, statusByMotherCode);
   const filteredChildData = applyStatusFilter(childDataByProfile, statusByChildCode);
   const filteredFinishedData = applyStatusFilter(finishedData, statusByFinishedCode);
 
@@ -365,7 +386,7 @@ export const StockTabs = ({
           : null;
   const activeData =
     activeTabDefinition.id === 'mother'
-      ? motherData
+      ? motherDataByFilial
       : activeTabDefinition.id === 'child'
         ? childDataByProfile
         : activeTabDefinition.id === 'finished'
@@ -387,7 +408,7 @@ export const StockTabs = ({
               label={tab.label}
               icon={tab.icon}
               colorClass={tab.color}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => { setActiveTab(tab.id); setFilialDestinoFilter('ALL'); }}
             />
           ))}
         </div>
@@ -461,6 +482,36 @@ export const StockTabs = ({
               </button>
             );
           })}
+        </div>
+      )}
+
+      {activeTabDefinition.id === 'mother' && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-gray-500 shrink-0">Filial destino:</span>
+          <button
+            key="ALL"
+            onClick={() => setFilialDestinoFilter('ALL')}
+            className={`px-3 py-1 rounded-full border transition-colors ${
+              filialDestinoFilter === 'ALL'
+                ? 'bg-slate-500/20 text-slate-200 border-slate-400/30 shadow-inner'
+                : 'text-gray-400 border-white/10 hover:text-white'
+            }`}
+          >
+            Todas
+          </button>
+          {filialDestinoOptions.map((filial) => (
+            <button
+              key={filial}
+              onClick={() => setFilialDestinoFilter(filial)}
+              className={`px-3 py-1 rounded-full border transition-colors ${
+                filialDestinoFilter === filial
+                  ? 'bg-indigo-500/20 text-indigo-200 border-indigo-400/30 shadow-inner'
+                  : 'text-gray-400 border-white/10 hover:text-white'
+              }`}
+            >
+              {filial}
+            </button>
+          ))}
         </div>
       )}
 

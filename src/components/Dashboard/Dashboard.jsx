@@ -932,6 +932,7 @@ const Dashboard = ({
 
       <StockTabs
         motherData={motherStockList}
+        rawMotherCoils={rawMotherCoils}
         childData={childStockList}
         finishedData={finishedStockList}
         shipments={shipmentRows}
