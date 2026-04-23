@@ -223,12 +223,19 @@ export const StockTabs = ({
     return [...new Set(values)].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
   }, [rawMotherCoils]);
 
+  const hasNoFilial = useMemo(
+    () => rawMotherCoils.some((c) => c.status === 'stock' && !String(c.filialDestino || '').trim()),
+    [rawMotherCoils],
+  );
+
   const motherDataByFilial = useMemo(() => {
     if (!Array.isArray(motherData)) return [];
     if (filialDestinoFilter === 'ALL') return motherData;
-    const filialCoils = rawMotherCoils.filter(
-      (c) => c.status === 'stock' && String(c.filialDestino || '').trim() === filialDestinoFilter,
-    );
+    const filialCoils = rawMotherCoils.filter((c) => {
+      if (c.status !== 'stock') return false;
+      if (filialDestinoFilter === '__NONE__') return !String(c.filialDestino || '').trim();
+      return String(c.filialDestino || '').trim() === filialDestinoFilter;
+    });
     const byKey = {};
     filialCoils.forEach((c) => {
       const key = `${String(c.code || '').trim()}-${c.width}`;
@@ -522,6 +529,18 @@ export const StockTabs = ({
               {filial}
             </button>
           ))}
+          {hasNoFilial && (
+            <button
+              onClick={() => setFilialDestinoFilter('__NONE__')}
+              className={`px-3 py-1 rounded-full border transition-colors italic ${
+                filialDestinoFilter === '__NONE__'
+                  ? 'bg-yellow-500/20 text-yellow-200 border-yellow-400/30 shadow-inner'
+                  : 'text-gray-500 border-white/10 hover:text-white'
+              }`}
+            >
+              Sem filial
+            </button>
+          )}
         </div>
       )}
 
