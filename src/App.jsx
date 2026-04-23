@@ -2008,6 +2008,7 @@ export default function App() {
   const [b2TypeFilter, setB2TypeFilter] = useState('');
   const [motherCoils, setMotherCoils] = useState([]);
   const [childCoils, setChildCoils] = useState([]);
+  const [consumedChildCoils, setConsumedChildCoils] = useState([]);
   const [productionLogs, setProductionLogs] = useState([]);
   const [shippingLogs, setShippingLogs] = useState([]); 
   const [pendingApprovals, setPendingApprovals] = useState([]);
@@ -2618,6 +2619,8 @@ export default function App() {
   setupListener('motherCoils', setMotherCoils);
   setupListener('childCoils', setChildCoils,
     query(collection(db, 'childCoils'), where('status', '!=', 'consumed'), limit(500)));
+  setupListener('consumedChildCoils', setConsumedChildCoils,
+    query(collection(db, 'childCoils'), where('status', '==', 'consumed'), limit(300)));
   setupListener('pendingApprovals', setPendingApprovals);
   setupListener('motherCatalog', setMotherCatalog);
   setupListener('productCatalog', setProductCatalog);
@@ -9294,7 +9297,7 @@ safeCutting.forEach((c) => {
     .filter((event) => event?.eventType === EVENT_TYPES.PA_PRODUCTION)
     .slice();
 
-  const dailyAuditChildById = safeChild.reduce((acc, item) => {
+  const dailyAuditChildById = [...safeChild, ...(Array.isArray(consumedChildCoils) ? consumedChildCoils : [])].reduce((acc, item) => {
     if (item?.id) acc[String(item.id)] = item;
     return acc;
   }, {});
