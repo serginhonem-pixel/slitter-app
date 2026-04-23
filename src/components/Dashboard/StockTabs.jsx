@@ -226,12 +226,22 @@ export const StockTabs = ({
   const motherDataByFilial = useMemo(() => {
     if (!Array.isArray(motherData)) return [];
     if (filialDestinoFilter === 'ALL') return motherData;
-    const matchingKeys = new Set(
-      rawMotherCoils
-        .filter((c) => c.status === 'stock' && String(c.filialDestino || '').trim() === filialDestinoFilter)
-        .map((c) => `${String(c.code || '').trim()}-${c.width}`),
+    const filialCoils = rawMotherCoils.filter(
+      (c) => c.status === 'stock' && String(c.filialDestino || '').trim() === filialDestinoFilter,
     );
-    return motherData.filter((item) => matchingKeys.has(`${String(item.code || '').trim()}-${item.width}`));
+    const byKey = {};
+    filialCoils.forEach((c) => {
+      const key = `${String(c.code || '').trim()}-${c.width}`;
+      if (!byKey[key]) {
+        const base = motherData.find(
+          (item) => `${String(item.code || '').trim()}-${item.width}` === key,
+        );
+        byKey[key] = base ? { ...base, weight: 0, count: 0 } : { code: c.code, width: c.width, weight: 0, count: 0 };
+      }
+      byKey[key].weight += parseFloat(c.remainingWeight || c.weight) || 0;
+      byKey[key].count += 1;
+    });
+    return Object.values(byKey);
   }, [motherData, rawMotherCoils, filialDestinoFilter]);
 
   const filteredMotherData = applyStatusFilter(motherDataByFilial, statusByMotherCode);
