@@ -207,7 +207,7 @@ function ProdutoOverviewCard({ produto, pedidos, estoqueBase, selected, onClick 
       <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
         <div>
           <p className="text-[9px] text-gray-500 uppercase tracking-wide">Saldo atual</p>
-          <p className="text-xs font-semibold" style={{ color: statusColor }}>{fmt(projecao[0]?.saldo ?? 0)}</p>
+          <p className="text-xs font-semibold text-white">{fmt(projecao[0]?.saldo ?? 0)}</p>
         </div>
         <div>
           <p className="text-[9px] text-gray-500 uppercase tracking-wide">Cobertura</p>
