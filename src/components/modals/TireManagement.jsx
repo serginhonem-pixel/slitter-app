@@ -241,35 +241,10 @@ function parseDateBR(str) {
   return new Date(+y, +m - 1, +d);
 }
 
-function buildEstoqueTimeline(projecao, pedidos, produto) {
+function buildEstoqueTimeline(projecao) {
   if (!projecao?.length) return { pontos: [], entregas: [] };
 
-  const getArrivalDate = (p) => {
-    if (p.chegadaReal) return parseDateBR(p.chegadaReal);
-    if (p.previsaoChegada) { const d = parseDateBR(p.previsaoChegada); if (d) return d; }
-    if (p.embarque) { const d = parseDateBR(p.embarque); if (d) { d.setDate(d.getDate() + 30); return d; } }
-    if (p.aprovacao) { const d = parseDateBR(p.aprovacao); if (d) { d.setDate(d.getDate() + 90); return d; } }
-    if (p.mesChegada) {
-      const norm = normalizeMes(p.mesChegada);
-      const [abrev, anoStr] = norm.split("/");
-      const mes = MESES_IDX[abrev];
-      if (mes !== undefined) return new Date(2000 + parseInt(anoStr), mes, 15);
-    }
-    return null;
-  };
-
-  const chegadasPorData = {};
-  pedidos
-    .filter((p) => p.produto === produto && p.status !== "Entregue")
-    .forEach((p) => {
-      const dt = getArrivalDate(p);
-      if (!dt) return;
-      const key = dt.toISOString().slice(0, 10);
-      chegadasPorData[key] = (chegadasPorData[key] || 0) + (p.quantidade || 0);
-    });
-
   const pontos = [];
-  const entregasVistas = new Set();
   const entregas = [];
   let saldo = projecao[0].estoqueInicial;
 
@@ -279,29 +254,18 @@ function buildEstoqueTimeline(projecao, pedidos, produto) {
     const mes = MESES_IDX[abrev];
     const diasNoMes = new Date(ano, mes + 1, 0).getDate();
     const consumoDiario = (mesData.necessidade || 0) / diasNoMes;
+    const diaEntrega = Math.min(15, diasNoMes);
+    const keyEntrega = new Date(ano, mes, diaEntrega).toISOString().slice(0, 10);
 
-    let realNoMes = 0;
-    for (let dia = 1; dia <= diasNoMes; dia++) {
-      const key = new Date(ano, mes, dia).toISOString().slice(0, 10);
-      realNoMes += chegadasPorData[key] || 0;
+    if (mesData.totalCompras > 0) {
+      entregas.push({ date: keyEntrega, qty: mesData.totalCompras, estimado: mesData.qtdEstimados > 0 });
     }
-    const estimado = Math.max(0, (mesData.totalCompras || 0) - realNoMes);
-    const diaEstimado = new Date(ano, mes, 15).toISOString().slice(0, 10);
 
     for (let dia = 1; dia <= diasNoMes; dia++) {
       const key = new Date(ano, mes, dia).toISOString().slice(0, 10);
-
-      if (chegadasPorData[key] && !entregasVistas.has(key)) {
-        saldo += chegadasPorData[key];
-        entregas.push({ date: key, qty: chegadasPorData[key] });
-        entregasVistas.add(key);
+      if (dia === diaEntrega && mesData.totalCompras > 0) {
+        saldo += mesData.totalCompras;
       }
-      if (estimado > 0 && key === diaEstimado && !entregasVistas.has("est-" + key)) {
-        saldo += estimado;
-        entregas.push({ date: key, qty: estimado, estimado: true });
-        entregasVistas.add("est-" + key);
-      }
-
       saldo -= consumoDiario;
       pontos.push({ date: key, saldo: Math.round(saldo) });
     }
@@ -321,8 +285,8 @@ function Dashboard({ pedidos, estoqueBase, produtos }) {
   );
 
   const { pontos, entregas } = useMemo(
-    () => buildEstoqueTimeline(projecao, pedidos, produtoFiltro),
-    [projecao, pedidos, produtoFiltro]
+    () => buildEstoqueTimeline(projecao),
+    [projecao]
   );
 
   const brushRange = useMemo(() => {
