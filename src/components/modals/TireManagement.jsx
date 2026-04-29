@@ -4,8 +4,8 @@ import {
   Edit2, Trash2, X, Save, ChevronDown, ChevronUp, Clock, FileDown,
 } from "lucide-react";
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ReferenceLine, ResponsiveContainer,
+  ComposedChart, AreaChart, Area, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, Legend, ReferenceLine, ResponsiveContainer, Brush,
 } from "recharts";
 import { useTiresData, calcularProjecao, normalizeMes, gerarProximosMeses } from "../../hooks/useTiresData";
 
@@ -138,6 +138,178 @@ function Semaforo({ saldo, necessidade }) {
   return <span className="text-emerald-400 font-bold">🟢</span>;
 }
 
+// ─── Visão geral por produto ─────────────────────────────────────────────────
+function ProdutoOverviewCard({ produto, pedidos, estoqueBase, selected, onClick }) {
+  const projecao = useMemo(
+    () => calcularProjecao(produto, pedidos, estoqueBase),
+    [produto, pedidos, estoqueBase]
+  );
+
+  const saldoAtual = projecao[0]?.estoqueInicial ?? 0;
+  const rupturaIdx = projecao.findIndex(r => r.saldo < 0);
+  const rupturaMes = rupturaIdx >= 0 ? projecao[rupturaIdx].mes : null;
+  const ultimoSaldo = projecao[projecao.length - 1]?.saldo ?? 0;
+  const cobertura = rupturaIdx >= 0 ? rupturaIdx : projecao.length;
+
+  const status = rupturaMes
+    ? "ruptura"
+    : projecao.some(r => r.saldo < 50000)
+    ? "atencao"
+    : "ok";
+
+  const statusColor = { ruptura: "#ef4444", atencao: "#f59e0b", ok: "#10b981" }[status];
+  const statusLabel = { ruptura: "RUPTURA", atencao: "ATENÇÃO", ok: "OK" }[status];
+
+  const sparkData = projecao.map(r => ({ mes: r.mes, saldo: r.saldo }));
+
+  return (
+    <button
+      onClick={onClick}
+      className={`text-left w-full rounded-xl border p-3 transition-all ${
+        selected
+          ? "border-blue-500 bg-blue-950/40"
+          : "border-gray-700 bg-gray-800 hover:border-gray-500"
+      }`}
+    >
+      <div className="flex items-start justify-between mb-1">
+        <span className="text-xs font-semibold text-white leading-tight">{produto}</span>
+        <span style={{ backgroundColor: statusColor + "22", color: statusColor }}
+          className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide">
+          {statusLabel}
+        </span>
+      </div>
+
+      {/* Sparkline */}
+      <div className="my-2">
+        <ResponsiveContainer width="100%" height={48}>
+          <AreaChart data={sparkData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id={`spark-${produto}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={statusColor} stopOpacity={0.4} />
+                <stop offset="95%" stopColor={statusColor} stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <ReferenceLine y={0} stroke="#ef4444" strokeWidth={1} strokeDasharray="3 2" />
+            <Area
+              type="monotone"
+              dataKey="saldo"
+              stroke={statusColor}
+              strokeWidth={1.5}
+              fill={`url(#spark-${produto})`}
+              dot={false}
+              isAnimationActive={false}
+              baseValue={0}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+        <div>
+          <p className="text-[9px] text-gray-500 uppercase tracking-wide">Saldo atual</p>
+          <p className="text-xs font-semibold" style={{ color: statusColor }}>{fmt(projecao[0]?.saldo ?? 0)}</p>
+        </div>
+        <div>
+          <p className="text-[9px] text-gray-500 uppercase tracking-wide">Cobertura</p>
+          <p className="text-xs font-semibold text-gray-200">
+            {`${cobertura} m`}
+          </p>
+        </div>
+        {rupturaMes ? (
+          <div className="col-span-2 mt-1">
+            <p className="text-[9px] text-red-400 uppercase tracking-wide">Ruptura prevista</p>
+            <p className="text-xs font-bold text-red-400">{rupturaMes}</p>
+          </div>
+        ) : (
+          <div className="col-span-2 mt-1">
+            <p className="text-[9px] text-gray-500 uppercase tracking-wide">Saldo em 12 meses</p>
+            <p className="text-xs font-semibold text-gray-200">{fmt(ultimoSaldo)}</p>
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
+// ─── Timeline diária de estoque ─────────────────────────────────────────────
+const MESES_IDX = { Jan:0,Fev:1,Mar:2,Abr:3,Mai:4,Jun:5,Jul:6,Ago:7,Set:8,Out:9,Nov:10,Dez:11 };
+
+function parseDateBR(str) {
+  if (!str) return null;
+  const [d, m, y] = str.split("/");
+  if (!d || !m || !y) return null;
+  return new Date(+y, +m - 1, +d);
+}
+
+function buildEstoqueTimeline(projecao, pedidos, produto) {
+  if (!projecao?.length) return { pontos: [], entregas: [] };
+
+  const getArrivalDate = (p) => {
+    if (p.chegadaReal) return parseDateBR(p.chegadaReal);
+    if (p.previsaoChegada) { const d = parseDateBR(p.previsaoChegada); if (d) return d; }
+    if (p.embarque) { const d = parseDateBR(p.embarque); if (d) { d.setDate(d.getDate() + 30); return d; } }
+    if (p.aprovacao) { const d = parseDateBR(p.aprovacao); if (d) { d.setDate(d.getDate() + 90); return d; } }
+    if (p.mesChegada) {
+      const norm = normalizeMes(p.mesChegada);
+      const [abrev, anoStr] = norm.split("/");
+      const mes = MESES_IDX[abrev];
+      if (mes !== undefined) return new Date(2000 + parseInt(anoStr), mes, 15);
+    }
+    return null;
+  };
+
+  const chegadasPorData = {};
+  pedidos
+    .filter((p) => p.produto === produto && p.status !== "Entregue")
+    .forEach((p) => {
+      const dt = getArrivalDate(p);
+      if (!dt) return;
+      const key = dt.toISOString().slice(0, 10);
+      chegadasPorData[key] = (chegadasPorData[key] || 0) + (p.quantidade || 0);
+    });
+
+  const pontos = [];
+  const entregasVistas = new Set();
+  const entregas = [];
+  let saldo = projecao[0].estoqueInicial;
+
+  projecao.forEach((mesData) => {
+    const [abrev, anoStr] = mesData.mes.split("/");
+    const ano = 2000 + parseInt(anoStr);
+    const mes = MESES_IDX[abrev];
+    const diasNoMes = new Date(ano, mes + 1, 0).getDate();
+    const consumoDiario = (mesData.necessidade || 0) / diasNoMes;
+
+    let realNoMes = 0;
+    for (let dia = 1; dia <= diasNoMes; dia++) {
+      const key = new Date(ano, mes, dia).toISOString().slice(0, 10);
+      realNoMes += chegadasPorData[key] || 0;
+    }
+    const estimado = Math.max(0, (mesData.totalCompras || 0) - realNoMes);
+    const diaEstimado = new Date(ano, mes, 15).toISOString().slice(0, 10);
+
+    for (let dia = 1; dia <= diasNoMes; dia++) {
+      const key = new Date(ano, mes, dia).toISOString().slice(0, 10);
+
+      if (chegadasPorData[key] && !entregasVistas.has(key)) {
+        saldo += chegadasPorData[key];
+        entregas.push({ date: key, qty: chegadasPorData[key] });
+        entregasVistas.add(key);
+      }
+      if (estimado > 0 && key === diaEstimado && !entregasVistas.has("est-" + key)) {
+        saldo += estimado;
+        entregas.push({ date: key, qty: estimado, estimado: true });
+        entregasVistas.add("est-" + key);
+      }
+
+      saldo -= consumoDiario;
+      pontos.push({ date: key, saldo: Math.round(saldo) });
+    }
+  });
+
+  return { pontos, entregas };
+}
+
 // ─── Tela 1 — Dashboard ─────────────────────────────────────────────────────
 function Dashboard({ pedidos, estoqueBase, produtos }) {
   const [produtoFiltro, setProdutoFiltro] = useState("PNEU 3,25");
@@ -147,6 +319,19 @@ function Dashboard({ pedidos, estoqueBase, produtos }) {
     () => calcularProjecao(produtoFiltro, pedidos, estoqueBase),
     [produtoFiltro, pedidos, estoqueBase]
   );
+
+  const { pontos, entregas } = useMemo(
+    () => buildEstoqueTimeline(projecao, pedidos, produtoFiltro),
+    [projecao, pedidos, produtoFiltro]
+  );
+
+  const brushRange = useMemo(() => {
+    const rupturaIdx = pontos.findIndex(p => p.saldo < 0);
+    if (rupturaIdx <= 0) return { startIndex: 0, endIndex: pontos.length - 1 };
+    // Mostra até 30 dias depois da ruptura para contextualizar, mas limita ao tamanho do array
+    const endIndex = Math.min(rupturaIdx + 30, pontos.length - 1);
+    return { startIndex: 0, endIndex };
+  }, [pontos]);
 
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
 
@@ -184,62 +369,178 @@ function Dashboard({ pedidos, estoqueBase, produtos }) {
         </div>
       </div>
 
-      {/* Filtro produto */}
-      <div className="flex items-center gap-3">
-        <span className="text-sm text-gray-400">Produto:</span>
-        <div className="flex gap-2 flex-wrap">
+      {/* Visão geral — todos os produtos */}
+      <div>
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Visão Geral — Todos os Produtos</h4>
+        <div className="grid grid-cols-5 gap-3">
           {produtos.map((p) => (
-            <button
+            <ProdutoOverviewCard
               key={p}
+              produto={p}
+              pedidos={pedidos}
+              estoqueBase={estoqueBase}
+              selected={produtoFiltro === p}
               onClick={() => setProdutoFiltro(p)}
-              className={`px-3 py-1 text-xs font-semibold rounded-md border ${
-                produtoFiltro === p
-                  ? "bg-yellow-600 border-yellow-500 text-white"
-                  : "bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700"
-              }`}
-            >
-              {p}
-            </button>
+            />
           ))}
         </div>
       </div>
 
-      {/* Gráfico projeção */}
+      {/* Gráfico estoque projetado */}
       <div className="bg-gray-800 rounded-xl border border-gray-700 p-4">
-        <h4 className="font-semibold text-white text-sm mb-4">Projeção 12 meses — {produtoFiltro}</h4>
-        <ResponsiveContainer width="100%" height={260}>
-          <ComposedChart data={projecao} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis dataKey="mes" tick={{ fill: "#9ca3af", fontSize: 11 }} />
+        <h4 className="font-semibold text-white text-sm mb-3">Comportamento do Estoque Projetado — {produtoFiltro}</h4>
+        <ResponsiveContainer width="100%" height={320}>
+          <ComposedChart data={pontos} margin={{ top: 24, right: 12, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="estoqueGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
+                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.05} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+            <XAxis
+              dataKey="date"
+              tick={{ fill: "#6b7280", fontSize: 10 }}
+              tickFormatter={(v) => {
+                const d = new Date(v + "T00:00:00");
+                return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getFullYear()).slice(2)}`;
+              }}
+              interval={Math.max(1, Math.floor(pontos.length / 8))}
+            />
             <YAxis
               tickFormatter={(v) => v >= 1000 || v <= -1000 ? `${(v/1000).toFixed(0)}k` : v}
-              tick={{ fill: "#9ca3af", fontSize: 11 }}
-              width={48}
+              tick={{ fill: "#6b7280", fontSize: 10 }}
+              width={52}
             />
             <Tooltip
-              contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151", borderRadius: 8 }}
-              labelStyle={{ color: "#e5e7eb", fontWeight: "bold" }}
-              formatter={(value, name) => [Number(value).toLocaleString("pt-BR"), name]}
+              content={({ active, payload, label }) => {
+                if (!active || !payload?.length) return null;
+                const saldo = payload.find(p => p.dataKey === "saldo")?.value ?? 0;
+                const saldoColor = saldo < 0 ? "#ef4444" : saldo < 50000 ? "#f59e0b" : "#3b82f6";
+                const statusLabel = saldo < 0 ? "RUPTURA" : saldo < 50000 ? "ATENÇÃO" : "OK";
+                const d = new Date(label + "T00:00:00");
+
+                // Dados do mês correspondente
+                const mesAbrev = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"][d.getMonth()];
+                const mesKey = `${mesAbrev}/${String(d.getFullYear()).slice(2)}`;
+                const mesData = projecao.find(r => r.mes === mesKey);
+                const necessidade = mesData?.necessidade ?? 0;
+                const cobertura = necessidade > 0 ? (saldo / necessidade) : null;
+
+                // Próxima chegada de pedido
+                const idx = pontos.findIndex(p => p.date === label);
+                const proximaEntrega = entregas.find(e => e.date > label);
+                const diasAteProxima = proximaEntrega
+                  ? Math.round((new Date(proximaEntrega.date) - d) / 86400000)
+                  : null;
+
+                const chegada = entregas.find(e => e.date === label);
+
+                return (
+                  <div style={{ backgroundColor: "#111827", border: `1px solid ${saldoColor}`, borderRadius: 10, padding: "10px 14px", minWidth: 200 }}>
+                    <p style={{ color: "#9ca3af", fontSize: 11, marginBottom: 2 }}>
+                      {d.toLocaleDateString("pt-BR", { weekday:"short", day:"2-digit", month:"short", year:"numeric" })}
+                    </p>
+
+                    {chegada && (
+                      <div style={{ backgroundColor: (chegada.estimado ? "#f59e0b" : "#10b981") + "18", borderRadius: 6, padding: "4px 8px", marginBottom: 8, marginTop: 4 }}>
+                        <p style={{ color: chegada.estimado ? "#f59e0b" : "#10b981", fontSize: 12, fontWeight: "bold" }}>
+                          + {Number(chegada.qty).toLocaleString("pt-BR")} unid. chegando{chegada.estimado ? " (est.)" : ""}
+                        </p>
+                      </div>
+                    )}
+
+                    <div style={{ borderTop: "1px solid #1f2937", paddingTop: 8, marginTop: chegada ? 0 : 4 }}>
+                      <p style={{ color: "#9ca3af", fontSize: 10, marginBottom: 2 }}>SALDO PROJETADO</p>
+                      <p style={{ color: saldoColor, fontSize: 20, fontWeight: "bold", lineHeight: 1.1 }}>
+                        {Number(saldo).toLocaleString("pt-BR")}
+                      </p>
+                      <span style={{ display:"inline-block", marginTop:4, backgroundColor: saldoColor+"22", color: saldoColor, fontSize:9, fontWeight:"bold", padding:"2px 8px", borderRadius:3, letterSpacing:1 }}>
+                        {statusLabel}
+                      </span>
+                    </div>
+
+                    {(necessidade > 0 || diasAteProxima !== null) && (
+                      <div style={{ borderTop: "1px solid #1f2937", paddingTop: 8, marginTop: 8, display: "flex", gap: 16 }}>
+                        {necessidade > 0 && (
+                          <div>
+                            <p style={{ color: "#6b7280", fontSize: 9, marginBottom: 1 }}>CONSUMO/MÊS</p>
+                            <p style={{ color: "#e5e7eb", fontSize: 12, fontWeight: "600" }}>{Number(necessidade).toLocaleString("pt-BR")}</p>
+                          </div>
+                        )}
+                        {cobertura !== null && (
+                          <div>
+                            <p style={{ color: "#6b7280", fontSize: 9, marginBottom: 1 }}>COBERTURA</p>
+                            <p style={{ color: cobertura < 1 ? "#ef4444" : cobertura < 2 ? "#f59e0b" : "#e5e7eb", fontSize: 12, fontWeight: "600" }}>
+                              {cobertura < 0 ? "—" : `${cobertura.toFixed(1)} m`}
+                            </p>
+                          </div>
+                        )}
+                        {diasAteProxima !== null && (
+                          <div>
+                            <p style={{ color: "#6b7280", fontSize: 9, marginBottom: 1 }}>PRÓX. PEDIDO</p>
+                            <p style={{ color: "#e5e7eb", fontSize: 12, fontWeight: "600" }}>{diasAteProxima}d</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              }}
             />
-            <Legend wrapperStyle={{ fontSize: 11, color: "#9ca3af" }} />
-            <ReferenceLine y={0} stroke="#ef4444" strokeDasharray="4 2" strokeWidth={1.5} />
-            <ReferenceLine y={50000} stroke="#f59e0b" strokeDasharray="4 2" strokeWidth={1} label={{ value: "50k", fill: "#f59e0b", fontSize: 10 }} />
-            <Bar dataKey="totalCompras" name="Compras" fill="#3b82f6" opacity={0.7} radius={[3,3,0,0]} />
-            <Bar dataKey="necessidade" name="Necessidade" fill="#f97316" opacity={0.6} radius={[3,3,0,0]} />
-            <Line
-              dataKey="saldo"
-              name="Saldo"
+            <Legend
+              wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+              formatter={(value) => <span style={{ color: "#9ca3af" }}>{value}</span>}
+            />
+            <ReferenceLine y={0} stroke="#ef4444" strokeDasharray="5 3" strokeWidth={1.5} name="Ruptura / mínimo" />
+            <ReferenceLine
+              y={50000}
+              stroke="#f97316"
+              strokeDasharray="5 3"
+              strokeWidth={1.5}
+              label={{ value: "Estoque Mínimo (50k)", fill: "#f97316", fontSize: 10, position: "insideBottomLeft" }}
+            />
+            {entregas.map((e, i) => (
+              <ReferenceLine
+                key={`${e.date}-${i}`}
+                x={e.date}
+                stroke={e.estimado ? "#f59e0b" : "#10b981"}
+                strokeDasharray="4 3"
+                strokeWidth={1.5}
+                label={{ value: `+${Number(e.qty).toLocaleString("pt-BR")}`, fill: e.estimado ? "#f59e0b" : "#10b981", fontSize: 10, position: "top" }}
+              />
+            ))}
+            <Area
               type="monotone"
-              stroke="#10b981"
-              strokeWidth={2.5}
-              dot={(props) => {
-                const { cx, cy, payload } = props;
-                const color = payload.saldo < 0 ? "#ef4444" : payload.saldo < 50000 ? "#f59e0b" : "#10b981";
-                return <circle key={`dot-${payload.mes}`} cx={cx} cy={cy} r={4} fill={color} stroke="#1f2937" strokeWidth={1.5} />;
+              dataKey="saldo"
+              name="Estoque projetado"
+              stroke="#3b82f6"
+              strokeWidth={2}
+              fill="url(#estoqueGrad)"
+              baseValue={0}
+              dot={false}
+              activeDot={{ r: 4, fill: "#3b82f6", stroke: "#111827", strokeWidth: 2 }}
+              isAnimationActive={false}
+            />
+            <Brush
+              key={`brush-${produtoFiltro}-${brushRange.endIndex}`}
+              dataKey="date"
+              height={20}
+              stroke="#374151"
+              fill="#1f2937"
+              travellerWidth={6}
+              startIndex={brushRange.startIndex}
+              endIndex={brushRange.endIndex}
+              tickFormatter={(v) => {
+                const d = new Date(v + "T00:00:00");
+                return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}`;
               }}
             />
           </ComposedChart>
         </ResponsiveContainer>
+        <p className="text-xs text-gray-500 mt-3">
+          Linha azul = saldo de estoque dia a dia. Vermelho tracejado = estoque zero. Laranja = estoque mínimo.
+        </p>
       </div>
 
       {/* Tabela projeção */}
