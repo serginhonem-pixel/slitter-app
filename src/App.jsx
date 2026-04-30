@@ -17,6 +17,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import {
   collection,
   doc,
+  getCountFromServer,
   getDocs,
   limit,
   onSnapshot,
@@ -2090,6 +2091,8 @@ export default function App() {
   const [adminPaFilter, setAdminPaFilter] = useState('');
   const [adminMovementsIdFilter, setAdminMovementsIdFilter] = useState('');
   const [adminStockTab, setAdminStockTab] = useState('mother');
+  const [diagCounts, setDiagCounts] = useState(null);
+  const [diagLoading, setDiagLoading] = useState(false);
   const [blockedCutModal, setBlockedCutModal] = useState(null);
   const [adminCatalogFilter, setAdminCatalogFilter] = useState('');
   const [adminCatalogPage, setAdminCatalogPage] = useState(1);
@@ -11080,8 +11083,63 @@ safeCutting.forEach((c) => {
     const getInventoryMovementColor = (mov) =>
       mov.status === 'BAIXADO' ? 'bg-amber-500/30 text-amber-200' : 'bg-emerald-500/30 text-emerald-200';
 
+    const runDiagnostic = async () => {
+      setDiagLoading(true);
+      try {
+        const [prodSnap, shipSnap] = await Promise.all([
+          getCountFromServer(collection(db, 'productionLogs')),
+          getCountFromServer(collection(db, 'shippingLogs')),
+        ]);
+        setDiagCounts({
+          production: prodSnap.data().count,
+          shipping: shipSnap.data().count,
+        });
+      } catch (e) {
+        alert('Erro ao contar registros: ' + e.message);
+      } finally {
+        setDiagLoading(false);
+      }
+    };
+
     return (
       <div className="space-y-6">
+        <Card>
+          <h3 className="text-lg font-bold text-white mb-4">🔍 Diagnóstico de Banco de Dados</h3>
+          <p className="text-sm text-gray-400 mb-4">
+            Verifica quantos registros existem no Firebase. O app carrega só os 200 mais recentes — se o total for maior, o saldo pode estar errado.
+          </p>
+          <button
+            onClick={runDiagnostic}
+            disabled={diagLoading}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm rounded-lg font-medium"
+          >
+            {diagLoading ? 'Contando...' : 'Contar registros no Firebase'}
+          </button>
+          {diagCounts && (
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              <div className={`p-4 rounded-lg border ${diagCounts.production > 200 ? 'border-red-500 bg-red-900/20' : 'border-green-500 bg-green-900/20'}`}>
+                <p className="text-xs text-gray-400 uppercase font-bold mb-1">Logs de Produção</p>
+                <p className="text-2xl font-bold text-white">{diagCounts.production}</p>
+                {diagCounts.production > 200 && (
+                  <p className="text-xs text-red-400 mt-1">⚠ App carrega só 200 — {diagCounts.production - 200} registros antigos ignorados!</p>
+                )}
+                {diagCounts.production <= 200 && (
+                  <p className="text-xs text-green-400 mt-1">✓ Dentro do limite</p>
+                )}
+              </div>
+              <div className={`p-4 rounded-lg border ${diagCounts.shipping > 200 ? 'border-red-500 bg-red-900/20' : 'border-green-500 bg-green-900/20'}`}>
+                <p className="text-xs text-gray-400 uppercase font-bold mb-1">Logs de Expedição</p>
+                <p className="text-2xl font-bold text-white">{diagCounts.shipping}</p>
+                {diagCounts.shipping > 200 && (
+                  <p className="text-xs text-red-400 mt-1">⚠ App carrega só 200 — {diagCounts.shipping - 200} expedições antigas não descontadas!</p>
+                )}
+                {diagCounts.shipping <= 200 && (
+                  <p className="text-xs text-green-400 mt-1">✓ Dentro do limite</p>
+                )}
+              </div>
+            </div>
+          )}
+        </Card>
         <div ref={adminQuickFormRef}>
           <Card>
           <h3 className="text-lg font-bold text-white mb-4">Cadastro rápido</h3>
