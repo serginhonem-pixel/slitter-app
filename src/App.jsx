@@ -11186,22 +11186,13 @@ safeCutting.forEach((c) => {
           <p className="text-sm text-gray-400 mb-4">
             Verifica quantos registros existem no Firebase. O app carrega só os 200 mais recentes — se o total for maior, o saldo pode estar errado.
           </p>
-          <div className="flex gap-3 flex-wrap">
-            <button
-              onClick={runDiagnostic}
-              disabled={diagLoading}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm rounded-lg font-medium"
-            >
-              {diagLoading ? 'Aguarde...' : 'Contar registros no Firebase'}
-            </button>
-            <button
-              onClick={runMigration}
-              disabled={diagLoading}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm rounded-lg font-medium"
-            >
-              {diagLoading ? 'Aguarde...' : '⚡ Migrar saldo (corrigir tudo)'}
-            </button>
-          </div>
+          <button
+            onClick={runDiagnostic}
+            disabled={diagLoading}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm rounded-lg font-medium"
+          >
+            {diagLoading ? 'Aguarde...' : 'Contar registros no Firebase'}
+          </button>
           {Object.keys(stockBalance).length > 0 && (
             <p className="text-xs text-green-400 mt-3">✓ stockBalance ativo — {Object.keys(stockBalance).length} produtos com saldo calculado corretamente.</p>
           )}
