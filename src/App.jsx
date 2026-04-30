@@ -11120,13 +11120,19 @@ safeCutting.forEach((c) => {
     const runDiagnostic = async () => {
       setDiagLoading(true);
       try {
-        const [prodSnap, shipSnap] = await Promise.all([
+        const [prodSnap, shipSnap, b2StockSnap, b2TotalSnap, motherSnap] = await Promise.all([
           getCountFromServer(collection(db, 'productionLogs')),
           getCountFromServer(collection(db, 'shippingLogs')),
+          getCountFromServer(query(collection(db, 'childCoils'), where('status', '!=', 'consumed'))),
+          getCountFromServer(collection(db, 'childCoils')),
+          getCountFromServer(collection(db, 'motherCoils')),
         ]);
         setDiagCounts({
           production: prodSnap.data().count,
           shipping: shipSnap.data().count,
+          b2Stock: b2StockSnap.data().count,
+          b2Total: b2TotalSnap.data().count,
+          mother: motherSnap.data().count,
         });
       } catch (e) {
         alert('Erro ao contar registros: ' + e.message);
@@ -11220,6 +11226,21 @@ safeCutting.forEach((c) => {
                 {diagCounts.shipping <= 200 && (
                   <p className="text-xs text-green-400 mt-1">✓ Dentro do limite</p>
                 )}
+              </div>
+              <div className={`p-4 rounded-lg border ${diagCounts.b2Stock > 500 ? 'border-red-500 bg-red-900/20' : 'border-green-500 bg-green-900/20'}`}>
+                <p className="text-xs text-gray-400 uppercase font-bold mb-1">Bobinas B2 em estoque</p>
+                <p className="text-2xl font-bold text-white">{diagCounts.b2Stock}</p>
+                <p className="text-xs text-gray-500 mt-1">Total no banco: {diagCounts.b2Total}</p>
+                {diagCounts.b2Stock > 500 ? (
+                  <p className="text-xs text-red-400 mt-1">⚠ App carrega só 500 — algumas B2 podem estar ocultas!</p>
+                ) : (
+                  <p className="text-xs text-green-400 mt-1">✓ Dentro do limite (500)</p>
+                )}
+              </div>
+              <div className="p-4 rounded-lg border border-green-500 bg-green-900/20">
+                <p className="text-xs text-gray-400 uppercase font-bold mb-1">Bobinas Mãe</p>
+                <p className="text-2xl font-bold text-white">{diagCounts.mother}</p>
+                <p className="text-xs text-green-400 mt-1">✓ Sem limite — lê tudo do Firebase</p>
               </div>
             </div>
           )}
