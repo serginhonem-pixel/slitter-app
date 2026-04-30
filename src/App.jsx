@@ -19,10 +19,12 @@ import {
   doc,
   getCountFromServer,
   getDocs,
+  increment,
   limit,
   onSnapshot,
   orderBy,
   query,
+  setDoc,
   where,
   writeBatch
 } from 'firebase/firestore';
@@ -2093,6 +2095,7 @@ export default function App() {
   const [adminStockTab, setAdminStockTab] = useState('mother');
   const [diagCounts, setDiagCounts] = useState(null);
   const [diagLoading, setDiagLoading] = useState(false);
+  const [stockBalance, setStockBalance] = useState({});
   const [blockedCutModal, setBlockedCutModal] = useState(null);
   const [adminCatalogFilter, setAdminCatalogFilter] = useState('');
   const [adminCatalogPage, setAdminCatalogPage] = useState(1);
@@ -2634,6 +2637,13 @@ export default function App() {
   setupListener('shippingLogs', setShippingLogs,
     query(collection(db, 'shippingLogs'), orderBy('createdAt', 'desc'), limit(200)));
 
+  const unsubBalance = onSnapshot(collection(db, 'stockBalance'), (snap) => {
+    const data = {};
+    snap.docs.forEach(d => { data[d.id] = { code: d.id, ...d.data() }; });
+    setStockBalance(data);
+  });
+  unsubs.push(unsubBalance);
+
   return () => {
     unsubs.forEach((u) => u && u());
   };
@@ -2735,7 +2745,17 @@ export default function App() {
   };
 
   const getShippingStock = () => {
-    const stock = { ...getFinishedStock() };
+    const useBalance = Object.keys(stockBalance).length > 0;
+
+    // Se stockBalance já foi migrado, usa ele como base (preciso e sem limite)
+    // Se ainda não foi migrado, cai no cálculo antigo dos logs
+    const stock = useBalance
+      ? Object.fromEntries(
+          Object.values(stockBalance).map(item => [item.code, { ...item }])
+        )
+      : { ...getFinishedStock() };
+
+    // Lógica DRYWALL (bobinas B2) continua igual
     const drywallCodes = new Set();
 
     const getChildFamily = (item) => {
@@ -2764,11 +2784,7 @@ export default function App() {
       if (!code) return;
 
       if (!stock[code]) {
-        stock[code] = {
-          code,
-          name: coil?.b2Name || coil?.name || code,
-          count: 0,
-        };
+        stock[code] = { code, name: coil?.b2Name || coil?.name || code, count: 0 };
       }
 
       stock[code].count += 1;
@@ -4807,6 +4823,15 @@ export default function App() {
             return [...savedLogsReal, ...others];
         });
 
+        // --- 6. INCREMENTA SALDO ---
+        if (Object.keys(stockBalance).length > 0 && productInfo) {
+          const totalPieces = logsToCreate.reduce((sum, l) => sum + (l.pieces || 0), 0);
+          await setDoc(doc(db, 'stockBalance', productInfo.code), {
+            count: increment(totalPieces),
+            name: productInfo.name,
+          }, { merge: true });
+        }
+
         // Manda imprimir os reais
         setItemsToPrint(savedLogsReal); setPrintType('product'); setShowPrintModal(true);
         await logUserAction('PRODUCAO', {
@@ -4873,6 +4898,15 @@ export default function App() {
 
         // --- 5. TROCA ID ---
         setShippingLogs(prev => prev.map(l => l.id === tempId ? { ...l, id: savedLog.id } : l));
+
+        // --- 6. DECREMENTA SALDO ---
+        if (Object.keys(stockBalance).length > 0) {
+          await setDoc(doc(db, 'stockBalance', shipProduct), {
+            count: increment(-qty),
+            name: prodInfo ? prodInfo.name : shipProduct,
+          }, { merge: true });
+        }
+
         await logUserAction('EXPEDICAO', {
           productCode: shipProduct,
           quantity: qty,
@@ -4886,7 +4920,7 @@ export default function App() {
           date: newShipLog.date,
           userEmail: user?.email || 'offline@local',
         });
-        
+
         alert("Expedição salva!");
     } catch (e) {
         console.error(e);
@@ -11101,6 +11135,44 @@ safeCutting.forEach((c) => {
       }
     };
 
+    const runMigration = async () => {
+      if (!window.confirm('Isso vai ler TODOS os logs do Firebase e calcular o saldo correto de cada produto. Continuar?')) return;
+      setDiagLoading(true);
+      try {
+        const [prodSnap, shipSnap] = await Promise.all([
+          getDocs(collection(db, 'productionLogs')),
+          getDocs(collection(db, 'shippingLogs')),
+        ]);
+
+        const balance = {};
+        prodSnap.docs.forEach(d => {
+          const log = d.data();
+          const code = String(log.productCode || '').trim();
+          if (!code) return;
+          if (!balance[code]) balance[code] = { count: 0, name: log.productName || code };
+          balance[code].count += Number(log.pieces) || 0;
+        });
+        shipSnap.docs.forEach(d => {
+          const log = d.data();
+          const code = String(log.productCode || '').trim();
+          if (!code) return;
+          if (!balance[code]) balance[code] = { count: 0, name: log.productName || code };
+          balance[code].count -= Number(log.quantity) || 0;
+        });
+
+        const batch = writeBatch(db);
+        Object.entries(balance).forEach(([code, data]) => {
+          batch.set(doc(db, 'stockBalance', code), data);
+        });
+        await batch.commit();
+        alert(`Migração concluída! ${Object.keys(balance).length} produtos calculados com saldo correto.`);
+      } catch (e) {
+        alert('Erro na migração: ' + e.message);
+      } finally {
+        setDiagLoading(false);
+      }
+    };
+
     return (
       <div className="space-y-6">
         <Card>
@@ -11108,13 +11180,25 @@ safeCutting.forEach((c) => {
           <p className="text-sm text-gray-400 mb-4">
             Verifica quantos registros existem no Firebase. O app carrega só os 200 mais recentes — se o total for maior, o saldo pode estar errado.
           </p>
-          <button
-            onClick={runDiagnostic}
-            disabled={diagLoading}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm rounded-lg font-medium"
-          >
-            {diagLoading ? 'Contando...' : 'Contar registros no Firebase'}
-          </button>
+          <div className="flex gap-3 flex-wrap">
+            <button
+              onClick={runDiagnostic}
+              disabled={diagLoading}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm rounded-lg font-medium"
+            >
+              {diagLoading ? 'Aguarde...' : 'Contar registros no Firebase'}
+            </button>
+            <button
+              onClick={runMigration}
+              disabled={diagLoading}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm rounded-lg font-medium"
+            >
+              {diagLoading ? 'Aguarde...' : '⚡ Migrar saldo (corrigir tudo)'}
+            </button>
+          </div>
+          {Object.keys(stockBalance).length > 0 && (
+            <p className="text-xs text-green-400 mt-3">✓ stockBalance ativo — {Object.keys(stockBalance).length} produtos com saldo calculado corretamente.</p>
+          )}
           {diagCounts && (
             <div className="mt-4 grid grid-cols-2 gap-4">
               <div className={`p-4 rounded-lg border ${diagCounts.production > 200 ? 'border-red-500 bg-red-900/20' : 'border-green-500 bg-green-900/20'}`}>
