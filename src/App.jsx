@@ -1248,6 +1248,58 @@ const MpDetailsModal = ({ data, onClose }) => {
     </div>
   );
 };
+const MpGroupModal = ({ group, onClose, onOpenDetail }) => {
+  return (
+    <div className="fixed inset-0 bg-black/80 z-[90] flex items-center justify-center p-4">
+      <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-3xl shadow-2xl flex flex-col max-h-[80vh]">
+        <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-900 rounded-t-xl">
+          <div>
+            <h3 className="text-white font-bold text-lg">Extrato por Largura: {group.code}</h3>
+            <p className="text-sm text-gray-400">{group.desc}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20}/></button>
+        </div>
+        <div className="overflow-y-auto custom-scrollbar-dark flex-1">
+          <table className="w-full text-sm text-left text-gray-300">
+            <thead className="bg-gray-800 text-gray-400 sticky top-0 shadow-md">
+              <tr>
+                <th className="p-3 text-right">Largura (mm)</th>
+                <th className="p-3 text-right text-gray-400 bg-gray-900/50">Saldo Ant.</th>
+                <th className="p-3 text-right text-emerald-400">Entradas</th>
+                <th className="p-3 text-right text-red-400">Saídas</th>
+                <th className="p-3 text-right text-white font-bold bg-blue-900/40 border-l border-blue-700">Saldo Atual</th>
+                <th className="p-3 text-center">Ação</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700">
+              {group.rows.map((row, idx) => (
+                <tr key={idx} className="hover:bg-gray-700/50">
+                  <td className="p-3 text-right text-gray-300 font-mono">{row.width != null ? row.width : '-'}</td>
+                  <td className="p-3 text-right text-gray-300 font-mono bg-gray-900/30">{row.initialBalance.toLocaleString('pt-BR')}</td>
+                  <td className="p-3 text-right text-emerald-400 font-mono">{row.periodIn.toLocaleString('pt-BR')}</td>
+                  <td className="p-3 text-right text-red-400 font-mono">{row.periodOut.toLocaleString('pt-BR')}</td>
+                  <td className="p-3 text-right font-bold text-white font-mono bg-blue-900/20 border-l border-gray-700">{row.finalBalance.toLocaleString('pt-BR')}</td>
+                  <td className="p-3 text-center">
+                    <button
+                      onClick={() => onOpenDetail(row)}
+                      className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs"
+                    >
+                      <Eye size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="p-3 border-t border-gray-700 bg-gray-900 flex justify-end">
+          <button onClick={onClose} className="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm">Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ProductDetailsModal = ({ data, onClose }) => {
   // Se ainda não tem dados, nem tenta renderizar
   if (!data) return null;
@@ -2073,6 +2125,7 @@ export default function App() {
   const [b2SearchQuery, setB2SearchQuery] = useState('');
   const [reportViewMode, setReportViewMode] = useState('GLOBAL'); // 'GLOBAL' ou 'MP_KARDEX'
   const [viewingMpDetails, setViewingMpDetails] = useState(null); // Armazena o código que está sendo visto
+  const [viewingMpGroup, setViewingMpGroup] = useState(null); // Grupo de larguras para detalhamento
   // Adicione junto com os outros estados (logo abaixo de mpManualDaily, por exemplo)
   const [mpManualInputType, setMpManualInputType] = useState('total'); // 'daily' ou 'total'
   const [mpManualTotal, setMpManualTotal] = useState(''); // Para guardar o valor total
@@ -10161,55 +10214,66 @@ safeCutting.forEach((c) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-700">
-                {mpSummaryList
-                  .filter((i) => {
+                {(() => {
+                  const filtered = mpSummaryList.filter((i) => {
                     if (!reportSearch) return true;
                     const term = reportSearch.toLowerCase();
                     return (
                       i.code.toLowerCase().includes(term) ||
-                      String(i.desc || '')
-                        .toLowerCase()
-                        .includes(term) ||
-                      (i.width != null &&
-                        String(i.width).toLowerCase().includes(term))
+                      String(i.desc || '').toLowerCase().includes(term) ||
+                      (i.width != null && String(i.width).toLowerCase().includes(term))
                     );
-                  })
-                  .map((row, idx) => (
+                  });
+                  const groupMap = new Map();
+                  filtered.forEach((row) => {
+                    if (!groupMap.has(row.code)) {
+                      groupMap.set(row.code, { code: row.code, desc: row.desc, rows: [], totalInitialBalance: 0, totalPeriodIn: 0, totalPeriodOut: 0, totalFinalBalance: 0 });
+                    }
+                    const g = groupMap.get(row.code);
+                    g.rows.push(row);
+                    g.totalInitialBalance += row.initialBalance;
+                    g.totalPeriodIn += row.periodIn;
+                    g.totalPeriodOut += row.periodOut;
+                    g.totalFinalBalance += row.finalBalance;
+                  });
+                  return Array.from(groupMap.values()).map((group, idx) => (
                     <tr key={idx} className="hover:bg-gray-700/50">
-                      <td className="p-3 font-bold text-white">{row.code}</td>
-                      <td className="p-3 text-gray-400 truncate max-w-[220px]">
-                        {row.desc}
-                      </td>
-                      <td className="p-3 text-right text-gray-300 font-mono">
-                        {row.width != null ? row.width : '-'}
+                      <td className="p-3 font-bold text-white">{group.code}</td>
+                      <td className="p-3 text-gray-400 truncate max-w-[220px]">{group.desc}</td>
+                      <td className="p-3 text-right text-gray-500 font-mono text-xs">
+                        {group.rows.length === 1 && group.rows[0].width != null
+                          ? group.rows[0].width
+                          : `${group.rows.length} largura${group.rows.length > 1 ? 's' : ''}`}
                       </td>
                       <td className="p-3 text-right text-gray-300 font-mono bg-gray-900/30">
-                        {row.initialBalance.toLocaleString('pt-BR')}
+                        {group.totalInitialBalance.toLocaleString('pt-BR')}
                       </td>
                       <td className="p-3 text-right text-emerald-400 font-mono">
-                        {row.periodIn.toLocaleString('pt-BR')}
+                        {group.totalPeriodIn.toLocaleString('pt-BR')}
                       </td>
                       <td className="p-3 text-right text-red-400 font-mono">
-                        {row.periodOut.toLocaleString('pt-BR')}
+                        {group.totalPeriodOut.toLocaleString('pt-BR')}
                       </td>
                       <td className="p-3 text-right font-bold text-white font-mono bg-blue-900/20 border-l border-gray-700">
-                        {row.finalBalance.toLocaleString('pt-BR')}
+                        {group.totalFinalBalance.toLocaleString('pt-BR')}
                       </td>
                       <td className="p-3 text-center">
                         <button
-                          onClick={() =>
-                            setViewingMpDetails({
-                              ...row,
-                              initialBalance: row.initialBalance,
-                            })
-                          }
+                          onClick={() => {
+                            if (group.rows.length === 1) {
+                              setViewingMpDetails({ ...group.rows[0], initialBalance: group.rows[0].initialBalance });
+                            } else {
+                              setViewingMpGroup(group);
+                            }
+                          }}
                           className="px-3 py-1 bg-gray-700 hover:bg-white hover:text-black rounded text-xs"
                         >
                           <Eye size={14} />
                         </button>
                       </td>
                     </tr>
-                  ))}
+                  ));
+                })()}
               </tbody>
             </table>
           </div>
@@ -14757,10 +14821,20 @@ const handleUploadJSONToFirebase = async (e) => {
           </div>
         </div>
       )}
+      {viewingMpGroup && (
+        <MpGroupModal
+          group={viewingMpGroup}
+          onClose={() => setViewingMpGroup(null)}
+          onOpenDetail={(item) => {
+            setViewingMpGroup(null);
+            setViewingMpDetails({ ...item, initialBalance: item.initialBalance });
+          }}
+        />
+      )}
       {viewingMpDetails && (
-        <MpDetailsModal 
-            data={viewingMpDetails} 
-            onClose={() => setViewingMpDetails(null)} 
+        <MpDetailsModal
+            data={viewingMpDetails}
+            onClose={() => setViewingMpDetails(null)}
         />
       )}
       {viewingProdDetails && (
