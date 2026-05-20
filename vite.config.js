@@ -97,6 +97,8 @@ function usiminasEdiProxy() {
 }
 
 // https://vite.dev/config/
+console.log('[BUILD] VITE_ vars recebidas:', Object.keys(process.env).filter(k => k.startsWith('VITE_')));
+
 export default defineConfig({
   plugins: [react(), usiminasEdiProxy()],
 })
