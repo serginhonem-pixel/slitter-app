@@ -97,8 +97,16 @@ function usiminasEdiProxy() {
 }
 
 // https://vite.dev/config/
-console.log('[BUILD] VITE_ vars recebidas:', Object.keys(process.env).filter(k => k.startsWith('VITE_')));
-
 export default defineConfig({
   plugins: [react(), usiminasEdiProxy()],
+  define: {
+    __PROD_FIREBASE__: JSON.stringify({
+      apiKey:            process.env.VITE_FIREBASE_API_KEY_PROD,
+      authDomain:        process.env.VITE_FIREBASE_AUTH_DOMAIN_PROD,
+      projectId:         process.env.VITE_FIREBASE_PROJECT_ID_PROD,
+      storageBucket:     process.env.VITE_FIREBASE_STORAGE_BUCKET_PROD,
+      messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID_PROD,
+      appId:             process.env.VITE_FIREBASE_APP_ID_PROD,
+    }),
+  },
 })
