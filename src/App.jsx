@@ -2684,11 +2684,11 @@ export default function App() {
   setupListener('motherCatalog', setMotherCatalog);
   setupListener('productCatalog', setProductCatalog);
   setupListener('productionLogs', setProductionLogs,
-    query(collection(db, 'productionLogs'), orderBy('createdAt', 'desc'), limit(200)));
+    query(collection(db, 'productionLogs'), orderBy('createdAt', 'desc'), limit(2000)));
   setupListener('cuttingLogs', setCuttingLogs,
-    query(collection(db, 'cuttingLogs'), orderBy('createdAt', 'desc'), limit(200)));
+    query(collection(db, 'cuttingLogs'), orderBy('createdAt', 'desc'), limit(2000)));
   setupListener('shippingLogs', setShippingLogs,
-    query(collection(db, 'shippingLogs'), orderBy('createdAt', 'desc'), limit(200)));
+    query(collection(db, 'shippingLogs'), orderBy('createdAt', 'desc'), limit(2000)));
 
   const unsubBalance = onSnapshot(collection(db, 'stockBalance'), (snap) => {
     const data = {};
@@ -4066,7 +4066,7 @@ export default function App() {
     const newCutLog = {
       id: tempLogId,
       date: dateNow, motherCode: mother.code, motherMaterial: mother.material,
-      inputWeight: totalConsumed, outputCount: tempChildCoils.length, scrap: manualScrap,
+      inputWeight: totalConsumed, outputCount: tempChildCoils.filter(t => !t.isDirectConsumption).length, scrap: manualScrap,
       generatedItems: itemsSummary, timestamp: new Date().toLocaleString(), createdAt: Date.now()
     };
 
