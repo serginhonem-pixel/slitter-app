@@ -607,9 +607,10 @@ const CutConsumptionStatusModal = ({ data, onClose }) => {
   if (!data) return null;
 
   const rows = Array.isArray(data.rows) ? data.rows : [];
+  const directItems = Array.isArray(data.directItems) ? data.directItems : [];
   const isLoading = Boolean(data.loading);
   const errorMessage = data.error || '';
-  const canExport = !isLoading && !errorMessage && rows.length > 0;
+  const canExport = !isLoading && !errorMessage && (rows.length > 0 || directItems.length > 0);
 
   const handleExportExcel = () => {
     if (!canExport) return;
@@ -625,17 +626,22 @@ const CutConsumptionStatusModal = ({ data, onClose }) => {
       'Data apontamento',
     ];
     const escapeCell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
-    const body = rows.map((row) => ([
-      row.childId,
-      row.b2Code,
-      row.b2Name,
-      row.weightLabel,
-      row.isConsumed ? 'CONSUMIDA' : 'EM ESTOQUE',
-      row.productionLabel || '-',
-      row.userLabel || '-',
-      row.pointedAtLabel || '-',
-      row.pointedDateLabel || '-',
-    ]));
+    const body = [
+      ...rows.map((row) => ([
+        row.childId,
+        row.b2Code,
+        row.b2Name,
+        row.weightLabel,
+        row.isConsumed ? 'CONSUMIDA' : 'EM ESTOQUE',
+        row.productionLabel || '-',
+        row.userLabel || '-',
+        row.pointedAtLabel || '-',
+        row.pointedDateLabel || '-',
+      ])),
+      ...directItems.map((item) => ([
+        '-', 'CONSUMO DIRETO', item.name, item.weightLabel, 'CONSUMIDO', '-', '-', '-', '-',
+      ])),
+    ];
     const csvContent = [headers, ...body]
       .map((line) => line.map(escapeCell).join(';'))
       .join('\n');
@@ -675,17 +681,22 @@ const CutConsumptionStatusModal = ({ data, onClose }) => {
         'Quando apontou',
         'Data apontamento',
       ]],
-      body: rows.map((row) => ([
-        row.childId,
-        row.b2Code || '-',
-        row.b2Name || '-',
-        row.weightLabel,
-        row.isConsumed ? 'CONSUMIDA' : 'EM ESTOQUE',
-        row.productionLabel || '-',
-        row.userLabel || '-',
-        row.pointedAtLabel || '-',
-        row.pointedDateLabel || '-',
-      ])),
+      body: [
+        ...rows.map((row) => ([
+          row.childId,
+          row.b2Code || '-',
+          row.b2Name || '-',
+          row.weightLabel,
+          row.isConsumed ? 'CONSUMIDA' : 'EM ESTOQUE',
+          row.productionLabel || '-',
+          row.userLabel || '-',
+          row.pointedAtLabel || '-',
+          row.pointedDateLabel || '-',
+        ])),
+        ...directItems.map((item) => ([
+          '-', 'CONSUMO DIRETO', item.name, item.weightLabel, 'CONSUMIDO', '-', '-', '-', '-',
+        ])),
+      ],
       styles: { fontSize: 7 },
       headStyles: { fillColor: [31, 41, 55] },
     });
@@ -704,6 +715,7 @@ const CutConsumptionStatusModal = ({ data, onClose }) => {
             </p>
             <p className="text-xs text-gray-500">
               B2 geradas: {data.generatedCount || 0} | B2 identificadas: {rows.length}
+              {directItems.length > 0 && ` | Consumo direto: ${directItems.length}`}
             </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white">
@@ -716,45 +728,70 @@ const CutConsumptionStatusModal = ({ data, onClose }) => {
             <div className="text-sm text-gray-300">Carregando consumo e auditoria...</div>
           ) : errorMessage ? (
             <div className="text-sm text-red-300">{errorMessage}</div>
-          ) : rows.length === 0 ? (
+          ) : rows.length === 0 && directItems.length === 0 ? (
             <div className="text-sm text-gray-400">
               Nao consegui vincular as B2 deste corte. Pode ser registro antigo sem childIds.
             </div>
           ) : (
-            <table className="w-full text-sm text-left text-gray-300">
-              <thead className="bg-gray-900 text-gray-400 sticky top-0">
-                <tr>
-                  <th className="p-2">B2 ID</th>
-                  <th className="p-2">Codigo</th>
-                  <th className="p-2">Descricao</th>
-                  <th className="p-2 text-right">Peso</th>
-                  <th className="p-2">Status atual</th>
-                  <th className="p-2">Consumo em PA</th>
-                  <th className="p-2">Quem apontou</th>
-                  <th className="p-2">Quando apontou</th>
-                  <th className="p-2">Data apontamento</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-700">
-                {rows.map((row) => (
-                  <tr key={row.childId} className="hover:bg-gray-700/50">
-                    <td className="p-2 font-mono text-[11px] text-blue-300">{row.childId}</td>
-                    <td className="p-2 font-mono text-xs">{row.b2Code || '-'}</td>
-                    <td className="p-2">{row.b2Name || '-'}</td>
-                    <td className="p-2 text-right font-mono">{row.weightLabel}</td>
-                    <td className="p-2">
-                      <span className={row.isConsumed ? 'text-amber-300 font-semibold' : 'text-emerald-400 font-semibold'}>
-                        {row.isConsumed ? 'CONSUMIDA' : 'EM ESTOQUE'}
-                      </span>
-                    </td>
-                    <td className="p-2 text-xs">{row.productionLabel || '-'}</td>
-                    <td className="p-2 text-xs">{row.userLabel || '-'}</td>
-                    <td className="p-2 text-xs text-gray-300">{row.pointedAtLabel || '-'}</td>
-                    <td className="p-2 text-xs text-gray-300">{row.pointedDateLabel || '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="space-y-4">
+              {rows.length > 0 && (
+                <table className="w-full text-sm text-left text-gray-300">
+                  <thead className="bg-gray-900 text-gray-400 sticky top-0">
+                    <tr>
+                      <th className="p-2">B2 ID</th>
+                      <th className="p-2">Codigo</th>
+                      <th className="p-2">Descricao</th>
+                      <th className="p-2 text-right">Peso</th>
+                      <th className="p-2">Status atual</th>
+                      <th className="p-2">Consumo em PA</th>
+                      <th className="p-2">Quem apontou</th>
+                      <th className="p-2">Quando apontou</th>
+                      <th className="p-2">Data apontamento</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-700">
+                    {rows.map((row) => (
+                      <tr key={row.childId} className="hover:bg-gray-700/50">
+                        <td className="p-2 font-mono text-[11px] text-blue-300">{row.childId}</td>
+                        <td className="p-2 font-mono text-xs">{row.b2Code || '-'}</td>
+                        <td className="p-2">{row.b2Name || '-'}</td>
+                        <td className="p-2 text-right font-mono">{row.weightLabel}</td>
+                        <td className="p-2">
+                          <span className={row.isConsumed ? 'text-amber-300 font-semibold' : 'text-emerald-400 font-semibold'}>
+                            {row.isConsumed ? 'CONSUMIDA' : 'EM ESTOQUE'}
+                          </span>
+                        </td>
+                        <td className="p-2 text-xs">{row.productionLabel || '-'}</td>
+                        <td className="p-2 text-xs">{row.userLabel || '-'}</td>
+                        <td className="p-2 text-xs text-gray-300">{row.pointedAtLabel || '-'}</td>
+                        <td className="p-2 text-xs text-gray-300">{row.pointedDateLabel || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {directItems.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-orange-400 uppercase mb-2">Consumo Direto / Outros</p>
+                  <table className="w-full text-sm text-left text-gray-300">
+                    <thead className="bg-gray-900 text-gray-400">
+                      <tr>
+                        <th className="p-2">Descricao (registrado pelo apontador)</th>
+                        <th className="p-2 text-right">Peso</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-700">
+                      {directItems.map((item, idx) => (
+                        <tr key={idx} className="hover:bg-orange-900/10">
+                          <td className="p-2 text-orange-200">{item.name}</td>
+                          <td className="p-2 text-right font-mono text-orange-200">{item.weightLabel}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -12842,10 +12879,30 @@ const handleOpenCutConsumptionModal = async (eventItem) => {
     };
   });
 
+    // Extrai itens de consumo direto (OUTROS) do campo generatedItems.
+    // Esses itens têm formato "DESCRIÇÃO (Xkg)" sem o padrão "CÓDIGO - NOME (Xkg)".
+    const directItems = (cutLog.generatedItems || '')
+      .split(', ')
+      .map((itemStr) => {
+        const b2Match = itemStr.match(/^[A-Z0-9]+ - .+ \([\d.,]+kg\)$/);
+        if (b2Match) return null;
+        const directMatch = itemStr.match(/^(.+) \(([\d.,]+)kg\)$/);
+        if (!directMatch) return null;
+        const weight = parseFloat(directMatch[2].replace(',', '.'));
+        if (isNaN(weight)) return null;
+        return {
+          name: directMatch[1].trim(),
+          weight,
+          weightLabel: weight.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' kg',
+        };
+      })
+      .filter(Boolean);
+
     setCutConsumptionModal({
       cutLog,
       generatedCount: Number(cutLog.outputCount) || rows.length,
       rows,
+      directItems,
       loading: false,
     });
   } catch (error) {
