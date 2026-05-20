@@ -28,6 +28,8 @@ const prodConfig = {
 // build/Vercel -> import.meta.env.DEV === false -> usa PROD
 const firebaseConfig = import.meta.env.DEV ? devConfig : prodConfig;
 
+console.log('[FIREBASE] apiKey em uso:', firebaseConfig.apiKey ? firebaseConfig.apiKey.slice(0, 8) + '...' : 'UNDEFINED');
+
 const app = initializeApp(firebaseConfig);
 
 export const db = getFirestore(app);
