@@ -99,4 +99,12 @@ function usiminasEdiProxy() {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), usiminasEdiProxy()],
+  define: {
+    'import.meta.env.VITE_FIREBASE_API_KEY_PROD':      JSON.stringify(process.env.VITE_FIREBASE_API_KEY_PROD      ?? ''),
+    'import.meta.env.VITE_FIREBASE_AUTH_DOMAIN_PROD':  JSON.stringify(process.env.VITE_FIREBASE_AUTH_DOMAIN_PROD  ?? ''),
+    'import.meta.env.VITE_FIREBASE_PROJECT_ID_PROD':   JSON.stringify(process.env.VITE_FIREBASE_PROJECT_ID_PROD   ?? ''),
+    'import.meta.env.VITE_FIREBASE_STORAGE_BUCKET_PROD': JSON.stringify(process.env.VITE_FIREBASE_STORAGE_BUCKET_PROD ?? ''),
+    'import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID_PROD': JSON.stringify(process.env.VITE_FIREBASE_MESSAGING_SENDER_ID_PROD ?? ''),
+    'import.meta.env.VITE_FIREBASE_APP_ID_PROD':       JSON.stringify(process.env.VITE_FIREBASE_APP_ID_PROD       ?? ''),
+  },
 })
