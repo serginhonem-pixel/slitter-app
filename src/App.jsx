@@ -8688,7 +8688,10 @@ const handleGlobalDetail = (group) => {
 
 const handleOpenCutConsumption = (eventItem) => {
   const safeCuttingLogs = Array.isArray(cuttingLogs) ? cuttingLogs : [];
-  const safeChildren = Array.isArray(childCoils) ? childCoils : [];
+  const safeChildren = [
+    ...(Array.isArray(childCoils) ? childCoils : []),
+    ...(Array.isArray(consumedChildCoils) ? consumedChildCoils : []),
+  ];
   const safeProdLogs = Array.isArray(productionLogs) ? productionLogs : [];
   const safeEvents = Array.isArray(eventLogs) ? eventLogs : [];
 
@@ -12669,7 +12672,10 @@ const formatPcs = (pcs) => {
 
 const handleOpenCutConsumptionModal = async (eventItem) => {
   const safeCuttingLogs = Array.isArray(cuttingLogs) ? cuttingLogs : [];
-  const safeChildren = Array.isArray(childCoils) ? childCoils : [];
+  const safeChildren = [
+    ...(Array.isArray(childCoils) ? childCoils : []),
+    ...(Array.isArray(consumedChildCoils) ? consumedChildCoils : []),
+  ];
   const safeProdLogs = Array.isArray(productionLogs) ? productionLogs : [];
   const safeEvents = Array.isArray(eventLogs) ? eventLogs : [];
   console.log('[CUT] handler start', eventItem);
