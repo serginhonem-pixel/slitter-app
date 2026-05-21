@@ -362,12 +362,29 @@ export function useTiresData() {
     try { saveToDb("tiresConsumoReal", registro); } catch { /* silent */ }
   }, [estoqueBase, saveEstoque]);
 
+  const updateEstoqueInicial = useCallback((produto, mes, valor) => {
+    const mesNorm = normalizeMes(mes);
+    const existente = estoqueBase.find((e) => e.produto === produto && normalizeMes(e.mes) === mesNorm);
+    let novaLista;
+    if (existente) {
+      novaLista = estoqueBase.map((e) =>
+        e.produto === produto && normalizeMes(e.mes) === mesNorm
+          ? { ...e, estoqueInicial: valor }
+          : e
+      );
+    } else {
+      novaLista = [...estoqueBase, { mes: mesNorm, produto, estoqueInicial: valor, comprasHHT: 0, comprasEAS: 0, comprasGRN: 0, totalCompras: 0, necessidadeProd: 0, saldo: valor }];
+    }
+    saveEstoque(novaLista);
+    try { saveToDb("tiresEstoque", { produto, mes: mesNorm, estoqueInicial: valor, timestamp: new Date().toISOString() }); } catch { /* silent */ }
+  }, [estoqueBase, saveEstoque]);
+
   const produtos = useMemo(() => [...new Set(pedidos.map((p) => p.produto).filter(Boolean))].sort(), [pedidos]);
 
   return {
     pedidos, estoqueBase, loading, syncStatus, prodHistorico, consumoHistorico,
     produtos,
-    addPedido, updatePedido, deletePedido, updateNecessidade, updateConsumoReal,
+    addPedido, updatePedido, deletePedido, updateNecessidade, updateConsumoReal, updateEstoqueInicial,
     syncAllToFirebase,
   };
 }

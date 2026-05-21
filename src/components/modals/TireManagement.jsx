@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import {
   AlertTriangle, CheckCircle, Package, Truck, PlusCircle,
-  Edit2, Trash2, X, Save, ChevronDown, ChevronUp, Clock, FileDown,
+  Edit2, Trash2, X, Save, ChevronDown, ChevronUp, Clock, FileDown, Pencil,
 } from "lucide-react";
 import {
   ComposedChart, AreaChart, Area, Line, XAxis, YAxis, CartesianGrid,
@@ -275,9 +275,11 @@ function buildEstoqueTimeline(projecao) {
 }
 
 // ─── Tela 1 — Dashboard ─────────────────────────────────────────────────────
-function Dashboard({ pedidos, estoqueBase, produtos }) {
+function Dashboard({ pedidos, estoqueBase, produtos, onUpdateEstoqueInicial }) {
   const [produtoFiltro, setProdutoFiltro] = useState("PNEU 3,25");
   const [rowExpandida, setRowExpandida] = useState(null);
+  const [editandoEstoque, setEditandoEstoque] = useState(false);
+  const [valorEstoqueEdit, setValorEstoqueEdit] = useState("");
 
   const projecao = useMemo(
     () => calcularProjecao(produtoFiltro, pedidos, estoqueBase),
@@ -546,7 +548,48 @@ function Dashboard({ pedidos, estoqueBase, produtos }) {
                           {row.mes}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-right">{fmt(row.estoqueInicial)}</td>
+                      <td className="px-3 py-2 text-right">
+                        {projecao.indexOf(row) === 0 ? (
+                          editandoEstoque ? (
+                            <form
+                              className="flex items-center justify-end gap-1"
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                const v = parseInt(valorEstoqueEdit.replace(/\D/g, ""), 10);
+                                if (!isNaN(v)) onUpdateEstoqueInicial(produtoFiltro, row.mes, v);
+                                setEditandoEstoque(false);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                autoFocus
+                                type="text"
+                                value={valorEstoqueEdit}
+                                onChange={(e) => setValorEstoqueEdit(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === "Escape") setEditandoEstoque(false); }}
+                                className="w-24 bg-gray-900 border border-blue-500 rounded px-1.5 py-0.5 text-right text-white text-xs focus:outline-none"
+                              />
+                              <button type="submit" className="text-emerald-400 hover:text-emerald-300 text-[10px]">✓</button>
+                              <button type="button" onClick={() => setEditandoEstoque(false)} className="text-gray-500 hover:text-gray-300 text-[10px]">✕</button>
+                            </form>
+                          ) : (
+                            <button
+                              title="Clique para editar o estoque inicial"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setValorEstoqueEdit(String(row.estoqueInicial));
+                                setEditandoEstoque(true);
+                              }}
+                              className="group flex items-center gap-1 ml-auto text-white hover:text-blue-300"
+                            >
+                              {fmt(row.estoqueInicial)}
+                              <Pencil size={9} className="opacity-0 group-hover:opacity-60 text-blue-400" />
+                            </button>
+                          )
+                        ) : (
+                          fmt(row.estoqueInicial)
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-right text-blue-300">{fmt(row.comprasHHT)}</td>
                       <td className="px-3 py-2 text-right text-emerald-300">{fmt(row.comprasEAS)}</td>
                       <td className="px-3 py-2 text-right text-purple-300">{fmt(row.comprasGRN)}</td>
@@ -1073,7 +1116,7 @@ function AtualizarProducao({ produtos, prodHistorico, consumoHistorico, onUpdate
 export default function TireManagement() {
   const {
     pedidos, estoqueBase, prodHistorico, consumoHistorico, produtos,
-    addPedido, updatePedido, deletePedido, updateNecessidade, updateConsumoReal,
+    addPedido, updatePedido, deletePedido, updateNecessidade, updateConsumoReal, updateEstoqueInicial,
   } = useTiresData();
 
   const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
@@ -1137,7 +1180,7 @@ export default function TireManagement() {
 
       {/* Conteúdo */}
       {subTab === "dashboard" && (
-        <Dashboard pedidos={pedidos} estoqueBase={estoqueBase} produtos={allProdutos} />
+        <Dashboard pedidos={pedidos} estoqueBase={estoqueBase} produtos={allProdutos} onUpdateEstoqueInicial={updateEstoqueInicial} />
       )}
 
       {subTab === "pedidos" && (
