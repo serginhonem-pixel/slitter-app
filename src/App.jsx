@@ -18,6 +18,7 @@ import {
   collection,
   doc,
   getCountFromServer,
+  getDoc,
   getDocs,
   increment,
   limit,
@@ -12772,6 +12773,23 @@ const handleOpenCutConsumptionModal = async (eventItem) => {
   }
 
   childIds = [...new Set(childIds)];
+
+  // Busca no Firebase as coils que não estão em memória (consumidas antigas fora do limite)
+  const missingIds = childIds.filter(
+    (id) => !safeChildren.some((coil) => String(coil.id) === String(id)),
+  );
+  if (missingIds.length > 0) {
+    try {
+      const fetched = await Promise.all(
+        missingIds.map((id) => getDoc(doc(db, 'childCoils', id))),
+      );
+      fetched.forEach((snap) => {
+        if (snap.exists()) safeChildren.push({ id: snap.id, ...snap.data() });
+      });
+    } catch (e) {
+      console.warn('[CUT] Falha ao buscar coils faltantes do Firebase:', e);
+    }
+  }
 
   const rows = childIds.map((childId) => {
     const child = safeChildren.find((coil) => String(coil.id) === String(childId)) || null;
