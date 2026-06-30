@@ -2,12 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Tokens de UI (tema escuro + 1 cor de destaque) */
+/* ─── Design tokens ──────────────────────────────────────────────────────── */
 :root {
-  --ui-accent: 59 130 246; /* blue-500 */
-  --ui-surface: 15 23 42; /* slate-900 */
-  --ui-surface-2: 17 24 39; /* gray-900 */
-  --ui-border: 255 255 255; /* white (usado com alpha) */
+  --ui-accent:    139 92 246;   /* violet-500 */
+  --ui-accent-2:  59 130 246;   /* blue-500   */
+  --ui-surface:   10 10 20;     /* fundo base */
+  --ui-surface-2: 15 15 35;
+  --ui-border:    255 255 255;
+}
+
+/* ─── Base ───────────────────────────────────────────────────────────────── */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(139,92,246,0.12) 0%, transparent 60%),
+              radial-gradient(ellipse 60% 40% at 80% 80%, rgba(59,130,246,0.08) 0%, transparent 50%),
+              #080818;
+  min-height: 100vh;
+  color: #e2e8f0;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -60,23 +76,34 @@
   display: none !important;
 }
 
-/* Scrollbar dark */
+/* ─── Scrollbar global ───────────────────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139,92,246,0.35) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(139,92,246,0.35);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(139,92,246,0.6);
+}
+
+/* legado — mantém compatibilidade com classes existentes */
 .custom-scrollbar-dark {
   scrollbar-width: thin;
-  scrollbar-color: #4b5563 #111827;
-}
-
-.custom-scrollbar-dark::-webkit-scrollbar {
-  width: 8px;
-}
-
-.custom-scrollbar-dark::-webkit-scrollbar-track {
-  background: #0b1120;
-}
-
-.custom-scrollbar-dark::-webkit-scrollbar-thumb {
-  background-color: #4b5563;
-  border-radius: 999px;
+  scrollbar-color: rgba(139,92,246,0.35) transparent;
 }
 
 /* Para garantir as animações usadas no JSX (fallback caso esqueça no tailwind) */

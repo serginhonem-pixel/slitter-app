@@ -7,6 +7,7 @@ import PaginationControls from './components/common/PaginationControls';
 import Dashboard from './components/Dashboard/Dashboard';
 import Login from './components/Login';
 import IndicatorsDashboard from './components/modals/IndicatorsDashboard.jsx';
+import MotherCoilKanban from './components/modals/MotherCoilKanban.jsx';
 
 import Button from './components/ui/Button';
 import QrCameraModal from './components/modals/QrCameraModal';
@@ -60,7 +61,8 @@ import {
   X,
   Zap,
   CheckCircle,
-  AlertTriangle
+  AlertTriangle,
+  LayoutGrid
 } from 'lucide-react';
 
 
@@ -14186,7 +14188,7 @@ const handleUploadJSONToFirebase = async (e) => {
              <ChevronLeft size={16} />
            </button>
         </div>
-        <nav className="flex-1 py-8 px-4 space-y-2 overflow-y-auto custom-scrollbar-dark">
+        <nav className="flex-1 py-8 px-4 space-y-2">
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Principal</p>
            
            <button onClick={() => handleSidebarNavigate('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'dashboard' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
@@ -14201,6 +14203,10 @@ const handleUploadJSONToFirebase = async (e) => {
 
            <button onClick={() => handleSidebarNavigate('mother')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'mother' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
              <ScrollText size={20} className={activeTab === 'mother' ? "text-blue-300" : "group-hover:text-blue-300 transition-colors"}/> <span className="font-medium">Entrada de MP</span>
+           </button>
+
+           <button onClick={() => handleSidebarNavigate('kanban')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'kanban' ? 'bg-teal-600/15 text-teal-200 border border-teal-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
+             <LayoutGrid size={20} className={activeTab === 'kanban' ? "text-teal-300" : "group-hover:text-teal-300 transition-colors"}/> <span className="font-medium">Kanban Bobinas</span>
            </button>
            {/* ... outros botões ... */}
                      
@@ -14335,7 +14341,7 @@ const handleUploadJSONToFirebase = async (e) => {
                   {activeTab === 'b2report' && "Relatório B2"}
                   {activeTab === 'bi' && "BI & Gráficos"}
                   {activeTab === 'mpNeed' && "Gestão de Compras"}
-
+                  {activeTab === 'kanban' && "Kanban — Bobinas Mãe"}
                   {activeTab === 'inoxBlanks' && "Planejamento Inox"}
                   {activeTab === 'admin' && "Admin"}
                                                 
@@ -14391,6 +14397,10 @@ const handleUploadJSONToFirebase = async (e) => {
 
                   {activeTab === "inoxBlanks" && (
                     <InoxBlanksPlanner />
+                  )}
+
+                  {activeTab === "kanban" && (
+                    <MotherCoilKanban motherCoils={motherCoils} />
                   )}
                 </>
               )}
