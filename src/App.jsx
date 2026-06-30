@@ -14188,7 +14188,7 @@ const handleUploadJSONToFirebase = async (e) => {
              <ChevronLeft size={16} />
            </button>
         </div>
-        <nav className="flex-1 py-8 px-4 space-y-2">
+        <nav className="flex-1 overflow-y-auto py-8 px-4 space-y-2">
            <p className="px-4 text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Principal</p>
            
            <button onClick={() => handleSidebarNavigate('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeTab === 'dashboard' ? 'bg-blue-600/15 text-blue-200 border border-blue-500/20 shadow-inner' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}>
