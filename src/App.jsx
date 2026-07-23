@@ -12,7 +12,7 @@ import MotherCoilKanban from './components/modals/MotherCoilKanban.jsx';
 import Button from './components/ui/Button';
 import QrCameraModal from './components/modals/QrCameraModal';
 
-import { auth, db, deleteFromDb, isLocalHost, loadFromDb, logoutUser, saveToDb, updateInDb } from './services/api'; // Certifique-se de exportar 'db' no seu arquivo de configuração
+import { auth, db, deleteFromDb, isLocalHost, loadFromDb, logoutUser, saveCutAtomic, saveToDb, updateInDb } from './services/api'; // Certifique-se de exportar 'db' no seu arquivo de configuração
 
 import { onAuthStateChanged } from 'firebase/auth';
 import {
@@ -4149,38 +4149,28 @@ export default function App() {
     setTempChildCoils([]); setProcessScrap(''); setSelectedMotherForCut(''); setMotherSearchQuery('');
 
     try {
-      // --- 5. PERSISTÊNCIA NO FIREBASE ---
-      
-      // A) Atualiza Mãe
-      await updateInDb('motherCoils', mother.id, motherUpdateData);
-
-      // B) Salva Log e pega ID Real
+      // --- 5. PERSISTÊNCIA ATÔMICA NO FIREBASE (mãe + log + filhas em um único batch) ---
       const { id: logTempId, ...logData } = newCutLog;
-      const savedLog = await saveToDb('cuttingLogs', logData);
+      const childCoilsData = tempNewChildren.map(({ id: childTempId, ...childData }) => childData);
 
-      // C) Salva Filhas e pega IDs Reais
-      const savedChildrenReal = [];
-      for (const childTemp of tempNewChildren) {
-          const { id: childTempId, ...childData } = childTemp;
-          const savedChild = await saveToDb('childCoils', childData);
-          savedChildrenReal.push(savedChild);
-      }
-      const savedChildIds = savedChildrenReal.map((child) => child.id);
-      await updateInDb('cuttingLogs', savedLog.id, {
-        childIds: savedChildIds,
+      const { cuttingLogId, children: savedChildrenReal } = await saveCutAtomic({
         motherId: mother.id,
+        motherUpdateData,
+        cutLogData: logData,
+        childCoilsData,
       });
+      const savedChildIds = savedChildrenReal.map((child) => child.id);
 
       // --- 6. TROCA SILENCIOSA DE IDS (TEMP -> REAL) ---
-      
+
       // Troca ID do Log
       setCuttingLogs(prev => prev.map(l => l.id === tempLogId ? {
         ...l,
-        id: savedLog.id,
+        id: cuttingLogId,
         motherId: mother.id,
         childIds: savedChildIds,
       } : l));
-      
+
       // Troca IDs das Filhas (Remove as Temp e bota as Reais para garantir integridade)
       setChildCoils(prev => {
           const others = prev.filter(c => !tempNewChildren.some(t => t.id === c.id));
@@ -4211,12 +4201,12 @@ export default function App() {
           originalWeight: mother.originalWeight || mother.weight,
           remainingWeight: motherUpdateData.remainingWeight,
           generatedItems: newCutLog.generatedItems,
-          cuttingLogId: savedLog.id,
+          cuttingLogId,
           childCount: savedChildrenReal.length,
           userEmail: user?.email || 'offline@local',
         },
       );
-      
+
       alert("Corte salvo na nuvem!");
 
     } catch (error) {
@@ -5730,16 +5720,12 @@ export default function App() {
       return { createdItems: localChildren, resultMessage: `Corte ${mother.code} aprovado.` };
     }
 
-    await updateInDb('motherCoils', mother.id, motherUpdateData);
-    const savedLog = await saveToDb('cuttingLogs', newCutLog);
-    const savedChildrenReal = [];
-    for (const childData of newChildrenPayload) {
-      const savedChild = await saveToDb('childCoils', childData);
-      savedChildrenReal.push(savedChild);
-    }
-    await updateInDb('cuttingLogs', savedLog.id, {
-      childIds: savedChildrenReal.map((child) => child.id),
+    const { id: logTempId, ...cutLogData } = newCutLog;
+    const { cuttingLogId, children: savedChildrenReal } = await saveCutAtomic({
       motherId: mother.id,
+      motherUpdateData,
+      cutLogData,
+      childCoilsData: newChildrenPayload,
     });
 
     await logUserAction('CORTE_APROVADO', {
@@ -5758,7 +5744,7 @@ export default function App() {
       originalWeight: mother.originalWeight || mother.weight,
       remainingWeight: motherUpdateData.remainingWeight,
       generatedItems: newCutLog.generatedItems,
-      cuttingLogId: savedLog.id,
+      cuttingLogId,
       childCount: savedChildrenReal.length,
       userEmail: request?.requestedByEmail || 'offline@local',
       approvedBy: user?.email || 'offline@local',
@@ -6078,25 +6064,20 @@ export default function App() {
     }
 
     try {
-      await updateInDb('motherCoils', mother.id, motherUpdateData);
       const { id: logTempId, ...logData } = newCutLog;
-      const savedLog = await saveToDb('cuttingLogs', logData);
+      const childCoilsData = tempNewChildren.map(({ id: childTempId, ...childData }) => childData);
 
-      const savedChildrenReal = [];
-      for (const childTemp of tempNewChildren) {
-        const { id: childTempId, ...childData } = childTemp;
-        const savedChild = await saveToDb('childCoils', childData);
-        savedChildrenReal.push(savedChild);
-      }
-      const savedChildIds = savedChildrenReal.map((child) => child.id);
-      await updateInDb('cuttingLogs', savedLog.id, {
-        childIds: savedChildIds,
+      const { cuttingLogId, children: savedChildrenReal } = await saveCutAtomic({
         motherId: mother.id,
+        motherUpdateData,
+        cutLogData: logData,
+        childCoilsData,
       });
+      const savedChildIds = savedChildrenReal.map((child) => child.id);
 
       setCuttingLogs(prev => prev.map(l => l.id === tempLogId ? {
         ...l,
-        id: savedLog.id,
+        id: cuttingLogId,
         motherId: mother.id,
         childIds: savedChildIds,
       } : l));
@@ -6113,14 +6094,14 @@ export default function App() {
         totalWeight: totalCutsWeight, inputWeight: totalCutsWeight, scrap: manualScrap, date: opsCutDate,
         motherCode: mother.code, motherMaterial: mother.material, originalWeight: mother.originalWeight || mother.weight,
         remainingWeight: motherUpdateData.remainingWeight, generatedItems: newCutLog.generatedItems,
-        cuttingLogId: savedLog.id, childCount: savedChildrenReal.length, userEmail: user?.email || 'offline@local',
+        cuttingLogId, childCount: savedChildrenReal.length, userEmail: user?.email || 'offline@local',
       });
 
       setOpsLastAction({ type: 'success', message: `Corte de ${mother.code} salvo na nuvem! ${savedChildrenReal.length} tiras geradas.`, timestamp: Date.now() });
     } catch (error) {
       console.error("Erro no corte:", error);
       setMotherCoils(prevMothers); setCuttingLogs(prevLogs); setChildCoils(prevChildren);
-      setOpsLastAction({ type: 'error', message: `Erro ao salvar corte de ${mother.code} na nuvem. Os dados podem sumir se recarregar.`, timestamp: Date.now() });
+      setOpsLastAction({ type: 'error', message: `Erro ao salvar corte de ${mother.code} na nuvem. Nenhuma alteração foi aplicada (gravação atômica).`, timestamp: Date.now() });
     }
   };
 

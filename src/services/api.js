@@ -1,13 +1,14 @@
 // src/services/api.js
 // 1. Importe db E auth do seu arquivo de configuração
 import { db, auth } from "../firebaseConfig"; 
-import { 
-  collection, 
-  getDocs, 
-  addDoc, 
-  deleteDoc, 
-  doc, 
-  updateDoc 
+import {
+  collection,
+  getDocs,
+  addDoc,
+  deleteDoc,
+  doc,
+  updateDoc,
+  writeBatch
 } from "firebase/firestore";
 
 // 2. Importe as funções de login
@@ -99,6 +100,42 @@ export const deleteFromDb = async (collectionName, id) => {
     await deleteDoc(doc(db, collectionName, id));
   } catch (error) {
     console.error(`Erro ao deletar de ${collectionName}:`, error);
+    throw error;
+  }
+};
+
+// --- CORTE ATÔMICO (mãe + log + filhas em uma única transação) ---
+// Evita o cenário em que a bobina mãe é debitada e o log de corte é salvo
+// com N peças, mas a gravação das bobinas filhas falha no meio do caminho
+// (ex: queda de rede), deixando peças "fantasmas" descontadas do estoque
+// sem nunca terem sido criadas como registro de bobina filha.
+export const saveCutAtomic = async ({ motherId, motherUpdateData, cutLogData, childCoilsData }) => {
+  if (isFirestoreBlocked()) {
+    console.warn("[FIREBASE] saveCutAtomic bloqueado no localhost");
+    const children = childCoilsData.map((data, i) => ({ ...data, id: `LOCAL-CHILD-${Date.now()}-${i}` }));
+    return { cuttingLogId: `LOCAL-LOG-${Date.now()}`, children };
+  }
+  try {
+    const batch = writeBatch(db);
+
+    const motherRef = doc(db, 'motherCoils', motherId);
+    batch.update(motherRef, motherUpdateData);
+
+    const logRef = doc(collection(db, 'cuttingLogs'));
+    const childRefs = childCoilsData.map(() => doc(collection(db, 'childCoils')));
+    const childIds = childRefs.map(ref => ref.id);
+
+    batch.set(logRef, { ...cutLogData, motherId, childIds });
+    childCoilsData.forEach((data, i) => batch.set(childRefs[i], data));
+
+    await batch.commit();
+
+    return {
+      cuttingLogId: logRef.id,
+      children: childCoilsData.map((data, i) => ({ ...data, id: childIds[i] })),
+    };
+  } catch (error) {
+    console.error("Erro ao salvar corte atomicamente:", error);
     throw error;
   }
 };
