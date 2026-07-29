@@ -482,7 +482,7 @@ const DailyGlobalModal = ({ group, childCoils = [], onClose, onViewCutConsumptio
           </button>
         </div>
 
-        <div className="p-4 overflow-y-auto flex-1 custom-scrollbar-dark">
+        <div className="p-4 overflow-auto flex-1 custom-scrollbar-dark">
           <div className="mb-4">
             <input
               type="text"
@@ -507,7 +507,7 @@ const DailyGlobalModal = ({ group, childCoils = [], onClose, onViewCutConsumptio
               {displayEvents.length === 0 ? 'Nenhum registro.' : 'Nenhum registro encontrado na busca.'}
             </div>
           ) : (
-            <table className="w-full text-sm text-left text-gray-300">
+            <table className="w-full min-w-[560px] text-sm text-left text-gray-300">
               <thead className="bg-gray-900 text-gray-400 sticky top-0">
                 <tr>
                   <th className="p-2">Movimento ID</th>
@@ -726,7 +726,7 @@ const CutConsumptionStatusModal = ({ data, onClose }) => {
           </button>
         </div>
 
-        <div className="p-4 overflow-y-auto custom-scrollbar-dark flex-1">
+        <div className="p-4 overflow-auto custom-scrollbar-dark flex-1">
           {isLoading ? (
             <div className="text-sm text-gray-300">Carregando consumo e auditoria...</div>
           ) : errorMessage ? (
@@ -1132,8 +1132,8 @@ const ReportGroupModal = ({ group, onClose }) => {
           <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20}/></button>
         </div>
 
-        <div className="p-0 overflow-y-auto custom-scrollbar-dark flex-1">
-             <table className="w-full text-sm text-left text-gray-300">
+        <div className="p-0 overflow-auto custom-scrollbar-dark flex-1">
+             <table className="w-full min-w-[520px] text-sm text-left text-gray-300">
                 <thead className="bg-gray-800 text-gray-400 sticky top-0 shadow-md">
                   <tr>
                     <th className="p-3">Data</th>
@@ -1209,8 +1209,8 @@ const MpDetailsModal = ({ data, onClose }) => {
           <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20}/></button>
         </div>
         
-        <div className="p-0 overflow-y-auto custom-scrollbar-dark flex-1">
-             <table className="w-full text-sm text-left text-gray-300">
+        <div className="p-0 overflow-auto custom-scrollbar-dark flex-1">
+             <table className="w-full min-w-[520px] text-sm text-left text-gray-300">
                 <thead className="bg-gray-800 text-gray-400 sticky top-0 shadow-md">
                   <tr>
                     <th className="p-3">Data</th>
@@ -1299,8 +1299,8 @@ const MpGroupModal = ({ group, onClose, onOpenDetail }) => {
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={20}/></button>
         </div>
-        <div className="overflow-y-auto custom-scrollbar-dark flex-1">
-          <table className="w-full text-sm text-left text-gray-300">
+        <div className="overflow-auto custom-scrollbar-dark flex-1">
+          <table className="w-full min-w-[520px] text-sm text-left text-gray-300">
             <thead className="bg-gray-800 text-gray-400 sticky top-0 shadow-md">
               <tr>
                 <th className="p-3 text-right">Largura (mm)</th>
@@ -1932,8 +1932,8 @@ const StockDetailsModal = ({ code, coils = [], onClose, onReprint, type, motherC
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar-dark">
-          <table className="w-full text-xs md:text-sm text-left text-gray-300">
+        <div className="flex-1 overflow-auto custom-scrollbar-dark">
+          <table className="w-full min-w-[640px] text-xs md:text-sm text-left text-gray-300">
             <thead className="bg-gray-800 text-gray-400 sticky top-0 shadow-md text-[11px] uppercase tracking-wide">
               <tr>
                 <th className="p-3">ID Rastreio</th>
@@ -8065,11 +8065,11 @@ const getUnitWeight = (code) => {
            {/* 4. HISTÓRICO */}
            <Card className="flex-1 border-t-4 border-purple-500 min-h-[350px]">
              <h3 className="font-bold text-gray-200 p-4 flex items-center gap-2"><History size={20} className="text-purple-500"/> Histórico de Cortes Realizados</h3>
-             <div className="flex-1 overflow-y-auto h-full px-4 pb-4">
+             <div className="flex-1 overflow-auto h-full px-4 pb-4">
                 {cuttingLogs.length === 0 ? (
                     <div className="text-center text-gray-500 py-10">Nenhum corte registrado ainda.</div>
                 ) : (
-                    <table className="w-full text-sm text-left text-gray-300">
+                    <table className="w-full min-w-[600px] text-sm text-left text-gray-300">
                         <thead className="bg-gray-900 text-gray-400 sticky top-0"><tr><th className="p-3">Data</th><th className="p-3">Entrada de MP</th><th className="p-3">Saída</th><th className="p-3 text-right">Sucata</th><th className="p-3 text-right">Total</th></tr></thead>
                         <tbody className="divide-y divide-gray-700">
                             {cuttingLogs.map(log => {
@@ -14534,11 +14534,11 @@ const handleUploadJSONToFirebase = async (e) => {
                 <X size={20} />
               </button>
             </div>
-            <div className="p-4 overflow-y-auto flex-1 custom-scrollbar-dark">
+            <div className="p-4 overflow-auto flex-1 custom-scrollbar-dark">
               {selectedUserEvents.length === 0 ? (
                 <div className="text-sm text-gray-400">Sem movimentações.</div>
               ) : (
-                <table className="w-full text-sm text-left text-gray-300">
+                <table className="w-full min-w-[520px] text-sm text-left text-gray-300">
                   <thead className="bg-gray-900 text-gray-400 sticky top-0">
                     <tr>
                       <th className="p-2">Data</th>

@@ -82,8 +82,8 @@ const StockList = ({
         <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar-dark min-h-[200px] max-h-[320px]">
-        <table className="w-full text-xs text-left text-gray-300">
+      <div className="flex-1 overflow-auto custom-scrollbar-dark min-h-[200px] max-h-[320px]">
+        <table className="w-full min-w-[560px] text-xs text-left text-gray-300">
           <thead className="bg-gray-900 text-gray-400 sticky top-0">
             {title === 'Estoque Bobinas Mae' && (
               <tr>

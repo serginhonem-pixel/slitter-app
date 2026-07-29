@@ -1678,8 +1678,8 @@ const KpiCard = ({ title, value, unit, color = 'text-blue-400', subText = '', ba
             </div>
 
             {/* Tabela */}
-            <div className="max-h-[420px] overflow-y-auto rounded-xl border border-slate-700/40">
-              <table className="w-full text-sm">
+            <div className="max-h-[420px] overflow-auto rounded-xl border border-slate-700/40">
+              <table className="w-full min-w-[640px] text-sm">
                 <thead className="bg-slate-800/90 sticky top-0 z-10">
                   <tr>
                     <SortHeader label="Código" sortKey="code" />
