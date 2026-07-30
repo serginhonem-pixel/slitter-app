@@ -2,7 +2,7 @@ import React from 'react';
 import { Package, Factory, Scissors, Layers } from 'lucide-react';
 
 const Card = ({ children, className = '' }) => (
-  <div className={`bg-slate-900/50 backdrop-blur rounded-2xl shadow-xl shadow-black/20 border border-white/5 p-6 ${className}`}>
+  <div className={`bg-slate-900/50 backdrop-blur rounded-2xl shadow-xl shadow-black/20 border border-white/5 p-3 sm:p-6 ${className}`}>
     {children}
   </div>
 );
@@ -23,19 +23,20 @@ const StockSummaryCard = ({
 }) => (
   <Card className="flex items-center justify-between">
     <div>
-      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{title}</p>
-      <p className={`text-2xl font-extrabold mt-1 ${colorClass}`}>
+      <p className="text-[9px] sm:text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{title}</p>
+      <p className={`text-lg sm:text-2xl font-extrabold mt-1 ${colorClass}`}>
         {formatPrimary(primaryValue)}{' '}
-        <span className="text-sm font-medium text-gray-400">{primaryUnit}</span>
+        <span className="text-xs sm:text-sm font-medium text-gray-400">{primaryUnit}</span>
       </p>
       {secondaryValue !== undefined && secondaryValue !== null && (
-        <p className="text-xs text-gray-500">
+        <p className="text-[11px] sm:text-xs text-gray-500">
           {formatSecondary(secondaryValue)} {secondaryUnit}
         </p>
       )}
     </div>
-    <div className={`p-3 rounded-full ${colorClass}/20`}>
-      <Icon size={28} className={colorClass} />
+    <div className={`p-2 sm:p-3 rounded-full ${colorClass}/20`}>
+      <Icon size={20} className={`sm:hidden ${colorClass}`} />
+      <Icon size={28} className={`hidden sm:block ${colorClass}`} />
     </div>
   </Card>
 );
@@ -52,7 +53,7 @@ export const StockSummary = ({ totals }) => {
   } = totals || {};
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
       <StockSummaryCard
         title="Estoque MP (Bobinas Mae)"
         primaryValue={motherCoilCount}

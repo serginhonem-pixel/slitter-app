@@ -68,7 +68,46 @@ const NfSearchPanel = ({ records = [], onViewDetails }) => {
       </div>
 
       <div className="flex-1 overflow-auto custom-scrollbar-dark min-h-[200px] max-h-[320px]">
-        <table className="w-full min-w-[560px] text-xs text-left text-gray-300">
+        <div className="sm:hidden space-y-2">
+          {paginatedRecords.length === 0 ? (
+            <p className="text-center text-gray-500 py-4 text-xs">Nenhum item encontrado.</p>
+          ) : (
+            paginatedRecords.map((record, index) => (
+              <div
+                key={`m-${record.id || `${record.context}-${record.code}-${index}`}`}
+                className="rounded-xl border border-white/10 bg-slate-800/40 p-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-mono text-xs text-teal-300">NF {record.nf || '-'}</div>
+                    <p className="text-sm text-white truncate">{record.description || '-'}</p>
+                    <p className="text-[11px] text-gray-500">
+                      {record.contextLabel || '-'} · {record.code || '-'}
+                    </p>
+                  </div>
+                  {onViewDetails && record.code && (
+                    <button
+                      onClick={() => onViewDetails(record.code, record.context)}
+                      className="p-1.5 text-gray-400 hover:text-teal-300 transition-colors shrink-0"
+                      title="Ver detalhes"
+                    >
+                      <Eye size={16} />
+                    </button>
+                  )}
+                </div>
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="text-sm font-bold text-white">
+                    {Number.isFinite(record.weight)
+                      ? `${record.weight.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg`
+                      : '-'}
+                  </span>
+                  <span className="text-xs text-gray-400">{record.date || '-'}</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <table className="hidden sm:table w-full min-w-[560px] text-xs text-left text-gray-300">
           <thead className="bg-gray-900 text-gray-400 sticky top-0">
             <tr>
               <th className="p-3">NF</th>

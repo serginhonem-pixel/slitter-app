@@ -15,6 +15,7 @@ const StockList = ({
   icon: Icon,
   colorClass,
   renderRow,
+  renderMobileCard,
   itemsPerPage = 12,
   variant = 'card',
   className = '',
@@ -83,7 +84,16 @@ const StockList = ({
       </div>
 
       <div className="flex-1 overflow-auto custom-scrollbar-dark min-h-[200px] max-h-[320px]">
-        <table className="w-full min-w-[560px] text-xs text-left text-gray-300">
+        {renderMobileCard && (
+          <div className="sm:hidden space-y-2">
+            {paginatedData.length === 0 ? (
+              <p className="text-center text-gray-500 py-4 text-xs">Nenhum item encontrado.</p>
+            ) : (
+              paginatedData.map(renderMobileCard)
+            )}
+          </div>
+        )}
+        <table className={`w-full min-w-[560px] text-xs text-left text-gray-300 ${renderMobileCard ? 'hidden sm:table' : ''}`}>
           <thead className="bg-gray-900 text-gray-400 sticky top-0">
             {title === 'Estoque Bobinas Mae' && (
               <tr>
@@ -246,6 +256,83 @@ export const MotherCoilStockList = ({ data, onExport, onViewDetails, ...rest }) 
       itemsPerPage={12}
       columnCount={7}
       {...rest}
+      renderMobileCard={(item, index) => {
+        const isExpanded = Boolean(expandedCodes[item.code]);
+        const statusInfo = statusByCode[item.code];
+        const widths = Array.from(new Set(item.widths.map((v) => v.width).filter(Boolean)));
+        const thicknesses = Array.from(
+          new Set(item.widths.map((v) => normalizeThicknessDisplay(v.thickness) || v.thickness).filter(Boolean)),
+        );
+        return (
+          <div
+            key={`m-${item.code}-${index}`}
+            className="rounded-xl border border-white/10 bg-slate-800/40 p-3"
+            onClick={() => toggleCode(item.code)}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="font-mono text-xs text-blue-300">{item.code}</div>
+                <p className="text-sm text-white truncate">{item.material}</p>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                {renderStatusBadge(statusInfo)}
+                {onViewDetails && (
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onViewDetails(item.code);
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-blue-300 transition-colors"
+                    title="Ver detalhes"
+                  >
+                    <Eye size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="mt-1 text-[11px] text-gray-500">
+              {widths.length ? `Larguras: ${widths.join(', ')}mm` : ''}
+              {widths.length && thicknesses.length ? ' · ' : ''}
+              {thicknesses.length ? `Esp.: ${thicknesses.join(', ')}mm` : ''}
+            </div>
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-sm font-bold text-white">
+                {item.totalWeight.toFixed(0)} kg
+              </span>
+              <span className="text-xs text-gray-400">{item.totalCount} bobinas</span>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleCode(item.code);
+                }}
+                className={`p-1 rounded-full text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+              >
+                <ChevronDown size={14} />
+              </button>
+            </div>
+            {isExpanded && (
+              <div className="mt-2 pt-2 border-t border-white/10 space-y-1">
+                {item.widths.map((variant, variantIndex) => (
+                  <div
+                    key={`${item.code}-${variant.width}-${variantIndex}`}
+                    className="flex items-center justify-between text-[11px] text-gray-300"
+                  >
+                    <span className="font-mono text-blue-300">
+                      {variant.width ? `${variant.width}mm` : '-'}
+                      {variant.thickness ? ` · ${variant.thickness}` : ''}
+                    </span>
+                    <span className="text-white font-semibold">
+                      {(variant.weight || 0).toFixed(0)} kg
+                      <span className="text-gray-400 font-normal"> ({variant.count})</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      }}
       renderRow={(item, index) => {
         const isExpanded = Boolean(expandedCodes[item.code]);
         const statusInfo = statusByCode[item.code];
@@ -404,6 +491,33 @@ export const ChildCoilStockList = ({ data, onExport, onViewDetails, ...rest }) =
       itemsPerPage={12}
       columnCount={6}
       {...rest}
+      renderMobileCard={(item, index) => (
+        <div key={`m-${item.code}-${index}`} className="rounded-xl border border-white/10 bg-slate-800/40 p-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="font-mono text-xs text-purple-300">{item.code}</div>
+              <p className="text-sm text-white truncate">{item.name}</p>
+              <p className="text-[11px] text-gray-500">{item.type || 'Tipo não informado'}</p>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              {renderStatusBadge(statusByCode[item.code])}
+              {onViewDetails && (
+                <button
+                  onClick={() => onViewDetails(item.code)}
+                  className="p-1.5 text-gray-400 hover:text-purple-300 transition-colors"
+                  title="Ver detalhes"
+                >
+                  <Eye size={16} />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="mt-2 flex items-center justify-between">
+            <span className="text-sm font-bold text-white">{item.weight.toFixed(0)} kg</span>
+            <span className="text-xs text-gray-400">{item.count} bobinas</span>
+          </div>
+        </div>
+      )}
       renderRow={(item, index) => (
         <tr key={`${item.code}-${index}`} className="hover:bg-gray-700/50">
           <td className="p-3 font-mono text-xs text-purple-300">{item.code}</td>
@@ -473,6 +587,52 @@ export const FinishedStockList = ({
       itemsPerPage={10}
       columnCount={6}
       {...rest}
+      renderMobileCard={(item, index) => {
+        const totalWeight = calcProductWeight?.(item.code, item.count) ?? 0;
+        const unitWeight = getUnitWeight?.(item.code) ?? 0;
+        return (
+          <div key={`m-${item.code}-${index}`} className="rounded-xl border border-white/10 bg-slate-800/40 p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="font-mono text-xs text-emerald-300">{item.code}</div>
+                <p className="text-sm text-white truncate" title={item.name}>{item.name}</p>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                {renderStatusBadge(safeStatusByCode[item.code])}
+                {onViewHistory && (
+                  <button
+                    onClick={() => onViewHistory({ code: item.code, name: item.name, context: 'PROD' })}
+                    className="p-1.5 bg-gray-800 text-gray-200 rounded hover:bg-blue-600 hover:text-white transition-colors"
+                    title="Ver lotes"
+                  >
+                    <List size={16} />
+                  </button>
+                )}
+                {onPrint && (
+                  <button
+                    onClick={() => onPrint(item)}
+                    className="p-1.5 bg-gray-800 text-gray-200 rounded hover:bg-emerald-600 hover:text-white transition-colors"
+                    title="Imprimir"
+                  >
+                    <Printer size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="mt-2 flex items-center justify-between">
+              <div>
+                <span className="text-sm font-bold text-white">
+                  {totalWeight.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kg
+                </span>
+                <div className="text-[11px] text-gray-500">
+                  {unitWeight ? `${unitWeight.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kg/un` : 'Peso não cadastrado'}
+                </div>
+              </div>
+              <span className="text-xs text-gray-400">{item.count} peças</span>
+            </div>
+          </div>
+        );
+      }}
       renderRow={(item, index) => (
         <tr key={`${item.code}-${index}`} className="hover:bg-gray-700/50">
           <td className="p-3 font-mono text-xs text-emerald-300">{item.code}</td>
@@ -535,6 +695,35 @@ export const ShipmentList = ({ data, onExport }) => (
     variant="embedded"
     showHeader={false}
     columnCount={5}
+    renderMobileCard={(item, index) => (
+      <div key={`m-${item.id || index}`} className="rounded-xl border border-white/10 bg-slate-800/40 p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="font-mono text-xs text-amber-300">{item.code}</div>
+            <p className="text-sm text-white truncate">{item.name}</p>
+            <p className="text-[11px] text-gray-500">{item.destination || '-'}</p>
+          </div>
+          <span className="text-[11px] text-gray-500 shrink-0">
+            {item.date || (item.timestamp && new Date(item.timestamp).toLocaleDateString('pt-BR')) || '-'}
+          </span>
+        </div>
+        <div className="mt-2 flex items-center justify-between">
+          <div>
+            <span className="text-sm font-bold text-white">
+              {item.weight.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kg
+            </span>
+            {item.unitWeight ? (
+              <div className="text-[11px] text-gray-500">
+                {item.unitWeight.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kg/un
+              </div>
+            ) : (
+              <div className="text-[11px] text-gray-600">Peso não cadastrado</div>
+            )}
+          </div>
+          <span className="text-xs text-gray-400">{item.quantity} pçs</span>
+        </div>
+      </div>
+    )}
     renderRow={(item, index) => (
       <tr key={item.id || index} className="hover:bg-gray-700/50">
         <td className="p-3 font-mono text-xs text-amber-300">{item.code}</td>
